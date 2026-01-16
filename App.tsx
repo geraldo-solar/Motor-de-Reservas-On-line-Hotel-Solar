@@ -469,14 +469,18 @@ export const App: React.FC = () => {
                     {
                       id: 'jul-family',
                       name: 'Semana da Família: Domingo a Quinta',
-                      dates: 'Todas as Semanas (Dom a Qui)',
-                      checkIn: [2026, 6, 5],
-                      checkOut: [2026, 6, 9],
+                      dates: 'Escolha sua Semana',
                       img: '/solar_jantar_familia_1768576512519.png',
                       discount: '30',
                       isPromotional: true,
                       description: 'O melhor custo-benefício de Julho. Aproveite diárias reduzidas durante a semana e ganhe o Jantar Cortesia (Buffet de Sopas e Massas) todas as noites para toda a sua família.',
-                      programming: ['Jantar Cortesia Incluso', 'Buffet de Sopas & Massas', 'Menor Tarifa do Mês', 'Recreação para Crianças']
+                      programming: ['Jantar Cortesia Incluso', 'Buffet de Sopas & Massas', 'Menor Tarifa do Mês', 'Recreação para Crianças'],
+                      weeks: [
+                        { label: '05 a 09/07', checkIn: [2026, 6, 5], checkOut: [2026, 6, 9] },
+                        { label: '12 a 16/07', checkIn: [2026, 6, 12], checkOut: [2026, 6, 16] },
+                        { label: '19 a 23/07', checkIn: [2026, 6, 19], checkOut: [2026, 6, 23] },
+                        { label: '26 a 30/07', checkIn: [2026, 6, 26], checkOut: [2026, 6, 30] },
+                      ]
                     },
                     {
                       id: 'jul-2',
@@ -522,7 +526,7 @@ export const App: React.FC = () => {
                       description: 'A despedida em grande estilo que Salinas merece. Aproveite os últimos momentos do mês com condições especiais e muita diversão.',
                       programming: ['Baile de Despedida', 'Fotos em Família', 'Personagens Infantis']
                     },
-                  ].map((item) => (
+                  ].map((item: any) => (
                     <div key={item.id} className={`group flex flex-col md:flex-row rounded-[2.5rem] overflow-hidden shadow-2xl border transition-all hover:-translate-y-1 ${item.isPromotional ? 'bg-orange-50/50 border-orange-200 shadow-orange-900/10' : 'bg-white border-white/10 shadow-solar-gold/20'}`}>
                       {/* Lado da Imagem */}
                       <div className="md:w-2/5 h-[300px] md:h-auto relative overflow-hidden">
@@ -560,10 +564,45 @@ export const App: React.FC = () => {
                           "{item.description}"
                         </p>
 
+                        {/* BOTÕES DE SELEÇÃO DE SEMANA (PARA O PACOTE FAMÍLIA) */}
+                        {item.weeks && (
+                          <div className="space-y-4">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-orange-600">Selecione o período desejado:</p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                              {item.weeks.map((week: any) => {
+                                const isCurrentWeek = checkIn && checkOut &&
+                                  toLocalISO(checkIn) === toLocalISO(new Date(week.checkIn[0], week.checkIn[1], week.checkIn[2])) &&
+                                  toLocalISO(checkOut) === toLocalISO(new Date(week.checkOut[0], week.checkOut[1], week.checkOut[2]));
+
+                                return (
+                                  <button
+                                    key={week.label}
+                                    onClick={() => {
+                                      const ci = new Date(week.checkIn[0], week.checkIn[1], week.checkIn[2]);
+                                      const co = new Date(week.checkOut[0], week.checkOut[1], week.checkOut[2]);
+                                      setCheckIn(ci);
+                                      setCheckOut(co);
+                                      setCurrentCalendarDate(ci);
+                                      document.getElementById('quartos-section')?.scrollIntoView({ behavior: 'smooth' });
+                                    }}
+                                    className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 group/btn ${isCurrentWeek
+                                        ? 'bg-orange-600 border-orange-600 text-white'
+                                        : 'bg-white border-orange-100 text-orange-600 hover:border-orange-600 hover:bg-orange-50'
+                                      }`}
+                                  >
+                                    <span className="text-[9px] font-black uppercase tracking-tighter">Semana</span>
+                                    <span className="text-xs font-bold whitespace-nowrap">{week.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
                         <div className="space-y-4">
                           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Destaques da Experiência:</p>
                           <div className="flex flex-wrap gap-2">
-                            {item.programming.map(prog => (
+                            {item.programming.map((prog: string) => (
                               <span key={prog} className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border ${item.isPromotional ? 'bg-orange-100/50 border-orange-200 text-orange-700' : 'bg-slate-50 border-slate-100 text-slate-600'}`}>
                                 <div className={`w-1.5 h-1.5 rounded-full ${item.isPromotional ? 'bg-orange-500' : 'bg-solar-gold'}`}></div>
                                 {prog}
@@ -572,24 +611,26 @@ export const App: React.FC = () => {
                           </div>
                         </div>
 
-                        <div className="pt-6 flex flex-col md:flex-row items-center gap-6">
-                          <button
-                            onClick={() => {
-                              const checkInDate = new Date(item.checkIn[0], item.checkIn[1], item.checkIn[2]);
-                              const checkOutDate = new Date(item.checkOut[0], item.checkOut[1], item.checkOut[2]);
-                              setCheckIn(checkInDate);
-                              setCheckOut(checkOutDate);
-                              setCurrentCalendarDate(checkInDate);
-                              document.getElementById('quartos-section')?.scrollIntoView({ behavior: 'smooth' });
-                            }}
-                            className={`w-full md:w-auto px-10 py-5 text-white rounded-2xl font-bold uppercase text-xs tracking-[0.2em] transition-all shadow-xl active:scale-95 ${item.isPromotional ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-900/20' : 'bg-solar-green hover:bg-solar-gold shadow-solar-green/20'}`}
-                          >
-                            Ver Disponibilidade
-                          </button>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                            {item.isPromotional ? '*Válido apenas dom a qui' : '*Vagas limitadas'}
-                          </span>
-                        </div>
+                        {!item.weeks && (
+                          <div className="pt-6 flex flex-col md:flex-row items-center gap-6">
+                            <button
+                              onClick={() => {
+                                const checkInDate = new Date(item.checkIn[0], item.checkIn[1], item.checkIn[2]);
+                                const checkOutDate = new Date(item.checkOut[0], item.checkOut[1], item.checkOut[2]);
+                                setCheckIn(checkInDate);
+                                setCheckOut(checkOutDate);
+                                setCurrentCalendarDate(checkInDate);
+                                document.getElementById('quartos-section')?.scrollIntoView({ behavior: 'smooth' });
+                              }}
+                              className={`w-full md:w-auto px-10 py-5 text-white rounded-2xl font-bold uppercase text-xs tracking-[0.2em] transition-all shadow-xl active:scale-95 ${item.isPromotional ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-900/20' : 'bg-solar-green hover:bg-solar-gold shadow-solar-green/20'}`}
+                            >
+                              Ver Disponibilidade
+                            </button>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                              {item.isPromotional ? '*Válido apenas dom a qui' : '*Vagas limitadas'}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
