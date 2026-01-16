@@ -455,12 +455,12 @@ export const App: React.FC = () => {
 
                 <div className="mt-20 grid grid-cols-1 md:grid-cols-5 gap-6">
                   {[
-                    { id: 'jul-1', name: 'Abertura de Julho', dates: '01 a 07/07', img: '/salinas_july_1_1768572288686.png', discount: '15' },
-                    { id: 'jul-2', name: 'Semana da Família', dates: '08 a 14/07', img: '/salinas_july_2_1768572303926.png', discount: '10' },
-                    { id: 'jul-3', name: 'O Auge do Verão', dates: '15 a 21/07', img: '/salinas_july_3_1768572318354.png', discount: '20' },
-                    { id: 'jul-4', name: 'Semana Premium', dates: '22 a 28/07', img: '/salinas_july_4_1768572334776.png', discount: '15' },
-                    { id: 'jul-5', name: 'Bye Bye July', dates: '29/07 a 04/08', img: '/salinas_july_5_1768572353236.png', discount: '25' },
-                  ].map((item, idx) => (
+                    { id: 'jul-1', name: 'Solar Celebration: Abertura & Aniversário', dates: '02 a 05/07', checkIn: [2026, 6, 2], checkOut: [2026, 6, 5], img: '/salinas_july_1_1768572288686.png', discount: '15' },
+                    { id: 'jul-2', name: 'Semana Sol & Alegria', dates: '05 a 12/07', checkIn: [2026, 6, 5], checkOut: [2026, 6, 12], img: '/salinas_july_2_1768572303926.png', discount: '10' },
+                    { id: 'jul-3', name: 'Vibe Salinas: O Auge do Verão', dates: '12 a 19/07', checkIn: [2026, 6, 12], checkOut: [2026, 6, 19], img: '/salinas_july_3_1768572318354.png', discount: '20' },
+                    { id: 'jul-4', name: 'Semana Solar Premium', dates: '19 a 26/07', checkIn: [2026, 6, 19], checkOut: [2026, 6, 26], img: '/salinas_july_4_1768572334776.png', discount: '15' },
+                    { id: 'jul-5', name: 'Golden Sunset: A Saideira', dates: '26/07 a 02/08', checkIn: [2026, 6, 26], checkOut: [2026, 7, 2], img: '/salinas_july_5_1768572353236.png', discount: '25' },
+                  ].map((item) => (
                     <div key={item.id} className="group relative bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 transition-all hover:bg-white/10 hover:-translate-y-2">
                       <div className="aspect-square rounded-xl overflow-hidden mb-4 border border-white/5">
                         <img src={item.img} className="w-full h-full object-cover grayscale-[30%] group-hover:grayscale-0 transition-all duration-700" alt={item.name} />
@@ -468,12 +468,12 @@ export const App: React.FC = () => {
                           {item.discount}% OFF
                         </div>
                       </div>
-                      <h4 className="text-white font-serif text-lg mb-1">{item.name}</h4>
+                      <h4 className="text-white font-serif text-sm mb-1 line-clamp-2 min-h-[40px] leading-tight">{item.name}</h4>
                       <p className="text-solar-gold font-bold text-[10px] uppercase tracking-widest">{item.dates}</p>
                       <button
                         onClick={() => {
-                          const checkInDate = new Date(2026, 6, (idx * 7) + 1);
-                          const checkOutDate = new Date(2026, 6, (idx * 7) + 7);
+                          const checkInDate = new Date(item.checkIn[0], item.checkIn[1], item.checkIn[2]);
+                          const checkOutDate = new Date(item.checkOut[0], item.checkOut[1], item.checkOut[2]);
                           setCheckIn(checkInDate);
                           setCheckOut(checkOutDate);
                           setCurrentCalendarDate(checkInDate);
