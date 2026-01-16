@@ -58,6 +58,7 @@ export const App: React.FC = () => {
     refreshData,
     isSaving,
     upsertRoom,
+    upsertRooms,
     deleteRoom,
     upsertPackage,
     deletePackage,
@@ -949,6 +950,7 @@ export const App: React.FC = () => {
                 onUpdateConfig={setConfig}
                 onUpdateReservationStatus={updateReservationStatus}
                 onUpsertRoom={upsertRoom}
+                onUpsertRooms={upsertRooms}
                 onDeleteRoom={deleteRoom}
                 onUpsertPackage={upsertPackage}
                 onDeletePackage={deletePackage}

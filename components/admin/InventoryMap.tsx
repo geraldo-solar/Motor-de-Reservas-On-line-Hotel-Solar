@@ -8,6 +8,7 @@ interface InventoryMapProps {
     rooms: Room[];
     onUpdateRoomOverride: (roomId: string, override: RoomDateOverride) => void;
     onBulkUpdate: (startIso: string, endIso: string, roomId: string, selectedDays: number[], updates: Partial<RoomDateOverride> | null, priceOp?: any) => void;
+    isSaving?: boolean;
 }
 
 
@@ -77,7 +78,7 @@ const MapCell: React.FC<{
     );
 };
 
-export const InventoryMap: React.FC<InventoryMapProps> = ({ rooms, onUpdateRoomOverride, onBulkUpdate }) => {
+export const InventoryMap: React.FC<InventoryMapProps> = ({ rooms, onUpdateRoomOverride, onBulkUpdate, isSaving }) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -264,7 +265,16 @@ export const InventoryMap: React.FC<InventoryMapProps> = ({ rooms, onUpdateRoomO
                     </div>
 
                     <div className="lg:col-span-12 xl:col-span-1 mt-4 xl:mt-0">
-                        <button onClick={handleBulkApply} className="w-full bg-[#0F2820] text-[#D4AF37] p-3 rounded-xl font-bold uppercase text-[10px] tracking-widest hover:bg-[#1a3c30] transition shadow-lg h-11 active:scale-95">Aplicar</button>
+                        <button
+                            onClick={handleBulkApply}
+                            disabled={isSaving}
+                            className={`w-full p-3 rounded-xl font-bold uppercase text-[10px] tracking-widest transition shadow-lg h-11 active:scale-95 ${isSaving
+                                ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                                : 'bg-[#0F2820] text-[#D4AF37] hover:bg-[#1a3c30]'
+                                }`}
+                        >
+                            {isSaving ? 'Sinc...' : 'Aplicar'}
+                        </button>
                     </div>
                 </div>
             </div>

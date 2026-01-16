@@ -39,6 +39,7 @@ interface AdminPanelProps {
   onUpdateConfig: (config: HotelConfig) => void;
   onUpdateReservationStatus: (id: string, status: string, reason?: string) => Promise<boolean>;
   onUpsertRoom: (room: Room) => Promise<boolean>;
+  onUpsertRooms: (rooms: Room[]) => Promise<boolean>;
   onDeleteRoom: (roomId: string) => Promise<boolean>;
   onUpsertPackage: (pkg: HolidayPackage) => Promise<boolean>;
   onDeletePackage: (id: string) => Promise<boolean>;
@@ -58,7 +59,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
   const {
     rooms, packages, discounts, extras, config, reservations,
     onUpdateRooms, onUpdatePackages, onUpdateDiscounts, onUpdateExtras, onUpdateConfig,
-    onUpdateReservationStatus, onUpsertRoom, onDeleteRoom, onUpsertPackage, onDeletePackage,
+    onUpdateReservationStatus, onUpsertRoom, onUpsertRooms, onDeleteRoom, onUpsertPackage, onDeletePackage,
     onUpsertExtra, onDeleteExtra, onUpsertDiscount, onDeleteDiscount, isSaving, onLogout
   } = props;
 
@@ -97,7 +98,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
   };
 
   const handleBulkUpdate = async (startIso: string, endIso: string, roomId: string, selectedDays: number[], updates: Partial<RoomDateOverride> | null, priceOp?: any) => {
-    const targetRooms = roomId === 'all' ? rooms : rooms.filter(r => r.id === roomId);
+    const targetRooms = roomId === 'all' ? rooms.filter(r => r.active) : rooms.filter(r => r.id === roomId);
+    const updatedRooms: Room[] = [];
+
     for (const room of targetRooms) {
       const existing = room.overrides || [];
       const start = new Date(startIso + 'T12:00:00');
@@ -121,7 +124,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
         }
         temp.setDate(temp.getDate() + 1);
       }
-      await onUpsertRoom({ ...room, overrides: newOverrides });
+      updatedRooms.push({ ...room, overrides: newOverrides });
+    }
+
+    if (updatedRooms.length > 0) {
+      await onUpsertRooms(updatedRooms);
     }
   };
 
@@ -234,7 +241,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
       {/* Main Content Area */}
       <main ref={mainScrollRef} className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-12">
         <div className="max-w-[1600px] mx-auto min-h-full">
-          {activeTab === 'MAP' && <InventoryMap rooms={rooms} onUpdateRoomOverride={handleUpdateRoomOverride} onBulkUpdate={handleBulkUpdate} />}
+          {activeTab === 'MAP' && <InventoryMap rooms={rooms} onUpdateRoomOverride={handleUpdateRoomOverride} onBulkUpdate={handleBulkUpdate} isSaving={isSaving} />}
           {activeTab === 'ROOMS' && <RoomsManagement rooms={rooms} onEditRoom={(r) => { setSelectedRoom(r); setIsRoomModalOpen(true); }} onNewRoom={() => { setSelectedRoom(null); setIsRoomModalOpen(true); }} onDeleteRoom={onDeleteRoom} onUpdateRooms={onUpdateRooms} />}
           {activeTab === 'PACKAGES' && <PackagesManagement packages={packages} onEditPackage={(pkg) => { setSelectedPackage(pkg); setIsPackageModalOpen(true); }} onNewPackage={() => { setSelectedPackage(null); setIsPackageModalOpen(true); }} />}
           {activeTab === 'EXTRAS' && <ExtrasManagement extras={extras} onEditExtra={(e) => { setSelectedExtra(e); setIsExtraModalOpen(true); }} onNewExtra={() => { setSelectedExtra(null); setIsExtraModalOpen(true); }} onDeleteExtra={onDeleteExtra} onUpdateExtras={onUpdateExtras} />}

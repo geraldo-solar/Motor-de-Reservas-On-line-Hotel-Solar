@@ -287,6 +287,45 @@ export const useSupabaseData = () => {
     }
   };
 
+  const upsertRooms = async (updatedRooms: Room[]) => {
+    setIsSaving(true);
+    try {
+      const dataToSave = updatedRooms.map(room => ({
+        id: room.id,
+        name: room.name,
+        description: room.description || '',
+        base_price: room.price || 0,
+        capacity: room.capacity || 2,
+        images: room.imageUrls || [],
+        address: room.address || '',
+        amenities: room.features || [],
+        total_quantity: room.totalQuantity || 1,
+        active: room.active !== false,
+        overrides: room.overrides || [],
+      }));
+
+      const { error } = await supabase.from('room_types').upsert(dataToSave);
+      if (error) throw error;
+
+      setRoomsState(prev => {
+        const newRooms = [...prev];
+        updatedRooms.forEach(room => {
+          const index = newRooms.findIndex(r => r.id === room.id);
+          if (index >= 0) newRooms[index] = room;
+          else newRooms.push(room);
+        });
+        saveToStorage(STORAGE_KEYS.rooms, newRooms);
+        return newRooms;
+      });
+      return true;
+    } catch (err) {
+      console.error('Erro ao salvar quartos em massa:', err);
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const deleteRoom = async (roomId: string) => {
     setIsSaving(true);
     try {
@@ -669,6 +708,7 @@ export const useSupabaseData = () => {
     setReservations,
     refreshData: () => loadFromSupabase(false),
     upsertRoom,
+    upsertRooms,
     deleteRoom,
     upsertPackage,
     deletePackage,
