@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Sun, Maximize2 } from 'lucide-react';
 import { Room } from '../types';
+import { getPublicImageUrl } from '../utils/imageUtils';
 
 export const RoomGallery: React.FC<{ room: Room, onZoom: (index: number) => void }> = ({ room, onZoom }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -37,7 +38,7 @@ export const RoomGallery: React.FC<{ room: Room, onZoom: (index: number) => void
                 </div>
             )}
             <img
-                src={images[currentIndex]}
+                src={getPublicImageUrl(images[currentIndex])}
                 alt={`${room.name} - ${currentIndex + 1}`}
                 className={`w-full h-full object-cover transition-all duration-700 hover:scale-105 cursor-zoom-in ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
                 onClick={() => onZoom(currentIndex)}

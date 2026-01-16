@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react';
+import { getPublicImageUrl } from '../utils/imageUtils';
 
 export const Lightbox: React.FC<{
     images: string[],
@@ -65,7 +66,7 @@ export const Lightbox: React.FC<{
 
                 <div className={`relative max-w-5xl w-full h-full flex items-center justify-center transition-all duration-300 ${isAnimating ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
                     <img
-                        src={images[currentIndex]}
+                        src={getPublicImageUrl(images[currentIndex])}
                         className="max-w-full max-h-full object-contain shadow-[0_0_50px_rgba(0,0,0,0.5)] rounded-lg selection:bg-transparent"
                         alt="Solar Gallery Zoom"
                     />
@@ -79,7 +80,7 @@ export const Lightbox: React.FC<{
                         onClick={() => setCurrentIndex(idx)}
                         className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition-all shrink-0 ${idx === currentIndex ? 'border-[#D4AF37] scale-110 shadow-lg' : 'border-transparent opacity-40 hover:opacity-100'}`}
                     >
-                        <img src={img} className="w-full h-full object-cover" />
+                        <img src={getPublicImageUrl(img)} className="w-full h-full object-cover" />
                     </button>
                 ))}
             </div>

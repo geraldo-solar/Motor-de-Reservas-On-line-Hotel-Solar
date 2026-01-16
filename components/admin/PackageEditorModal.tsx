@@ -204,123 +204,153 @@ export const PackageEditorModal: React.FC<PackageEditorModalProps> = ({ isOpen, 
                                         </button>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <Gift size={18} className="text-solar-gold" />
-                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Incluso no Pacote / Programação</label>
-                                    </div>
-                                    <button onClick={handleAddInclude} className="bg-solar-gold/10 text-solar-gold p-1.5 rounded-lg hover:bg-solar-gold hover:text-white transition-all"><Plus size={16} /></button>
-                                </div>
-                                <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 min-h-[200px]">
-                                    {includesList.map((item, idx) => (
-                                        <div key={idx} className="flex gap-2">
-                                            <div className="flex-1 relative">
-                                                <Check className="absolute left-3 top-1/2 -translate-y-1/2 text-solar-gold" size={14} />
-                                                <input
-                                                    type="text"
-                                                    value={item}
-                                                    onChange={e => handleUpdateInclude(idx, e.target.value)}
-                                                    className="w-full border-2 border-white pl-10 p-3 rounded-xl text-xs bg-white outline-none focus:border-solar-gold transition-all shadow-sm"
-                                                    placeholder="Ex: Show ao vivo no sábado à noite..."
-                                                />
-                                            </div>
-                                            <button onClick={() => handleRemoveInclude(idx)} className="p-3 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18} /></button>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Categoria</label>
+                                        <div className="flex bg-slate-100 p-1 rounded-xl">
+                                            <button
+                                                onClick={() => setFormData({ ...formData, category: 'SPECIAL' })}
+                                                className={`flex-1 py-3 rounded-lg text-[10px] font-bold uppercase transition-all ${formData.category !== 'JULY' ? 'bg-white text-solar-green shadow-sm' : 'text-slate-400'}`}
+                                            >
+                                                Especial
+                                            </button>
+                                            <button
+                                                onClick={() => setFormData({ ...formData, category: 'JULY' })}
+                                                className={`flex-1 py-3 rounded-lg text-[10px] font-bold uppercase transition-all ${formData.category === 'JULY' ? 'bg-solar-gold text-solar-green shadow-sm' : 'text-slate-400'}`}
+                                            >
+                                                Férias Julho
+                                            </button>
                                         </div>
-                                    ))}
-                                    {includesList.length === 0 && <p className="text-center text-xs text-slate-400 italic py-10">Adicione itens à programação do pacote.</p>}
+                                    </div>
+                                    <div className="space-y-1.5 flex flex-col justify-end">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1 mb-1.5">Estilo Promocional</label>
+                                        <button
+                                            onClick={() => setFormData({ ...formData, isPromotional: !formData.isPromotional })}
+                                            className={`w-full h-12 rounded-xl text-[9px] font-bold uppercase tracking-widest transition-all border-2 flex items-center justify-center gap-2 ${formData.isPromotional ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-white border-slate-100 text-slate-400'}`}
+                                        >
+                                            <Gift size={14} />
+                                            {formData.isPromotional ? 'Estilo Diferenciado ON' : 'Padrão'}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="space-y-8">
-                            <div className="space-y-4">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block ml-1">Imagem de Capa do Pacote</label>
-                                <div className="space-y-3">
-                                    <div
-                                        className={`relative cursor-pointer h-56 rounded-3xl border-2 border-dashed transition-all flex items-center justify-center overflow-hidden group shadow-sm ${formData.imageUrl ? 'border-solid border-solar-gold' : 'border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300'}`}
-                                        onClick={() => fileInputRef.current?.click()}
-                                    >
-                                        {formData.imageUrl ? (
-                                            <>
-                                                <img src={getPublicImageUrl(formData.imageUrl)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                                    <ImageIcon className="text-white" size={40} />
-                                                </div>
-                                            </>
-                                        ) : (
-                                            <div className="text-center">
-                                                <ImageIcon className="mx-auto text-slate-300 mb-3" size={48} />
-                                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Subir Imagem do Pacote</span>
-                                                <p className="text-[8px] text-slate-300 uppercase mt-1">Gere ou escolha uma foto marcante</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <input
-                                        type="text"
-                                        value={formData.imageUrl}
-                                        onChange={e => setFormData({ ...formData, imageUrl: e.target.value })}
-                                        className="w-full border border-slate-200 p-3 rounded-xl text-[10px] outline-none focus:border-solar-gold bg-slate-50/50"
-                                        placeholder="Ou cole o link da imagem (Google Drive / URL)"
-                                    />
-                                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Gift size={18} className="text-solar-gold" />
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Incluso no Pacote / Programação</label>
                                 </div>
+                                <button onClick={handleAddInclude} className="bg-solar-gold/10 text-solar-gold p-1.5 rounded-lg hover:bg-solar-gold hover:text-white transition-all"><Plus size={16} /></button>
                             </div>
-
-                            <div className="space-y-4">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block ml-1">Tarifário do Pacote (Preço Fechado por Acomodação)</label>
-                                <div className="bg-slate-50 rounded-2xl border border-slate-100 p-6 space-y-4 shadow-inner">
-                                    {rooms.map(room => (
-                                        <div key={room.id} className="flex items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
-                                            <div className="flex-1 min-w-0">
-                                                <span className="block text-xs font-bold text-solar-green uppercase tracking-tight truncate">{room.name}</span>
-                                                <span className="text-[9px] text-slate-400 uppercase tracking-widest">Valor do Pacote</span>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-xs font-bold text-slate-300">R$</span>
-                                                <input
-                                                    type="number"
-                                                    value={formData.roomPrices.find(rp => rp.roomId === room.id)?.price || 0}
-                                                    onChange={e => updateRoomPrice(room.id, Number(e.target.value))}
-                                                    className="w-28 border-2 border-slate-50 p-2 rounded-lg text-sm bg-slate-50 focus:bg-white focus:border-solar-gold outline-none font-black text-right transition-all"
-                                                />
-                                            </div>
+                            <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 min-h-[200px]">
+                                {includesList.map((item, idx) => (
+                                    <div key={idx} className="flex gap-2">
+                                        <div className="flex-1 relative">
+                                            <Check className="absolute left-3 top-1/2 -translate-y-1/2 text-solar-gold" size={14} />
+                                            <input
+                                                type="text"
+                                                value={item}
+                                                onChange={e => handleUpdateInclude(idx, e.target.value)}
+                                                className="w-full border-2 border-white pl-10 p-3 rounded-xl text-xs bg-white outline-none focus:border-solar-gold transition-all shadow-sm"
+                                                placeholder="Ex: Show ao vivo no sábado à noite..."
+                                            />
                                         </div>
-                                    ))}
-
-                                    <div className="mt-6 pt-6 border-t border-slate-200">
-                                        <div className="flex items-center justify-between bg-solar-gold/5 p-4 rounded-xl border border-solar-gold/20">
-                                            <div className="flex-1">
-                                                <span className="block text-xs font-bold text-solar-green uppercase tracking-tight">Desconto Período Completo (%)</span>
-                                                <span className="text-[9px] text-slate-500 uppercase tracking-widest">Aplicado se as datas baterem exatamente</span>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <input
-                                                    type="number"
-                                                    value={formData.fullPeriodDiscountPct || 0}
-                                                    onChange={e => setFormData({ ...formData, fullPeriodDiscountPct: Number(e.target.value) })}
-                                                    className="w-20 border-2 border-solar-gold/10 p-2 rounded-lg text-sm bg-white focus:border-solar-gold outline-none font-black text-center transition-all"
-                                                    placeholder="0"
-                                                    min="0"
-                                                    max="100"
-                                                />
-                                                <span className="text-xs font-bold text-solar-gold">%</span>
-                                            </div>
-                                        </div>
+                                        <button onClick={() => handleRemoveInclude(idx)} className="p-3 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18} /></button>
                                     </div>
-                                </div>
+                                ))}
+                                {includesList.length === 0 && <p className="text-center text-xs text-slate-400 italic py-10">Adicione itens à programação do pacote.</p>}
                             </div>
+                        </div>
+                    </div>
 
-                            <div className="pt-4 sticky bottom-0 bg-white py-4 border-t border-slate-50">
-                                <button
-                                    onClick={() => onSave({ ...formData, includes: includesList.map(i => i.trim()).filter(i => i !== '') })}
-                                    className="w-full bg-[#0F2820] text-[#D4AF37] py-5 rounded-2xl font-bold uppercase tracking-[0.4em] hover:bg-[#1a3c30] transition-all shadow-2xl active:scale-95 flex items-center justify-center gap-3"
+                    <div className="space-y-8">
+                        <div className="space-y-4">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block ml-1">Imagem de Capa do Pacote</label>
+                            <div className="space-y-3">
+                                <div
+                                    className={`relative cursor-pointer h-56 rounded-3xl border-2 border-dashed transition-all flex items-center justify-center overflow-hidden group shadow-sm ${formData.imageUrl ? 'border-solid border-solar-gold' : 'border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300'}`}
+                                    onClick={() => fileInputRef.current?.click()}
                                 >
-                                    Confirmar e Salvar Pacote
-                                </button>
+                                    {formData.imageUrl ? (
+                                        <>
+                                            <img src={getPublicImageUrl(formData.imageUrl)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                                <ImageIcon className="text-white" size={40} />
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="text-center">
+                                            <ImageIcon className="mx-auto text-slate-300 mb-3" size={48} />
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Subir Imagem do Pacote</span>
+                                            <p className="text-[8px] text-slate-300 uppercase mt-1">Gere ou escolha uma foto marcante</p>
+                                        </div>
+                                    )}
+                                </div>
+                                <input
+                                    type="text"
+                                    value={formData.imageUrl}
+                                    onChange={e => setFormData({ ...formData, imageUrl: e.target.value })}
+                                    className="w-full border border-slate-200 p-3 rounded-xl text-[10px] outline-none focus:border-solar-gold bg-slate-50/50"
+                                    placeholder="Ou cole o link da imagem (Google Drive / URL)"
+                                />
+                                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
                             </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block ml-1">Tarifário do Pacote (Preço Fechado por Acomodação)</label>
+                            <div className="bg-slate-50 rounded-2xl border border-slate-100 p-6 space-y-4 shadow-inner">
+                                {rooms.map(room => (
+                                    <div key={room.id} className="flex items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                                        <div className="flex-1 min-w-0">
+                                            <span className="block text-xs font-bold text-solar-green uppercase tracking-tight truncate">{room.name}</span>
+                                            <span className="text-[9px] text-slate-400 uppercase tracking-widest">Valor do Pacote</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-xs font-bold text-slate-300">R$</span>
+                                            <input
+                                                type="number"
+                                                value={formData.roomPrices.find(rp => rp.roomId === room.id)?.price || 0}
+                                                onChange={e => updateRoomPrice(room.id, Number(e.target.value))}
+                                                className="w-28 border-2 border-slate-50 p-2 rounded-lg text-sm bg-slate-50 focus:bg-white focus:border-solar-gold outline-none font-black text-right transition-all"
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+
+                                <div className="mt-6 pt-6 border-t border-slate-200">
+                                    <div className="flex items-center justify-between bg-solar-gold/5 p-4 rounded-xl border border-solar-gold/20">
+                                        <div className="flex-1">
+                                            <span className="block text-xs font-bold text-solar-green uppercase tracking-tight">Desconto Período Completo (%)</span>
+                                            <span className="text-[9px] text-slate-500 uppercase tracking-widest">Aplicado se as datas baterem exatamente</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                type="number"
+                                                value={formData.fullPeriodDiscountPct || 0}
+                                                onChange={e => setFormData({ ...formData, fullPeriodDiscountPct: Number(e.target.value) })}
+                                                className="w-20 border-2 border-solar-gold/10 p-2 rounded-lg text-sm bg-white focus:border-solar-gold outline-none font-black text-center transition-all"
+                                                placeholder="0"
+                                                min="0"
+                                                max="100"
+                                            />
+                                            <span className="text-xs font-bold text-solar-gold">%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="pt-4 sticky bottom-0 bg-white py-4 border-t border-slate-50">
+                            <button
+                                onClick={() => onSave({ ...formData, includes: includesList.map(i => i.trim()).filter(i => i !== '') })}
+                                className="w-full bg-[#0F2820] text-[#D4AF37] py-5 rounded-2xl font-bold uppercase tracking-[0.4em] hover:bg-[#1a3c30] transition-all shadow-2xl active:scale-95 flex items-center justify-center gap-3"
+                            >
+                                Confirmar e Salvar Pacote
+                            </button>
                         </div>
                     </div>
                 </div>

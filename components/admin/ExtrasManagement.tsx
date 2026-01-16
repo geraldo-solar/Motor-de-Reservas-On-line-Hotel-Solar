@@ -1,6 +1,7 @@
 import React from 'react';
 import { Plus, Trash2, ShoppingBag, Check, XCircle } from 'lucide-react';
 import { ExtraService } from '../../types';
+import { getPublicImageUrl } from '../../utils/imageUtils';
 
 interface ExtrasManagementProps {
     extras: ExtraService[];
@@ -34,7 +35,7 @@ export const ExtrasManagement: React.FC<ExtrasManagementProps> = ({ extras, onEd
                     >
                         <div className="aspect-square relative overflow-hidden bg-slate-50 border-b border-slate-100">
                             {extra.imageUrl ? (
-                                <img src={extra.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={extra.name} />
+                                <img src={getPublicImageUrl(extra.imageUrl)} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={extra.name} />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center text-slate-200"><ShoppingBag size={48} /></div>
                             )}

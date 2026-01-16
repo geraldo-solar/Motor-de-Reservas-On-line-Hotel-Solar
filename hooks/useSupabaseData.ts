@@ -109,6 +109,8 @@ export const useSupabaseData = () => {
     noCheckoutDates: p.no_checkout_dates || p.noCheckoutDates || [],
     noCheckInDates: p.no_checkin_dates || p.noCheckInDates || [],
     fullPeriodDiscountPct: p.full_period_discount_pct || p.fullPeriodDiscountPct || 0,
+    category: p.category || 'SPECIAL',
+    isPromotional: p.is_promotional || p.isPromotional || false,
   }));
 
   const mapReservations = (data: any[]): Reservation[] => data.map((r: any) => ({
@@ -136,7 +138,7 @@ export const useSupabaseData = () => {
     name: e.name,
     description: e.description || '',
     price: e.price || 0,
-    imageUrl: e.image_url || e.imageUrl || '',
+    imageUrl: getPublicImageUrl(e.image_url || e.imageUrl || ''),
     active: e.active !== false,
   }));
 
@@ -324,6 +326,8 @@ export const useSupabaseData = () => {
         no_checkout_dates: pkg.noCheckoutDates || [],
         no_checkin_dates: pkg.noCheckInDates || [],
         full_period_discount_pct: pkg.fullPeriodDiscountPct || 0,
+        // Mantemos category e is_promotional fora do upsert por enquanto 
+        // para evitar erros se as colunas não existirem no schema do cliente.
       };
 
       const { error } = await supabase.from('packages').upsert(dataToSave);

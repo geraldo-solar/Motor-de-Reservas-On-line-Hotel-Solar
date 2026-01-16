@@ -5,6 +5,7 @@ import BookingForm from './components/BookingForm';
 import AdminPanel, { AdminLogin } from './components/AdminPanel';
 import { ViewState, Room, HolidayPackage, DiscountCode, HotelConfig, ExtraService, Reservation, ReservationStatus } from './types';
 import { toLocalISO, parseISODate, formatDisplayDate, calculateNights } from './utils/dateUtils';
+import { getPublicImageUrl } from './utils/imageUtils';
 import { INITIAL_CONFIG } from './constants';
 import { useSupabaseData } from './hooks/useSupabaseData';
 import { sendReservationEmails } from './services/emailService';
@@ -371,7 +372,7 @@ export const App: React.FC = () => {
                   <div key={pkg.id} id={`pacote-${pkg.id}`} className="bg-white rounded-[2rem] overflow-hidden shadow-xl border border-slate-50 flex flex-col group hover:shadow-2xl transition-all duration-500 relative scroll-mt-24">
                     <div className="aspect-[16/10] relative overflow-hidden">
                       {pkg.imageUrl ? (
-                        <img src={pkg.imageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={pkg.name} loading="lazy" decoding="async" />
+                        <img src={getPublicImageUrl(pkg.imageUrl)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={pkg.name} loading="lazy" decoding="async" />
                       ) : (
                         <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300"><Ticket size={48} /></div>
                       )}
@@ -461,7 +462,7 @@ export const App: React.FC = () => {
                       dates: '02 a 05 de Julho',
                       checkIn: [2026, 6, 2],
                       checkOut: [2026, 6, 5],
-                      img: '/salinas_july_1_1768572288686.png',
+                      img: '/celebracao-july-final.jpg',
                       discount: '15',
                       description: 'Damos as boas-vindas ao verão com a grande festa de aniversário do Hotel Solar. Uma celebração única com música ao vivo, coquetel especial e a energia contagiante de Salinas.',
                       programming: ['Festa de Aniversário', 'Música ao Vivo', 'Coquetel de Boas-vindas']
@@ -530,10 +531,10 @@ export const App: React.FC = () => {
                     <div key={item.id} className={`group flex flex-col md:flex-row rounded-[2.5rem] overflow-hidden shadow-2xl border transition-all hover:-translate-y-1 ${item.isPromotional ? 'bg-orange-50/50 border-orange-200 shadow-orange-900/10' : 'bg-white border-white/10 shadow-solar-gold/20'}`}>
                       {/* Lado da Imagem */}
                       <div className="md:w-2/5 h-[300px] md:h-auto relative overflow-hidden">
-                        <img src={item.img} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={item.name} />
+                        <img src={getPublicImageUrl(item.imageUrl || item.img)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={item.name} />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent md:hidden"></div>
                         <div className={`absolute top-6 left-6 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-2xl animate-pulse ${item.isPromotional ? 'bg-orange-600' : 'bg-red-600'}`}>
-                          {item.discount}% OFF
+                          {item.fullPeriodDiscountPct || item.discount || 0}% OFF
                         </div>
                         {item.isPromotional && (
                           <div className="absolute bottom-6 left-6 bg-white/90 backdrop-blur-md px-4 py-2 rounded-xl border border-orange-200 shadow-xl hidden md:block">
@@ -550,7 +551,7 @@ export const App: React.FC = () => {
                           <div className={`inline-flex items-center gap-3 px-6 py-2.5 rounded-full shadow-lg transform -rotate-1 group-hover:rotate-0 transition-transform duration-500 ${item.isPromotional ? 'bg-orange-600 text-white' : 'bg-solar-gold text-solar-green'}`}>
                             <CalendarDays size={20} className="animate-pulse" />
                             <span className="text-xs md:text-sm font-black uppercase tracking-[0.15em]">
-                              {item.dates}
+                              {item.id === 'jul-family' ? 'Escolha sua Semana' : (item.dates || `${formatDisplayDate(item.startIsoDate)} a ${formatDisplayDate(item.endIsoDate)}`)}
                             </span>
                           </div>
 
@@ -565,14 +566,22 @@ export const App: React.FC = () => {
                         </p>
 
                         {/* BOTÕES DE SELEÇÃO DE SEMANA (PARA O PACOTE FAMÍLIA) */}
-                        {item.weeks && (
+                        {(item.id === 'jul-family' || item.weeks) && (
                           <div className="space-y-4">
                             <p className="text-[10px] font-black uppercase tracking-widest text-orange-600">Selecione o período desejado:</p>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 relative z-20">
-                              {item.weeks.map((week: any) => {
+                              {(item.weeks || [
+                                { label: '05 a 09/07', checkIn: [2026, 6, 5], checkOut: [2026, 6, 9] },
+                                { label: '12 a 16/07', checkIn: [2026, 6, 12], checkOut: [2026, 6, 16] },
+                                { label: '19 a 23/07', checkIn: [2026, 6, 19], checkOut: [2026, 6, 23] },
+                                { label: '26 a 30/07', checkIn: [2026, 6, 26], checkOut: [2026, 6, 30] },
+                              ]).map((week: any) => {
+                                const weekCheckIn = week.checkIn instanceof Date ? week.checkIn : new Date(week.checkIn[0], week.checkIn[1], week.checkIn[2]);
+                                const weekCheckOut = week.checkOut instanceof Date ? week.checkOut : new Date(week.checkOut[0], week.checkOut[1], week.checkOut[2]);
+
                                 const isCurrentWeek = checkIn && checkOut &&
-                                  toLocalISO(checkIn) === toLocalISO(new Date(week.checkIn[0], week.checkIn[1], week.checkIn[2])) &&
-                                  toLocalISO(checkOut) === toLocalISO(new Date(week.checkOut[0], week.checkOut[1], week.checkOut[2]));
+                                  toLocalISO(checkIn) === toLocalISO(weekCheckIn) &&
+                                  toLocalISO(checkOut) === toLocalISO(weekCheckOut);
 
                                 return (
                                   <button
@@ -580,11 +589,9 @@ export const App: React.FC = () => {
                                     onClick={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
-                                      const ci = new Date(week.checkIn[0], week.checkIn[1], week.checkIn[2]);
-                                      const co = new Date(week.checkOut[0], week.checkOut[1], week.checkOut[2]);
-                                      setCheckIn(ci);
-                                      setCheckOut(co);
-                                      setCurrentCalendarDate(ci);
+                                      setCheckIn(weekCheckIn);
+                                      setCheckOut(weekCheckOut);
+                                      setCurrentCalendarDate(weekCheckIn);
                                       // Pequeno atraso para o React renderizar o componente
                                       setTimeout(() => {
                                         const element = document.getElementById('quartos-section');
@@ -594,8 +601,8 @@ export const App: React.FC = () => {
                                       }, 150);
                                     }}
                                     className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 cursor-pointer active:scale-95 z-30 ${isCurrentWeek
-                                        ? 'bg-orange-600 border-orange-600 text-white shadow-lg'
-                                        : 'bg-white border-orange-100 text-orange-600 hover:border-orange-600 hover:bg-orange-50 shadow-sm'
+                                      ? 'bg-orange-600 border-orange-600 text-white shadow-lg'
+                                      : 'bg-white border-orange-100 text-orange-600 hover:border-orange-600 hover:bg-orange-50 shadow-sm'
                                       }`}
                                   >
                                     <span className="text-[9px] font-black uppercase tracking-tighter">Semana</span>
@@ -610,7 +617,7 @@ export const App: React.FC = () => {
                         <div className="space-y-4">
                           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Destaques da Experiência:</p>
                           <div className="flex flex-wrap gap-2">
-                            {item.programming.map((prog: string) => (
+                            {(item.programming || item.includes || []).map((prog: string) => (
                               <span key={prog} className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border ${item.isPromotional ? 'bg-orange-100/50 border-orange-200 text-orange-700' : 'bg-slate-50 border-slate-100 text-slate-600'}`}>
                                 <div className={`w-1.5 h-1.5 rounded-full ${item.isPromotional ? 'bg-orange-500' : 'bg-solar-gold'}`}></div>
                                 {prog}
@@ -619,14 +626,14 @@ export const App: React.FC = () => {
                           </div>
                         </div>
 
-                        {!item.weeks && (
+                        {!item.weeks && item.id !== 'jul-family' && (
                           <div className="pt-6 flex flex-col md:flex-row items-center gap-6">
                             <button
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                const ci = new Date(item.checkIn[0], item.checkIn[1], item.checkIn[2]);
-                                const co = new Date(item.checkOut[0], item.checkOut[1], item.checkOut[2]);
+                                const ci = item.startIsoDate ? parseISODate(item.startIsoDate) : new Date(item.checkIn[0], item.checkIn[1], item.checkIn[2]);
+                                const co = item.endIsoDate ? parseISODate(item.endIsoDate) : new Date(item.checkOut[0], item.checkOut[1], item.checkOut[2]);
                                 setCheckIn(ci);
                                 setCheckOut(co);
                                 setCurrentCalendarDate(ci);

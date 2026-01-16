@@ -39,6 +39,8 @@ export interface HolidayPackage {
   noCheckoutDates: string[];
   noCheckInDates: string[];
   fullPeriodDiscountPct?: number;
+  category?: 'SPECIAL' | 'JULY';
+  isPromotional?: boolean;
 }
 
 export interface ExtraService {

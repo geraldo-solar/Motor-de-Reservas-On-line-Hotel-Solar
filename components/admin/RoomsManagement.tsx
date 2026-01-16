@@ -1,6 +1,7 @@
 import React from 'react';
 import { Plus, Trash2, BedDouble, Users, Check, XCircle } from 'lucide-react';
 import { Room } from '../../types';
+import { getPublicImageUrl } from '../../utils/imageUtils';
 
 interface RoomsManagementProps {
     rooms: Room[];
@@ -55,7 +56,7 @@ export const RoomsManagement: React.FC<RoomsManagementProps> = ({ rooms, onEditR
                         )}
                         <div className="aspect-[16/10] relative overflow-hidden bg-slate-100">
                             {room.imageUrls?.[0] ? (
-                                <img src={room.imageUrls[0]} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={room.name} />
+                                <img src={getPublicImageUrl(room.imageUrls[0])} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={room.name} />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center text-slate-300"><BedDouble size={48} /></div>
                             )}
