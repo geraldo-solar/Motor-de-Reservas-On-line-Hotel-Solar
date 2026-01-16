@@ -568,7 +568,7 @@ export const App: React.FC = () => {
                         {item.weeks && (
                           <div className="space-y-4">
                             <p className="text-[10px] font-black uppercase tracking-widest text-orange-600">Selecione o período desejado:</p>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 relative z-20">
                               {item.weeks.map((week: any) => {
                                 const isCurrentWeek = checkIn && checkOut &&
                                   toLocalISO(checkIn) === toLocalISO(new Date(week.checkIn[0], week.checkIn[1], week.checkIn[2])) &&
@@ -577,21 +577,29 @@ export const App: React.FC = () => {
                                 return (
                                   <button
                                     key={week.label}
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
                                       const ci = new Date(week.checkIn[0], week.checkIn[1], week.checkIn[2]);
                                       const co = new Date(week.checkOut[0], week.checkOut[1], week.checkOut[2]);
                                       setCheckIn(ci);
                                       setCheckOut(co);
                                       setCurrentCalendarDate(ci);
-                                      document.getElementById('quartos-section')?.scrollIntoView({ behavior: 'smooth' });
+                                      // Pequeno atraso para o React renderizar o componente
+                                      setTimeout(() => {
+                                        const element = document.getElementById('quartos-section');
+                                        if (element) {
+                                          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                        }
+                                      }, 150);
                                     }}
-                                    className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 group/btn ${isCurrentWeek
-                                        ? 'bg-orange-600 border-orange-600 text-white'
-                                        : 'bg-white border-orange-100 text-orange-600 hover:border-orange-600 hover:bg-orange-50'
+                                    className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 cursor-pointer active:scale-95 z-30 ${isCurrentWeek
+                                        ? 'bg-orange-600 border-orange-600 text-white shadow-lg'
+                                        : 'bg-white border-orange-100 text-orange-600 hover:border-orange-600 hover:bg-orange-50 shadow-sm'
                                       }`}
                                   >
                                     <span className="text-[9px] font-black uppercase tracking-tighter">Semana</span>
-                                    <span className="text-xs font-bold whitespace-nowrap">{week.label}</span>
+                                    <span className="text-xs font-bold whitespace-nowrap font-sans">{week.label}</span>
                                   </button>
                                 );
                               })}
@@ -614,15 +622,23 @@ export const App: React.FC = () => {
                         {!item.weeks && (
                           <div className="pt-6 flex flex-col md:flex-row items-center gap-6">
                             <button
-                              onClick={() => {
-                                const checkInDate = new Date(item.checkIn[0], item.checkIn[1], item.checkIn[2]);
-                                const checkOutDate = new Date(item.checkOut[0], item.checkOut[1], item.checkOut[2]);
-                                setCheckIn(checkInDate);
-                                setCheckOut(checkOutDate);
-                                setCurrentCalendarDate(checkInDate);
-                                document.getElementById('quartos-section')?.scrollIntoView({ behavior: 'smooth' });
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const ci = new Date(item.checkIn[0], item.checkIn[1], item.checkIn[2]);
+                                const co = new Date(item.checkOut[0], item.checkOut[1], item.checkOut[2]);
+                                setCheckIn(ci);
+                                setCheckOut(co);
+                                setCurrentCalendarDate(ci);
+                                // Pequeno atraso para o React renderizar o componente
+                                setTimeout(() => {
+                                  const element = document.getElementById('quartos-section');
+                                  if (element) {
+                                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                  }
+                                }, 150);
                               }}
-                              className={`w-full md:w-auto px-10 py-5 text-white rounded-2xl font-bold uppercase text-xs tracking-[0.2em] transition-all shadow-xl active:scale-95 ${item.isPromotional ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-900/20' : 'bg-solar-green hover:bg-solar-gold shadow-solar-green/20'}`}
+                              className={`w-full md:w-auto px-10 py-5 text-white rounded-2xl font-bold uppercase text-xs tracking-[0.2em] transition-all shadow-xl active:scale-95 cursor-pointer z-30 ${item.isPromotional ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-900/20' : 'bg-solar-green hover:bg-solar-gold shadow-solar-green/20'}`}
                             >
                               Ver Disponibilidade
                             </button>
