@@ -522,7 +522,7 @@ export const App: React.FC = () => {
                       dates: '30/07 a 02 de Agosto',
                       checkIn: [2026, 6, 30],
                       checkOut: [2026, 7, 2],
-                      img: '/salinas_july_5_1768572353236.png',
+                      img: '/bye-bye-july.jpg',
                       discount: '25',
                       description: 'A despedida em grande estilo que Salinas merece. Aproveite os últimos momentos do mês com condições especiais e muita diversão.',
                       programming: ['Baile de Despedida', 'Fotos em Família', 'Personagens Infantis']
