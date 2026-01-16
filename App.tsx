@@ -471,7 +471,7 @@ export const App: React.FC = () => {
                       id: 'jul-family',
                       name: 'Semana da Família: Domingo a Quinta',
                       dates: 'Escolha sua Semana',
-                      img: '/solar_jantar_familia_1768576512519.png',
+                      img: '/semana-da-familia.jpg',
                       discount: '30',
                       isPromotional: true,
                       description: 'O melhor custo-benefício de Julho. Aproveite diárias reduzidas durante a semana e ganhe o Jantar Cortesia (Buffet de Sopas e Massas) todas as noites para toda a sua família.',
