@@ -456,10 +456,10 @@ export const App: React.FC = () => {
                 <div className="mt-20 grid grid-cols-1 md:grid-cols-5 gap-6">
                   {[
                     { id: 'jul-1', name: 'Solar Celebration: Abertura & Aniversário', dates: '02 a 05/07', checkIn: [2026, 6, 2], checkOut: [2026, 6, 5], img: '/salinas_july_1_1768572288686.png', discount: '15' },
-                    { id: 'jul-2', name: 'Semana Sol & Alegria', dates: '05 a 12/07', checkIn: [2026, 6, 5], checkOut: [2026, 6, 12], img: '/salinas_july_2_1768572303926.png', discount: '10' },
-                    { id: 'jul-3', name: 'Vibe Salinas: O Auge do Verão', dates: '12 a 19/07', checkIn: [2026, 6, 12], checkOut: [2026, 6, 19], img: '/salinas_july_3_1768572318354.png', discount: '20' },
-                    { id: 'jul-4', name: 'Semana Solar Premium', dates: '19 a 26/07', checkIn: [2026, 6, 19], checkOut: [2026, 6, 26], img: '/salinas_july_4_1768572334776.png', discount: '15' },
-                    { id: 'jul-5', name: 'Golden Sunset: A Saideira', dates: '26/07 a 02/08', checkIn: [2026, 6, 26], checkOut: [2026, 7, 2], img: '/salinas_july_5_1768572353236.png', discount: '25' },
+                    { id: 'jul-2', name: 'O Auge do Verão - Parte 1', dates: '09 a 12/07', checkIn: [2026, 6, 9], checkOut: [2026, 6, 12], img: '/salinas_july_2_1768572303926.png', discount: '10' },
+                    { id: 'jul-3', name: 'O Auge do Verão - Parte 2', dates: '16 a 19/07', checkIn: [2026, 6, 16], checkOut: [2026, 6, 19], img: '/salinas_july_3_1768572318354.png', discount: '20' },
+                    { id: 'jul-4', name: 'Semana Solar Premium', dates: '23 a 26/07', checkIn: [2026, 6, 23], checkOut: [2026, 6, 26], img: '/salinas_july_4_1768572334776.png', discount: '15' },
+                    { id: 'jul-5', name: 'Golden Sunset: A Saideira', dates: '30/07 a 02/08', checkIn: [2026, 6, 30], checkOut: [2026, 7, 2], img: '/salinas_july_5_1768572353236.png', discount: '25' },
                   ].map((item) => (
                     <div key={item.id} className="group relative bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 transition-all hover:bg-white/10 hover:-translate-y-2">
                       <div className="aspect-square rounded-xl overflow-hidden mb-4 border border-white/5">
