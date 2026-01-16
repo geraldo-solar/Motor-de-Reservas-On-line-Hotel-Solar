@@ -111,7 +111,7 @@ export interface Reservation {
   mainGuest: ReservationGuest;
   additionalGuests: ReservationGuest[];
   observations: string;
-  rooms: { name: string; priceSnapshot: number }[];
+  rooms: { id: string; name: string; priceSnapshot: number }[];
   extras: { name: string; quantity: number; priceSnapshot: number }[];
   totalPrice: number;
   discountApplied?: { code: string; amount: number };

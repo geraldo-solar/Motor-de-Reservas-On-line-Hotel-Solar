@@ -200,7 +200,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
       mainGuest: { name, email, phone, cpf },
       additionalGuests: [],
       observations,
-      rooms: selectedRooms.map(r => ({ name: r.name, priceSnapshot: calculateRoomTotal(r) })),
+      rooms: selectedRooms.map(r => ({ id: r.id, name: r.name, priceSnapshot: calculateRoomTotal(r) })),
       extras: Object.entries(selectedExtras).map(([id, qty]) => {
         const extra = extras.find(e => e.id === id);
         return { name: extra?.name || id, quantity: qty as number, priceSnapshot: extra?.price || 0 };

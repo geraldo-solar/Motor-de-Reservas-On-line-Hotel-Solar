@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Room, HolidayPackage, DiscountCode, ExtraService, Reservation } from '../types';
 import { supabase } from '../lib/supabase';
 import { getPublicImageUrl } from '../utils/imageUtils';
+import { toLocalISO, parseISODate } from '../utils/dateUtils';
 
 // Chaves para localStorage (cache)
 const STORAGE_KEYS = {
@@ -501,6 +502,67 @@ export const useSupabaseData = () => {
 
       console.log('[Supabase] Reserva salva com sucesso');
 
+      // --- ATUALIZAÇÃO DE INVENTÁRIO (BAIXA NO MAPA) ---
+      try {
+        console.log('[Supabase] Iniciando baixa de inventário para os quartos reservados...');
+        for (const roomSnapshot of reservation.rooms) {
+          // Precisamos pegar o quarto atualizado direto do banco para garantir o saldo correto
+          const { data: roomData, error: roomFetchError } = await supabase
+            .from('room_types')
+            .select('*')
+            .eq('id', roomSnapshot.id)
+            .single();
+
+          if (roomFetchError || !roomData) {
+            console.error(`[Supabase] Erro ao buscar quarto ${roomSnapshot.id} para baixa:`, roomFetchError);
+            continue;
+          }
+
+          const currentRoom = mapRooms([roomData])[0];
+          const checkInDate = parseISODate(reservation.checkIn);
+          const checkOutDate = parseISODate(reservation.checkOut);
+          const updatedOverrides = [...(currentRoom.overrides || [])];
+
+          // Iterar por cada dia da estadia (exceto o dia do check-out)
+          let current = new Date(checkInDate);
+          while (current < checkOutDate) {
+            const iso = toLocalISO(current);
+            const ovIndex = updatedOverrides.findIndex(o => o.dateIso === iso);
+
+            if (ovIndex >= 0) {
+              const currentQty = updatedOverrides[ovIndex].availableQuantity ?? currentRoom.totalQuantity;
+              updatedOverrides[ovIndex] = {
+                ...updatedOverrides[ovIndex],
+                availableQuantity: Math.max(0, currentQty - 1)
+              };
+            } else {
+              updatedOverrides.push({
+                dateIso: iso,
+                availableQuantity: Math.max(0, currentRoom.totalQuantity - 1)
+              });
+            }
+            current.setDate(current.getDate() + 1);
+          }
+
+          // Salvar o quarto com os overrides atualizados
+          const { error: updateError } = await supabase
+            .from('room_types')
+            .update({ overrides: updatedOverrides })
+            .eq('id', roomSnapshot.id);
+
+          if (updateError) {
+            console.error(`[Supabase] Erro ao atualizar inventário do quarto ${roomSnapshot.id}:`, updateError);
+          } else {
+            console.log(`[Supabase] Inventário atualizado para o quarto ${roomSnapshot.name}`);
+          }
+        }
+        // Atualiza o estado local dos quartos para refletir no mapa administrativo
+        loadFromSupabase(true);
+      } catch (inventoryErr) {
+        console.error('[Supabase] Erro crítico ao processar baixa de inventário:', inventoryErr);
+      }
+      // --- FIM DA ATUALIZAÇÃO DE INVENTÁRIO ---
+
       setReservationsState(prev => {
         const updated = [reservation, ...prev].slice(0, 500);
         saveToStorage(STORAGE_KEYS.reservations, updated);
@@ -531,6 +593,40 @@ export const useSupabaseData = () => {
       if (error) {
         throw error;
       }
+
+      // --- ATUALIZAÇÃO DE INVENTÁRIO (REPOSIÇÃO EM CASO DE CANCELAMENTO) ---
+      if (status === 'CANCELED') {
+        const resToUpdate = reservations.find(r => r.id === id);
+        if (resToUpdate) {
+          console.log('[Supabase] Reserva cancelada detectada. Restaurando inventário...');
+          for (const roomSnapshot of resToUpdate.rooms) {
+            const { data: roomData } = await supabase.from('room_types').select('*').eq('id', roomSnapshot.id).single();
+            if (roomData) {
+              const currentRoom = mapRooms([roomData])[0];
+              const checkInDate = parseISODate(resToUpdate.checkIn);
+              const checkOutDate = parseISODate(resToUpdate.checkOut);
+              const updatedOverrides = [...(currentRoom.overrides || [])];
+
+              let current = new Date(checkInDate);
+              while (current < checkOutDate) {
+                const iso = toLocalISO(current);
+                const ovIndex = updatedOverrides.findIndex(o => o.dateIso === iso);
+                if (ovIndex >= 0) {
+                  const currentQty = updatedOverrides[ovIndex].availableQuantity ?? currentRoom.totalQuantity;
+                  updatedOverrides[ovIndex] = {
+                    ...updatedOverrides[ovIndex],
+                    availableQuantity: Math.min(currentRoom.totalQuantity, currentQty + 1)
+                  };
+                }
+                current.setDate(current.getDate() + 1);
+              }
+              await supabase.from('room_types').update({ overrides: updatedOverrides }).eq('id', roomSnapshot.id);
+            }
+          }
+          loadFromSupabase(true);
+        }
+      }
+      // --- FIM DA ATUALIZAÇÃO DE INVENTÁRIO ---
 
       setReservationsState(prev => {
         const updated = prev.map(r => r.id === id ? { ...r, status, cancellationReason: reason, cardDetails: undefined } as Reservation : r);
