@@ -361,6 +361,75 @@ export const App: React.FC = () => {
               onShareDates={handleShareDates}
             />
 
+            {/* SEÇÃO ESPECIAL: FÉRIAS DE JULHO */}
+            <section id="julho-section" className="max-w-7xl mx-auto px-4 pt-32 pb-12 scroll-mt-24">
+              <div className="relative rounded-[3rem] overflow-hidden bg-solar-green p-12 md:p-20 shadow-2xl border border-solar-gold/20">
+                <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+                <div className="absolute -top-24 -right-24 w-64 h-64 bg-solar-gold/20 rounded-full blur-3xl animate-pulse"></div>
+                <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-solar-gold/10 rounded-full blur-3xl"></div>
+
+                <div className="relative z-10 flex flex-col md:flex-row items-center gap-12 text-center md:text-left">
+                  <div className="flex-1 space-y-6">
+                    <div className="inline-flex items-center gap-2 bg-solar-gold/20 text-solar-gold px-4 py-1.5 rounded-full border border-solar-gold/30">
+                      <Zap size={16} fill="currentColor" />
+                      <span className="text-[10px] font-black uppercase tracking-[0.3em]">Temporada Premium</span>
+                    </div>
+                    <h2 className="text-5xl md:text-7xl font-serif text-white leading-tight">Férias de Julho em Salinas</h2>
+                    <p className="text-solar-sand/80 text-lg md:text-xl max-w-2xl leading-relaxed font-light italic">
+                      "O Sol de Julho em Salinas é diferente. É energia, é família, é Hotel Solar. Preparamos 5 experiências exclusivas para você viver o melhor do verão paraense."
+                    </p>
+                    <div className="flex flex-wrap justify-center md:justify-start gap-4">
+                      <div className="flex items-center gap-2 text-solar-gold">
+                        <Check size={18} />
+                        <span className="text-xs font-bold uppercase tracking-widest">Pé na Areia</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-solar-gold">
+                        <Check size={18} />
+                        <span className="text-xs font-bold uppercase tracking-widest">Programação Infantil</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-solar-gold">
+                        <Check size={18} />
+                        <span className="text-xs font-bold uppercase tracking-widest">Gastronomia Regional</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-20 grid grid-cols-1 md:grid-cols-5 gap-6">
+                  {[
+                    { id: 'jul-1', name: 'Abertura de Julho', dates: '01 a 07/07', img: '/salinas_july_1_1768572288686.png', discount: '15' },
+                    { id: 'jul-2', name: 'Semana da Família', dates: '08 a 14/07', img: '/salinas_july_2_1768572303926.png', discount: '10' },
+                    { id: 'jul-3', name: 'O Auge do Verão', dates: '15 a 21/07', img: '/salinas_july_3_1768572318354.png', discount: '20' },
+                    { id: 'jul-4', name: 'Semana Premium', dates: '22 a 28/07', img: '/salinas_july_4_1768572334776.png', discount: '15' },
+                    { id: 'jul-5', name: 'Bye Bye July', dates: '29/07 a 04/08', img: '/salinas_july_5_1768572353236.png', discount: '25' },
+                  ].map((item, idx) => (
+                    <div key={item.id} className="group relative bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 transition-all hover:bg-white/10 hover:-translate-y-2">
+                      <div className="aspect-square rounded-xl overflow-hidden mb-4 border border-white/5">
+                        <img src={item.img} className="w-full h-full object-cover grayscale-[30%] group-hover:grayscale-0 transition-all duration-700" alt={item.name} />
+                        <div className="absolute top-6 left-6 bg-red-600 text-white text-[9px] font-black px-2 py-0.5 rounded shadow-lg">
+                          {item.discount}% OFF
+                        </div>
+                      </div>
+                      <h4 className="text-white font-serif text-lg mb-1">{item.name}</h4>
+                      <p className="text-solar-gold font-bold text-[10px] uppercase tracking-widest">{item.dates}</p>
+                      <button
+                        onClick={() => {
+                          const checkInDate = new Date(2026, 6, (idx * 7) + 1);
+                          const checkOutDate = new Date(2026, 6, (idx * 7) + 7);
+                          setCheckIn(checkInDate);
+                          setCheckOut(checkOutDate);
+                          setCurrentCalendarDate(checkInDate);
+                          document.getElementById('quartos-section')?.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                        className="mt-4 w-full py-2 bg-white text-solar-green rounded-lg text-[9px] font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all">
+                        Selecionar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
             <div id="pacotes-section" className="max-w-7xl mx-auto px-4 py-24 scroll-mt-24">
               <div className="text-center mb-16">
                 <h2 className="text-4xl md:text-6xl font-serif text-solar-green mb-4">Pacotes Especiais</h2>
