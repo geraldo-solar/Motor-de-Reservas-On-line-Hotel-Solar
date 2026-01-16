@@ -361,8 +361,66 @@ export const App: React.FC = () => {
               onShareDates={handleShareDates}
             />
 
+            <div id="pacotes-section" className="max-w-7xl mx-auto px-4 py-24 scroll-mt-24">
+              <div className="text-center mb-16">
+                <h2 className="text-4xl md:text-6xl font-serif text-solar-green mb-4">Pacotes Especiais</h2>
+                <div className="w-24 h-1 bg-solar-gold mx-auto rounded-full"></div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-6xl mx-auto">
+                {sortedActivePackages.map(pkg => (
+                  <div key={pkg.id} id={`pacote-${pkg.id}`} className="bg-white rounded-[2rem] overflow-hidden shadow-xl border border-slate-50 flex flex-col group hover:shadow-2xl transition-all duration-500 relative scroll-mt-24">
+                    <div className="aspect-[16/10] relative overflow-hidden">
+                      {pkg.imageUrl ? (
+                        <img src={pkg.imageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={pkg.name} loading="lazy" decoding="async" />
+                      ) : (
+                        <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300"><Ticket size={48} /></div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
+
+                      <button
+                        onClick={(e) => handleSharePackage(e, pkg)}
+                        className="absolute top-6 right-6 p-3 bg-white/20 hover:bg-solar-gold rounded-full text-white backdrop-blur-md transition-all shadow-xl z-20 group/share"
+                        title="Compartilhar Pacote"
+                      >
+                        <Share2 size={20} className="group-hover/share:scale-110 transition-transform" />
+                      </button>
+
+                      {/* Selo de Desconto de Alto Impacto */}
+                      {(pkg.fullPeriodDiscountPct ?? 0) > 0 && (
+                        <div className="absolute top-6 left-6 z-30 bg-red-600 text-white px-5 py-2 rounded-full font-bold text-sm shadow-2xl animate-bounce flex items-center gap-2 border-2 border-white/50">
+                          <Zap size={16} fill="white" />
+                          <span>{pkg.fullPeriodDiscountPct}% OFF</span>
+                        </div>
+                      )}
+
+                      <div className="absolute bottom-6 left-6 text-white text-left z-20">
+                        <span className="text-[10px] font-bold uppercase tracking-widest bg-solar-gold/90 text-solar-green px-3 py-1 rounded mb-2 inline-block">
+                          Pacote Especial
+                        </span>
+                        <h3 className="text-3xl font-serif">{pkg.name}</h3>
+                      </div>
+                    </div>
+                    <div className="p-10 flex-1 flex flex-col justify-between">
+                      <div className="bg-solar-gold/10 border border-solar-gold/30 rounded-xl p-4 mb-6 flex items-center justify-center gap-3 relative overflow-hidden group/dates">
+                        <div className="absolute inset-0 bg-solar-gold/5 translate-x-[-100%] group-hover/dates:translate-x-[100%] transition-transform duration-1000"></div>
+                        <CalendarDays size={20} className="text-solar-gold relative z-10" />
+                        <span className="text-solar-green font-bold text-sm tracking-wide relative z-10">
+                          {formatDisplayDate(pkg.startIsoDate).toUpperCase()}
+                          {' — '}
+                          {formatDisplayDate(pkg.endIsoDate).toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="text-slate-500 text-sm leading-relaxed mb-6 italic text-left">{pkg.description}</p>
+
+                      <button onClick={() => handleSelectPackage(pkg)} className="w-full bg-solar-green text-white py-5 rounded-2xl font-bold uppercase text-[11px] tracking-[0.2em] hover:bg-solar-gold transition-all shadow-lg active:scale-95">Ver Disponibilidade</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* SEÇÃO ESPECIAL: FÉRIAS DE JULHO */}
-            <section id="julho-section" className="max-w-7xl mx-auto px-4 pt-32 pb-12 scroll-mt-24">
+            <section id="julho-section" className="max-w-7xl mx-auto px-4 pb-24 scroll-mt-24">
               <div className="relative rounded-[3rem] overflow-hidden bg-solar-green p-12 md:p-20 shadow-2xl border border-solar-gold/20">
                 <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
                 <div className="absolute -top-24 -right-24 w-64 h-64 bg-solar-gold/20 rounded-full blur-3xl animate-pulse"></div>
@@ -429,64 +487,6 @@ export const App: React.FC = () => {
                 </div>
               </div>
             </section>
-
-            <div id="pacotes-section" className="max-w-7xl mx-auto px-4 py-24 scroll-mt-24">
-              <div className="text-center mb-16">
-                <h2 className="text-4xl md:text-6xl font-serif text-solar-green mb-4">Pacotes Especiais</h2>
-                <div className="w-24 h-1 bg-solar-gold mx-auto rounded-full"></div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-6xl mx-auto">
-                {sortedActivePackages.map(pkg => (
-                  <div key={pkg.id} id={`pacote-${pkg.id}`} className="bg-white rounded-[2rem] overflow-hidden shadow-xl border border-slate-50 flex flex-col group hover:shadow-2xl transition-all duration-500 relative scroll-mt-24">
-                    <div className="aspect-[16/10] relative overflow-hidden">
-                      {pkg.imageUrl ? (
-                        <img src={pkg.imageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={pkg.name} loading="lazy" decoding="async" />
-                      ) : (
-                        <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300"><Ticket size={48} /></div>
-                      )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
-
-                      <button
-                        onClick={(e) => handleSharePackage(e, pkg)}
-                        className="absolute top-6 right-6 p-3 bg-white/20 hover:bg-solar-gold rounded-full text-white backdrop-blur-md transition-all shadow-xl z-20 group/share"
-                        title="Compartilhar Pacote"
-                      >
-                        <Share2 size={20} className="group-hover/share:scale-110 transition-transform" />
-                      </button>
-
-                      {/* Selo de Desconto de Alto Impacto */}
-                      {(pkg.fullPeriodDiscountPct ?? 0) > 0 && (
-                        <div className="absolute top-6 left-6 z-30 bg-red-600 text-white px-5 py-2 rounded-full font-bold text-sm shadow-2xl animate-bounce flex items-center gap-2 border-2 border-white/50">
-                          <Zap size={16} fill="white" />
-                          <span>{pkg.fullPeriodDiscountPct}% OFF</span>
-                        </div>
-                      )}
-
-                      <div className="absolute bottom-6 left-6 text-white text-left z-20">
-                        <span className="text-[10px] font-bold uppercase tracking-widest bg-solar-gold/90 text-solar-green px-3 py-1 rounded mb-2 inline-block">
-                          Pacote Especial
-                        </span>
-                        <h3 className="text-3xl font-serif">{pkg.name}</h3>
-                      </div>
-                    </div>
-                    <div className="p-10 flex-1 flex flex-col justify-between">
-                      <div className="bg-solar-gold/10 border border-solar-gold/30 rounded-xl p-4 mb-6 flex items-center justify-center gap-3 relative overflow-hidden group/dates">
-                        <div className="absolute inset-0 bg-solar-gold/5 translate-x-[-100%] group-hover/dates:translate-x-[100%] transition-transform duration-1000"></div>
-                        <CalendarDays size={20} className="text-solar-gold relative z-10" />
-                        <span className="text-solar-green font-bold text-sm tracking-wide relative z-10">
-                          {formatDisplayDate(pkg.startIsoDate).toUpperCase()}
-                          {' — '}
-                          {formatDisplayDate(pkg.endIsoDate).toUpperCase()}
-                        </span>
-                      </div>
-                      <p className="text-slate-500 text-sm leading-relaxed mb-6 italic text-left">{pkg.description}</p>
-
-                      <button onClick={() => handleSelectPackage(pkg)} className="w-full bg-solar-green text-white py-5 rounded-2xl font-bold uppercase text-[11px] tracking-[0.2em] hover:bg-solar-gold transition-all shadow-lg active:scale-95">Ver Disponibilidade</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
 
             <div id="quartos-section" className="max-w-7xl mx-auto px-4 py-24 scroll-mt-24">
               <div className="text-center mb-16 space-y-4">
@@ -613,25 +613,27 @@ export const App: React.FC = () => {
               </div>
             </div>
 
-            {selectedRooms.length > 0 && checkIn && checkOut && (
-              <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 duration-300">
-                <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 flex items-center gap-4 max-w-lg">
-                  <div className="bg-solar-green/10 p-3 rounded-xl">
-                    <ShoppingCart className="text-solar-green" size={24} />
+            {
+              selectedRooms.length > 0 && checkIn && checkOut && (
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 duration-300">
+                  <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 flex items-center gap-4 max-w-lg">
+                    <div className="bg-solar-green/10 p-3 rounded-xl">
+                      <ShoppingCart className="text-solar-green" size={24} />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-solar-green">{selectedRooms.length} {selectedRooms.length === 1 ? 'quarto' : 'quartos'}</p>
+                      <p className="text-sm text-slate-500">Total: R$ {selectedRooms.reduce((acc, room) => acc + calculateRoomDisplayPrice(room), 0).toLocaleString()}</p>
+                    </div>
+                    <button
+                      onClick={() => setCurrentView(ViewState.BOOKING)}
+                      className="bg-solar-green text-white px-6 py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest hover:bg-solar-gold transition-all shadow-lg active:scale-95"
+                    >
+                      Reservar Agora
+                    </button>
                   </div>
-                  <div className="flex-1">
-                    <p className="font-bold text-solar-green">{selectedRooms.length} {selectedRooms.length === 1 ? 'quarto' : 'quartos'}</p>
-                    <p className="text-sm text-slate-500">Total: R$ {selectedRooms.reduce((acc, room) => acc + calculateRoomDisplayPrice(room), 0).toLocaleString()}</p>
-                  </div>
-                  <button
-                    onClick={() => setCurrentView(ViewState.BOOKING)}
-                    className="bg-solar-green text-white px-6 py-3 rounded-xl font-bold uppercase text-[10px] tracking-widest hover:bg-solar-gold transition-all shadow-lg active:scale-95"
-                  >
-                    Reservar Agora
-                  </button>
                 </div>
-              </div>
-            )}
+              )
+            }
 
             <div className="max-w-7xl mx-auto px-4 py-16 text-slate-600 space-y-8">
               <div className="border-t border-slate-200 pt-12 text-center mb-12">
@@ -655,106 +657,118 @@ export const App: React.FC = () => {
                 <button onClick={() => setCurrentView(ViewState.REGULAMENTO)} className="text-solar-gold font-bold uppercase text-[10px] tracking-widest hover:underline">Ver Regulamento</button>
               </div>
             </div>
-          </div>
+          </div >
         )}
 
-        {currentView === ViewState.BOOKING && (
-          <div className="max-w-4xl mx-auto px-4 py-16">
-            <BookingForm
-              selectedRooms={selectedRooms}
-              discountCodes={discounts}
-              extras={extras}
-              activePackage={activePackage}
-              initialCheckIn={checkIn}
-              initialCheckOut={checkOut}
-              onRemoveRoom={(idx) => setSelectedRooms(selectedRooms.filter((_, i) => i !== idx))}
-              onAddReservation={handleAddReservation}
-              isSaving={isSaving}
-              submissionError={submissionError}
-              onBack={() => handleNavigate(ViewState.HOME)}
-            />
-          </div>
-        )}
-
-        {currentView === ViewState.SUCCESS && lastReservation && (
-          <SuccessPage
-            reservation={lastReservation}
-            onGoHome={() => { setCheckIn(null); setCheckOut(null); setSelectedRooms([]); setCurrentView(ViewState.HOME); }}
-            onCopyPix={(code) => {
-              safeCopyToClipboard(code);
-              showCopyToast('Chave PIX copiada!');
-            }}
-          />
-        )}
-
-        {currentView === ViewState.REGULAMENTO && (
-          <RegulationPage onBack={() => setCurrentView(ViewState.HOME)} />
-        )}
-
-        {currentView === ViewState.CANCELAMENTO && (
-          <CancellationPage
-            reservationId={cancellationReservationId}
-            reservations={reservations}
-            setReservations={setReservations}
-            onSaveReservation={saveReservationToSupabase}
-            onUpdateStatus={updateReservationStatus}
-            onBack={() => setCurrentView(ViewState.HOME)}
-          />
-        )}
-
-        {currentView === ViewState.ADMIN && (
-          isAdminLoggedIn ? (
-            <AdminPanel
-              rooms={rooms}
-              packages={packages}
-              discounts={discounts}
-              extras={extras}
-              config={config}
-              reservations={reservations}
-              onUpdateRooms={setRooms}
-              onUpdatePackages={setPackages}
-              onUpdateDiscounts={setDiscounts}
-              onUpdateExtras={setExtras}
-              onUpdateConfig={setConfig}
-              onUpdateReservationStatus={updateReservationStatus}
-              onUpsertRoom={upsertRoom}
-              onDeleteRoom={deleteRoom}
-              onUpsertPackage={upsertPackage}
-              onDeletePackage={deletePackage}
-              onUpsertExtra={upsertExtra}
-              onDeleteExtra={deleteExtra}
-              onUpsertDiscount={upsertDiscount}
-              onDeleteDiscount={deleteDiscount}
-              isSaving={isSaving}
-              onLogout={() => { setIsAdminLoggedIn(false); setCurrentView(ViewState.HOME); }}
-            />
-          ) : (
-            <AdminLogin onLogin={(pass) => {
-              if (pass === 'metron82') setIsAdminLoggedIn(true);
-              else alert('Senha incorreta');
-            }} />
+        {
+          currentView === ViewState.BOOKING && (
+            <div className="max-w-4xl mx-auto px-4 py-16">
+              <BookingForm
+                selectedRooms={selectedRooms}
+                discountCodes={discounts}
+                extras={extras}
+                activePackage={activePackage}
+                initialCheckIn={checkIn}
+                initialCheckOut={checkOut}
+                onRemoveRoom={(idx) => setSelectedRooms(selectedRooms.filter((_, i) => i !== idx))}
+                onAddReservation={handleAddReservation}
+                isSaving={isSaving}
+                submissionError={submissionError}
+                onBack={() => handleNavigate(ViewState.HOME)}
+              />
+            </div>
           )
-        )}
-      </main>
+        }
+
+        {
+          currentView === ViewState.SUCCESS && lastReservation && (
+            <SuccessPage
+              reservation={lastReservation}
+              onGoHome={() => { setCheckIn(null); setCheckOut(null); setSelectedRooms([]); setCurrentView(ViewState.HOME); }}
+              onCopyPix={(code) => {
+                safeCopyToClipboard(code);
+                showCopyToast('Chave PIX copiada!');
+              }}
+            />
+          )
+        }
+
+        {
+          currentView === ViewState.REGULAMENTO && (
+            <RegulationPage onBack={() => setCurrentView(ViewState.HOME)} />
+          )
+        }
+
+        {
+          currentView === ViewState.CANCELAMENTO && (
+            <CancellationPage
+              reservationId={cancellationReservationId}
+              reservations={reservations}
+              setReservations={setReservations}
+              onSaveReservation={saveReservationToSupabase}
+              onUpdateStatus={updateReservationStatus}
+              onBack={() => setCurrentView(ViewState.HOME)}
+            />
+          )
+        }
+
+        {
+          currentView === ViewState.ADMIN && (
+            isAdminLoggedIn ? (
+              <AdminPanel
+                rooms={rooms}
+                packages={packages}
+                discounts={discounts}
+                extras={extras}
+                config={config}
+                reservations={reservations}
+                onUpdateRooms={setRooms}
+                onUpdatePackages={setPackages}
+                onUpdateDiscounts={setDiscounts}
+                onUpdateExtras={setExtras}
+                onUpdateConfig={setConfig}
+                onUpdateReservationStatus={updateReservationStatus}
+                onUpsertRoom={upsertRoom}
+                onDeleteRoom={deleteRoom}
+                onUpsertPackage={upsertPackage}
+                onDeletePackage={deletePackage}
+                onUpsertExtra={upsertExtra}
+                onDeleteExtra={deleteExtra}
+                onUpsertDiscount={upsertDiscount}
+                onDeleteDiscount={deleteDiscount}
+                isSaving={isSaving}
+                onLogout={() => { setIsAdminLoggedIn(false); setCurrentView(ViewState.HOME); }}
+              />
+            ) : (
+              <AdminLogin onLogin={(pass) => {
+                if (pass === 'metron82') setIsAdminLoggedIn(true);
+                else alert('Senha incorreta');
+              }} />
+            )
+          )
+        }
+      </main >
 
       {zoomData && <Lightbox images={zoomData.images} initialIndex={zoomData.index} onClose={() => setZoomData(null)} />}
 
       <WhatsAppButton />
 
-      {copyToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[1001] animate-in fade-in slide-in-from-bottom-2 duration-300 pointer-events-none">
-          <div className="bg-solar-green/90 backdrop-blur-md text-white px-5 py-2 rounded-full shadow-2xl flex items-center gap-2 border border-solar-gold/20">
-            <Check size={14} className="text-solar-gold" />
-            <span className="text-[10px] font-bold uppercase tracking-widest">{copyToast}</span>
+      {
+        copyToast && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[1001] animate-in fade-in slide-in-from-bottom-2 duration-300 pointer-events-none">
+            <div className="bg-solar-green/90 backdrop-blur-md text-white px-5 py-2 rounded-full shadow-2xl flex items-center gap-2 border border-solar-gold/20">
+              <Check size={14} className="text-solar-gold" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">{copyToast}</span>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       <footer className="bg-solar-green text-solar-sand py-24 px-4 text-center border-t border-solar-gold/10">
         <img src="/logo.png" alt="Hotel Solar" className="h-24 md:h-32 w-auto mx-auto mb-8 drop-shadow-lg" />
         <p className="text-sm opacity-50 tracking-widest mb-12">Av. Atlântica • Salinópolis - PA<br />Tel: (91) 98100-0800</p>
         <button onClick={() => setCurrentView(ViewState.ADMIN)} className="text-[10px] font-bold uppercase tracking-[0.4em] opacity-30 hover:opacity-100 transition-all hover:text-solar-gold">Painel Gestão</button>
       </footer>
-    </div>
+    </div >
   );
 };
