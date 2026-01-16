@@ -8,7 +8,7 @@ import { toLocalISO, parseISODate, formatDisplayDate, calculateNights } from './
 import { INITIAL_CONFIG } from './constants';
 import { useSupabaseData } from './hooks/useSupabaseData';
 import { sendReservationEmails } from './services/emailService';
-import { ChevronLeft, ChevronRight, Check, CalendarDays, Share2, ShoppingCart, Plus, Minus, Users, Gift, Home, Ticket, Zap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, CalendarDays, Share2, ShoppingCart, Plus, Minus, Users, Gift, Home, Ticket, Zap, AlertCircle } from 'lucide-react';
 import { RoomGallery } from './components/RoomGallery';
 import { Lightbox } from './components/Lightbox';
 import { CancellationPage } from './components/CancellationPage';
@@ -439,6 +439,25 @@ export const App: React.FC = () => {
                           <Check size={14} /> {roomCount}x Adicionado
                         </div>
                       )}
+
+                      {/* Gatilhos Mentais / Badges de Marketing */}
+                      {!isInCart && (
+                        <div className="absolute top-4 left-4 z-20 flex flex-col gap-2">
+                          {room.name.toLowerCase().includes('casal') && (
+                            <div className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider shadow-lg flex items-center gap-1.5 animate-pulse border border-emerald-400/30">
+                              <Zap size={12} fill="white" />
+                              <span>Melhor Oferta</span>
+                            </div>
+                          )}
+                          {room.name.toLowerCase().includes('loft') && (
+                            <div className="bg-orange-600 text-white px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider shadow-lg flex items-center gap-1.5 border border-orange-400/30">
+                              <AlertCircle size={12} />
+                              <span>Últimas {room.totalQuantity} unidades</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <RoomGallery room={room} onZoom={(idx) => setZoomData({ images: room.imageUrls.filter(u => u), index: idx })} />
                       <div className="p-10 space-y-6 text-left">
                         <h3 className="font-serif font-bold text-2xl text-solar-green">{room.name}</h3>
