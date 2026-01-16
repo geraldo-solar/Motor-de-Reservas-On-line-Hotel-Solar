@@ -433,7 +433,7 @@ export const App: React.FC = () => {
                   const inventory = room.totalQuantity; // Simplified for display
                   const canAddMore = available && roomCount < inventory;
                   return (
-                    <div key={room.id} className={`bg-white rounded-3xl overflow-hidden shadow-lg transition-all duration-500 hover:shadow-2xl border ${!available && (checkIn && checkOut) ? 'grayscale opacity-60' : isInCart ? 'border-solar-gold border-2 ring-4 ring-solar-gold/20' : 'border-slate-100'}`}>
+                    <div key={room.id} className={`relative bg-white rounded-3xl overflow-hidden shadow-lg transition-all duration-500 hover:shadow-2xl border ${!available && (checkIn && checkOut) ? 'grayscale opacity-60' : isInCart ? 'border-solar-gold border-2 ring-4 ring-solar-gold/20' : 'border-slate-100'}`}>
                       {isInCart && (
                         <div className="bg-solar-gold text-white text-center py-2 text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2">
                           <Check size={14} /> {roomCount}x Adicionado
