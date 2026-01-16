@@ -440,27 +440,29 @@ export const App: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Gatilhos Mentais / Badges de Marketing */}
-                      {!isInCart && (
-                        <div className="absolute top-4 left-4 z-20 flex flex-col gap-2">
-                          {room.name.toLowerCase().includes('casal') && (
-                            <div className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider shadow-lg flex items-center gap-1.5 animate-pulse border border-emerald-400/30">
-                              <Zap size={12} fill="white" />
-                              <span>Melhor Oferta</span>
-                            </div>
-                          )}
-                          {room.name.toLowerCase().includes('loft') && (
-                            <div className="bg-orange-600 text-white px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider shadow-lg flex items-center gap-1.5 border border-orange-400/30">
-                              <AlertCircle size={12} />
-                              <span>Últimas {room.totalQuantity} unidades</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
 
                       <RoomGallery room={room} onZoom={(idx) => setZoomData({ images: room.imageUrls.filter(u => u), index: idx })} />
                       <div className="p-10 space-y-6 text-left">
-                        <h3 className="font-serif font-bold text-2xl text-solar-green">{room.name}</h3>
+                        <div className="space-y-3">
+                          {/* Gatilhos Mentais / Badges de Marketing - Agora junto ao nome */}
+                          {!isInCart && (
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              {room.name.toLowerCase().includes('casal') && (
+                                <div className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full font-bold text-[9px] uppercase tracking-widest flex items-center gap-1.5 border border-emerald-100 animate-pulse">
+                                  <Zap size={10} fill="currentColor" />
+                                  <span>Melhor Oferta</span>
+                                </div>
+                              )}
+                              {room.name.toLowerCase().includes('loft') && (
+                                <div className="bg-orange-50 text-orange-600 px-3 py-1 rounded-full font-bold text-[9px] uppercase tracking-widest flex items-center gap-1.5 border border-orange-100">
+                                  <AlertCircle size={10} />
+                                  <span>Últimas {room.totalQuantity} unidades</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <h3 className="font-serif font-bold text-3xl text-solar-green leading-tight">{room.name}</h3>
+                        </div>
                         <div className="flex items-center gap-2 text-slate-500 text-sm mb-2">
                           <Users size={16} className="text-solar-gold" />
                           <span>Até <strong>{room.capacity}</strong> {room.capacity === 1 ? 'pessoa' : 'pessoas'}</span>
