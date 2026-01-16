@@ -453,35 +453,119 @@ export const App: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="mt-20 grid grid-cols-1 md:grid-cols-5 gap-6">
+                <div className="mt-20 space-y-12">
                   {[
-                    { id: 'jul-1', name: 'Celebração Solar: Abertura & Aniversário', dates: '02 a 05/07', checkIn: [2026, 6, 2], checkOut: [2026, 6, 5], img: '/salinas_july_1_1768572288686.png', discount: '15' },
-                    { id: 'jul-2', name: 'Solarize-se: O Verão de Salinas', dates: '09 a 12/07', checkIn: [2026, 6, 9], checkOut: [2026, 6, 12], img: '/salinas_july_2_1768572303926.png', discount: '10' },
-                    { id: 'jul-3', name: 'O Auge do Verão: Parte 1', dates: '16 a 19/07', checkIn: [2026, 6, 16], checkOut: [2026, 6, 19], img: '/salinas_july_3_1768572318354.png', discount: '20' },
-                    { id: 'jul-4', name: 'O Auge do Verão: Parte 2', dates: '23 a 26/07', checkIn: [2026, 6, 23], checkOut: [2026, 6, 26], img: '/salinas_july_4_1768572334776.png', discount: '15' },
-                    { id: 'jul-5', name: 'Bye Bye July: A Saideira', dates: '30/07 a 02/08', checkIn: [2026, 6, 30], checkOut: [2026, 7, 2], img: '/salinas_july_5_1768572353236.png', discount: '25' },
+                    {
+                      id: 'jul-1',
+                      name: 'Celebração Solar: Abertura & Aniversário',
+                      dates: '02 a 05 de Julho',
+                      checkIn: [2026, 6, 2],
+                      checkOut: [2026, 6, 5],
+                      img: '/salinas_july_1_1768572288686.png',
+                      discount: '15',
+                      description: 'Damos as boas-vindas ao verão com a grande festa de aniversário do Hotel Solar. Uma celebração única com música ao vivo, coquetel especial e a energia contagiante de Salinas.',
+                      programming: ['Festa de Aniversário', 'Música ao Vivo', 'Coquetel de Boas-vindas']
+                    },
+                    {
+                      id: 'jul-2',
+                      name: 'Solarize-se: O Verão de Salinas',
+                      dates: '09 a 12 de Julho',
+                      checkIn: [2026, 6, 9],
+                      checkOut: [2026, 6, 12],
+                      img: '/salinas_july_2_1768572303926.png',
+                      discount: '10',
+                      description: 'Sinta a verdadeira energia do Sol de Salinas. Uma semana dedicada ao bem-estar e à conexão total com a natureza e quem você ama.',
+                      programming: ['Oficinas Criativas', 'Check-in Animado', 'Recreação Infantil']
+                    },
+                    {
+                      id: 'jul-3',
+                      name: 'O Auge do Verão: Parte 1',
+                      dates: '16 a 19 de Julho',
+                      checkIn: [2026, 6, 16],
+                      checkOut: [2026, 6, 19],
+                      img: '/salinas_july_3_1768572318354.png',
+                      discount: '20',
+                      description: 'O pico da temporada chegou! Viva o hotel em sua capacidade máxima de alegria, com eventos exclusivos e o melhor da nossa gastronomia regional.',
+                      programming: ['Noite Paraense', 'Gincana na Piscina', 'Sunset com DJ']
+                    },
+                    {
+                      id: 'jul-4',
+                      name: 'O Auge do Verão: Parte 2',
+                      dates: '23 a 26 de Julho',
+                      checkIn: [2026, 6, 23],
+                      checkOut: [2026, 6, 26],
+                      img: '/salinas_july_4_1768572334776.png',
+                      discount: '15',
+                      description: 'A vibração máxima de Salinas continua. Atividades intensas para todas as idades criam memórias inesquecíveis à beira-mar.',
+                      programming: ['Luau de Verão', 'Show de Talentos', 'Beach Tennis']
+                    },
+                    {
+                      id: 'jul-5',
+                      name: 'Bye Bye July: A Saideira',
+                      dates: '30/07 a 02 de Agosto',
+                      checkIn: [2026, 6, 30],
+                      checkOut: [2026, 7, 2],
+                      img: '/salinas_july_5_1768572353236.png',
+                      discount: '25',
+                      description: 'A despedida em grande estilo que Salinas merece. Aproveite os últimos momentos do mês com condições especiais e muita diversão.',
+                      programming: ['Baile de Despedida', 'Fotos em Família', 'Personagens Infantis']
+                    },
                   ].map((item) => (
-                    <div key={item.id} className="group relative bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-4 transition-all hover:bg-white/10 hover:-translate-y-2">
-                      <div className="aspect-square rounded-xl overflow-hidden mb-4 border border-white/5">
-                        <img src={item.img} className="w-full h-full object-cover grayscale-[30%] group-hover:grayscale-0 transition-all duration-700" alt={item.name} />
-                        <div className="absolute top-6 left-6 bg-red-600 text-white text-[9px] font-black px-2 py-0.5 rounded shadow-lg">
+                    <div key={item.id} className="group flex flex-col md:flex-row bg-white rounded-[2.5rem] overflow-hidden shadow-2xl border border-white/10 transition-all hover:shadow-solar-gold/20 hover:-translate-y-1">
+                      {/* Lado da Imagem */}
+                      <div className="md:w-2/5 h-[300px] md:h-auto relative overflow-hidden">
+                        <img src={item.img} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={item.name} />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent md:hidden"></div>
+                        <div className="absolute top-6 left-6 bg-red-600 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-2xl animate-pulse">
                           {item.discount}% OFF
                         </div>
                       </div>
-                      <h4 className="text-white font-serif text-sm mb-1 line-clamp-2 min-h-[40px] leading-tight">{item.name}</h4>
-                      <p className="text-solar-gold font-bold text-[10px] uppercase tracking-widest">{item.dates}</p>
-                      <button
-                        onClick={() => {
-                          const checkInDate = new Date(item.checkIn[0], item.checkIn[1], item.checkIn[2]);
-                          const checkOutDate = new Date(item.checkOut[0], item.checkOut[1], item.checkOut[2]);
-                          setCheckIn(checkInDate);
-                          setCheckOut(checkOutDate);
-                          setCurrentCalendarDate(checkInDate);
-                          document.getElementById('quartos-section')?.scrollIntoView({ behavior: 'smooth' });
-                        }}
-                        className="mt-4 w-full py-2 bg-white text-solar-green rounded-lg text-[9px] font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all">
-                        Selecionar
-                      </button>
+
+                      {/* Lado do Conteúdo */}
+                      <div className="md:w-3/5 p-8 md:p-12 flex flex-col justify-center space-y-6">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-3 text-solar-gold font-bold text-[10px] uppercase tracking-[0.2em]">
+                            <CalendarDays size={16} />
+                            {item.dates}
+                          </div>
+                          <h3 className="text-3xl md:text-4xl font-serif text-solar-green">{item.name}</h3>
+                        </div>
+
+                        <p className="text-slate-500 leading-relaxed text-lg italic">
+                          "{item.description}"
+                        </p>
+
+                        <div className="space-y-4">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Destaques da Programação:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {item.programming.map(prog => (
+                              <span key={prog} className="bg-slate-50 border border-slate-100 text-slate-600 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 bg-solar-gold rounded-full"></div>
+                                {prog}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="pt-6 flex flex-col md:flex-row items-center gap-6">
+                          <button
+                            onClick={() => {
+                              const checkInDate = new Date(item.checkIn[0], item.checkIn[1], item.checkIn[2]);
+                              const checkOutDate = new Date(item.checkOut[0], item.checkOut[1], item.checkOut[2]);
+                              setCheckIn(checkInDate);
+                              setCheckOut(checkOutDate);
+                              setCurrentCalendarDate(checkInDate);
+                              document.getElementById('quartos-section')?.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                            className="w-full md:w-auto px-10 py-5 bg-solar-green text-white rounded-2xl font-bold uppercase text-xs tracking-[0.2em] hover:bg-solar-gold transition-all shadow-xl active:scale-95"
+                          >
+                            Ver Disponibilidade
+                          </button>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            *Vagas limitadas para este período
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
