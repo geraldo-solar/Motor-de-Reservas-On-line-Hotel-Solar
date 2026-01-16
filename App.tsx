@@ -467,6 +467,18 @@ export const App: React.FC = () => {
                       programming: ['Festa de Aniversário', 'Música ao Vivo', 'Coquetel de Boas-vindas']
                     },
                     {
+                      id: 'jul-family',
+                      name: 'Semana da Família: Domingo a Quinta',
+                      dates: 'Todas as Semanas (Dom a Qui)',
+                      checkIn: [2026, 6, 5],
+                      checkOut: [2026, 6, 9],
+                      img: '/solar_jantar_familia_1768576512519.png',
+                      discount: '30',
+                      isPromotional: true,
+                      description: 'O melhor custo-benefício de Julho. Aproveite diárias reduzidas durante a semana e ganhe o Jantar Cortesia (Buffet de Sopas e Massas) todas as noites para toda a sua família.',
+                      programming: ['Jantar Cortesia Incluso', 'Buffet de Sopas & Massas', 'Menor Tarifa do Mês', 'Recreação para Crianças']
+                    },
+                    {
                       id: 'jul-2',
                       name: 'Solarize-se: O Verão de Salinas',
                       dates: '09 a 12 de Julho',
@@ -511,28 +523,37 @@ export const App: React.FC = () => {
                       programming: ['Baile de Despedida', 'Fotos em Família', 'Personagens Infantis']
                     },
                   ].map((item) => (
-                    <div key={item.id} className="group flex flex-col md:flex-row bg-white rounded-[2.5rem] overflow-hidden shadow-2xl border border-white/10 transition-all hover:shadow-solar-gold/20 hover:-translate-y-1">
+                    <div key={item.id} className={`group flex flex-col md:flex-row rounded-[2.5rem] overflow-hidden shadow-2xl border transition-all hover:-translate-y-1 ${item.isPromotional ? 'bg-orange-50/50 border-orange-200 shadow-orange-900/10' : 'bg-white border-white/10 shadow-solar-gold/20'}`}>
                       {/* Lado da Imagem */}
                       <div className="md:w-2/5 h-[300px] md:h-auto relative overflow-hidden">
                         <img src={item.img} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={item.name} />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent md:hidden"></div>
-                        <div className="absolute top-6 left-6 bg-red-600 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-2xl animate-pulse">
+                        <div className={`absolute top-6 left-6 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-2xl animate-pulse ${item.isPromotional ? 'bg-orange-600' : 'bg-red-600'}`}>
                           {item.discount}% OFF
                         </div>
+                        {item.isPromotional && (
+                          <div className="absolute bottom-6 left-6 bg-white/90 backdrop-blur-md px-4 py-2 rounded-xl border border-orange-200 shadow-xl hidden md:block">
+                            <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest">Oferta Exclusiva Mid-Week</p>
+                            <p className="text-xs font-bold text-slate-700">Jantar Cortesia Incluso</p>
+                          </div>
+                        )}
                       </div>
 
                       {/* Lado do Conteúdo */}
                       <div className="md:w-3/5 p-8 md:p-12 flex flex-col justify-center space-y-8">
                         <div className="space-y-4">
-                          {/* DESTAQUE PARA A DATA - MUITO MAIS VISÍVEL AGORA */}
-                          <div className="inline-flex items-center gap-3 bg-solar-gold text-solar-green px-6 py-2.5 rounded-full shadow-lg transform -rotate-1 group-hover:rotate-0 transition-transform duration-500">
+                          {/* DESTAQUE PARA A DATA */}
+                          <div className={`inline-flex items-center gap-3 px-6 py-2.5 rounded-full shadow-lg transform -rotate-1 group-hover:rotate-0 transition-transform duration-500 ${item.isPromotional ? 'bg-orange-600 text-white' : 'bg-solar-gold text-solar-green'}`}>
                             <CalendarDays size={20} className="animate-pulse" />
                             <span className="text-xs md:text-sm font-black uppercase tracking-[0.15em]">
                               {item.dates}
                             </span>
                           </div>
 
-                          <h3 className="text-3xl md:text-5xl font-serif text-solar-green leading-tight">{item.name}</h3>
+                          <div className="space-y-2">
+                            {item.isPromotional && <span className="text-[10px] font-black text-orange-600 uppercase tracking-[0.3em]">Melhor Valor de Julho</span>}
+                            <h3 className="text-3xl md:text-5xl font-serif text-solar-green leading-tight">{item.name}</h3>
+                          </div>
                         </div>
 
                         <p className="text-slate-500 leading-relaxed text-lg italic">
@@ -540,11 +561,11 @@ export const App: React.FC = () => {
                         </p>
 
                         <div className="space-y-4">
-                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Destaques da Programação:</p>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Destaques da Experiência:</p>
                           <div className="flex flex-wrap gap-2">
                             {item.programming.map(prog => (
-                              <span key={prog} className="bg-slate-50 border border-slate-100 text-slate-600 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 bg-solar-gold rounded-full"></div>
+                              <span key={prog} className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border ${item.isPromotional ? 'bg-orange-100/50 border-orange-200 text-orange-700' : 'bg-slate-50 border-slate-100 text-slate-600'}`}>
+                                <div className={`w-1.5 h-1.5 rounded-full ${item.isPromotional ? 'bg-orange-500' : 'bg-solar-gold'}`}></div>
                                 {prog}
                               </span>
                             ))}
@@ -561,12 +582,12 @@ export const App: React.FC = () => {
                               setCurrentCalendarDate(checkInDate);
                               document.getElementById('quartos-section')?.scrollIntoView({ behavior: 'smooth' });
                             }}
-                            className="w-full md:w-auto px-10 py-5 bg-solar-green text-white rounded-2xl font-bold uppercase text-xs tracking-[0.2em] hover:bg-solar-gold transition-all shadow-xl active:scale-95"
+                            className={`w-full md:w-auto px-10 py-5 text-white rounded-2xl font-bold uppercase text-xs tracking-[0.2em] transition-all shadow-xl active:scale-95 ${item.isPromotional ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-900/20' : 'bg-solar-green hover:bg-solar-gold shadow-solar-green/20'}`}
                           >
                             Ver Disponibilidade
                           </button>
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                            *Vagas limitadas para este período
+                            {item.isPromotional ? '*Válido apenas dom a qui' : '*Vagas limitadas'}
                           </span>
                         </div>
                       </div>
