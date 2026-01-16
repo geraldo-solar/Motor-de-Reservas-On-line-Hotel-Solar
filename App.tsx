@@ -522,13 +522,17 @@ export const App: React.FC = () => {
                       </div>
 
                       {/* Lado do Conteúdo */}
-                      <div className="md:w-3/5 p-8 md:p-12 flex flex-col justify-center space-y-6">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-3 text-solar-gold font-bold text-[10px] uppercase tracking-[0.2em]">
-                            <CalendarDays size={16} />
-                            {item.dates}
+                      <div className="md:w-3/5 p-8 md:p-12 flex flex-col justify-center space-y-8">
+                        <div className="space-y-4">
+                          {/* DESTAQUE PARA A DATA - MUITO MAIS VISÍVEL AGORA */}
+                          <div className="inline-flex items-center gap-3 bg-solar-gold text-solar-green px-6 py-2.5 rounded-full shadow-lg transform -rotate-1 group-hover:rotate-0 transition-transform duration-500">
+                            <CalendarDays size={20} className="animate-pulse" />
+                            <span className="text-xs md:text-sm font-black uppercase tracking-[0.15em]">
+                              {item.dates}
+                            </span>
                           </div>
-                          <h3 className="text-3xl md:text-4xl font-serif text-solar-green">{item.name}</h3>
+
+                          <h3 className="text-3xl md:text-5xl font-serif text-solar-green leading-tight">{item.name}</h3>
                         </div>
 
                         <p className="text-slate-500 leading-relaxed text-lg italic">
