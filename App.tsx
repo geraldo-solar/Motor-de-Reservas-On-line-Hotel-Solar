@@ -414,6 +414,21 @@ export const App: React.FC = () => {
                       </div>
                       <p className="text-slate-500 text-sm leading-relaxed mb-6 italic text-left">{pkg.description}</p>
 
+                      {/* Destaques da Experiência */}
+                      {(pkg.includes && pkg.includes.length > 0) && (
+                        <div className="mb-8 space-y-3">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 text-left">O que está incluso:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {pkg.includes.map((item, idx) => (
+                              <span key={idx} className="px-3 py-1.5 bg-slate-50 border border-slate-100 text-slate-600 rounded-lg text-[10px] font-bold flex items-center gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-solar-gold"></div>
+                                {item}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       <button onClick={() => handleSelectPackage(pkg)} className="w-full bg-solar-green text-white py-5 rounded-2xl font-bold uppercase text-[11px] tracking-[0.2em] hover:bg-solar-gold transition-all shadow-lg active:scale-95">Ver Disponibilidade</button>
                     </div>
                   </div>
