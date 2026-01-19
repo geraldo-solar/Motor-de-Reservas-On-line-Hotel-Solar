@@ -580,7 +580,12 @@ export const App: React.FC = () => {
                     <div key={item.id} className={`group flex flex-col md:flex-row rounded-[2.5rem] overflow-hidden shadow-2xl border transition-all hover:-translate-y-1 ${item.isPromotional ? 'bg-orange-50/50 border-orange-200 shadow-orange-900/10' : 'bg-white border-white/10 shadow-solar-gold/20'}`}>
                       {/* Lado da Imagem */}
                       <div className="md:w-2/5 h-[300px] md:h-auto relative overflow-hidden">
-                        <img src={getPublicImageUrl(item.imageUrl || item.img)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={item.name} />
+                        <img
+                          src={getPublicImageUrl(item.imageUrl || item.img)}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
+                          style={{ imageRendering: 'auto', objectPosition: 'center' }}
+                          alt={item.name}
+                        />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent md:hidden"></div>
                         <div className={`absolute top-6 left-6 text-white text-[10px] font-black px-4 py-2 rounded-full shadow-2xl animate-pulse z-20 ${item.isPromotional ? 'bg-solar-summer-orange' : 'bg-red-600'}`}>
                           {item.fullPeriodDiscountPct || item.discount || 0}% OFF
