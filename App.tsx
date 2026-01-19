@@ -511,7 +511,7 @@ export const App: React.FC = () => {
                       dates: '02 a 05 de Julho',
                       checkIn: [2026, 6, 2],
                       checkOut: [2026, 6, 5],
-                      img: '/celebracao-july-final.jpg',
+                      img: '/celebracao-solar-2026.jpg',
                       discount: '15',
                       description: 'Damos as boas-vindas ao verão com a grande festa de aniversário do Hotel Solar. Uma celebração única com música ao vivo, coquetel especial e a energia contagiante de Salinas.',
                       programming: ['Festa de Aniversário', 'Música ao Vivo', 'Coquetel de Boas-vindas']
