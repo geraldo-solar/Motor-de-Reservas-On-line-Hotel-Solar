@@ -72,6 +72,7 @@ export const App: React.FC = () => {
 
   const [config, setConfig] = useState<HotelConfig>(INITIAL_CONFIG);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [loginError, setLoginError] = useState(false);
   const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
   const [checkIn, setCheckIn] = useState<Date | null>(null);
   const [checkOut, setCheckOut] = useState<Date | null>(null);
@@ -538,7 +539,7 @@ export const App: React.FC = () => {
                       dates: '09 a 12 de Julho',
                       checkIn: [2026, 6, 9],
                       checkOut: [2026, 6, 12],
-                      img: '/salinas_july_2_1768572303926.png',
+                      img: '/solarize-se-v3.jpg?v=3',
                       discount: '10',
                       description: 'Sinta a verdadeira energia do Sol de Salinas. Uma semana dedicada ao bem-estar e à conexão total com a natureza e quem você ama.',
                       programming: ['Oficinas Criativas', 'Check-in Animado', 'Recreação Infantil']
@@ -1015,10 +1016,17 @@ export const App: React.FC = () => {
                 onLogout={() => { setIsAdminLoggedIn(false); setCurrentView(ViewState.HOME); }}
               />
             ) : (
-              <AdminLogin onLogin={(pass) => {
-                if (pass === 'metron82') setIsAdminLoggedIn(true);
-                else alert('Senha incorreta');
-              }} />
+              <AdminLogin
+                onLogin={(pass) => {
+                  if (pass === 'metron82') {
+                    setIsAdminLoggedIn(true);
+                    setLoginError(false);
+                  } else {
+                    setLoginError(true);
+                  }
+                }}
+                error={loginError}
+              />
             )
           )
         }
