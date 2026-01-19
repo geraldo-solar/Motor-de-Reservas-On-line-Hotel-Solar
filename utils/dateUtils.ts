@@ -21,7 +21,26 @@ export const parseISODate = (isoDate: string): Date => {
  */
 export const formatDisplayDate = (isoDate: string): string => {
     if (!isoDate) return '---';
+    // Se for um timestamp completo (com T), trata diferente do YYYY-MM-DD puro
+    if (isoDate.includes('T')) {
+        return new Date(isoDate).toLocaleDateString('pt-BR');
+    }
     return parseISODate(isoDate).toLocaleDateString('pt-BR');
+};
+
+/**
+ * Formata um timestamp ISO para DD/MM/YYYY às HH:mm.
+ */
+export const formatDisplayDateTime = (isoTimestamp: string | Date): string => {
+    if (!isoTimestamp) return '---';
+    const date = typeof isoTimestamp === 'string' ? new Date(isoTimestamp) : isoTimestamp;
+    return date.toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 };
 
 /**

@@ -159,68 +159,76 @@ const BookingForm: React.FC<BookingFormProps> = ({
   };
 
   const handleFinalSubmit = async () => {
-    if (!agreedToPolicies) return;
+    try {
+      if (!agreedToPolicies) return;
 
-    const newErrors: { [key: string]: string } = {};
-    if (!name.trim()) newErrors.name = 'O nome completo é obrigatório';
-    if (!validateEmail(email)) newErrors.email = 'Insira um e-mail válido';
-    if (!validateCPF(cpf)) newErrors.cpf = 'CPF inválido (11 dígitos)';
-    if (!phone.trim()) newErrors.phone = 'O WhatsApp é obrigatório';
+      const newErrors: { [key: string]: string } = {};
+      if (!name.trim()) newErrors.name = 'O nome completo é obrigatório';
+      if (!validateEmail(email)) newErrors.email = 'Insira um e-mail válido';
+      if (!validateCPF(cpf)) newErrors.cpf = 'CPF inválido (11 dígitos)';
+      if (!phone.trim()) newErrors.phone = 'O WhatsApp é obrigatório';
 
-    if (paymentMethod === 'CREDIT_CARD') {
-      const cleanCard = cardNumber.replace(/\s/g, '');
-      if (!cardHolder.trim()) newErrors.cardHolder = 'Nome impresso é obrigatório';
+      if (paymentMethod === 'CREDIT_CARD') {
+        const cleanCard = cardNumber.replace(/\s/g, '');
+        if (!cardHolder.trim()) newErrors.cardHolder = 'Nome impresso é obrigatório';
 
-      if (cleanCard.length < 13 || !isValidLuhn(cleanCard)) {
-        newErrors.cardNumber = 'Número de cartão inválido';
+        if (cleanCard.length < 13 || !isValidLuhn(cleanCard)) {
+          newErrors.cardNumber = 'Número de cartão inválido';
+        }
+
+        if (!isValidExpiry(cardExpiry)) {
+          newErrors.cardExpiry = 'Data de expiração inválida ou vencida';
+        }
+
+        if (cardCvv.length < 3) {
+          newErrors.cardCvv = 'CVV inválido';
+        }
       }
 
-      if (!isValidExpiry(cardExpiry)) {
-        newErrors.cardExpiry = 'Data de expiração inválida ou vencida';
+      if (Object.keys(newErrors).length > 0) {
+        setErrors(newErrors);
+        if (formTopRef.current) {
+          formTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        return;
       }
 
-      if (cardCvv.length < 3) {
-        newErrors.cardCvv = 'CVV inválido';
-      }
+      const reservationId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+        ? crypto.randomUUID()
+        : 'RES-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+
+      const reservation: Reservation = {
+        id: reservationId,
+        createdAt: new Date(),
+        checkIn: initialCheckIn ? toLocalISO(initialCheckIn) : '',
+        checkOut: initialCheckOut ? toLocalISO(initialCheckOut) : '',
+        nights,
+        mainGuest: { name, email, phone, cpf },
+        additionalGuests: [],
+        observations,
+        rooms: selectedRooms.map(r => ({ id: r.id, name: r.name, priceSnapshot: calculateRoomTotal(r) })),
+        extras: Object.entries(selectedExtras).map(([id, qty]) => {
+          const extra = extras.find(e => e.id === id);
+          return { name: extra?.name || id, quantity: qty as number, priceSnapshot: extra?.price || 0 };
+        }),
+        totalPrice: total,
+        discountApplied: appliedDiscount || undefined,
+        packageDiscountApplied: packageDiscountAmount > 0 ? { percentage: activePackage!.fullPeriodDiscountPct!, amount: packageDiscountAmount } : undefined,
+        paymentMethod,
+        cardDetails: paymentMethod === 'CREDIT_CARD' ? {
+          holderName: cardHolder,
+          number: cardNumber,
+          expiry: cardExpiry,
+          cvv: cardCvv,
+          installments: installments
+        } : undefined,
+        status: 'PENDING'
+      };
+
+      await onAddReservation(reservation);
+    } catch (err: any) {
+      console.error('Erro na submissão da reserva:', err);
     }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      if (formTopRef.current) {
-        formTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-      return;
-    }
-
-    const reservation: Reservation = {
-      id: crypto.randomUUID(),
-      createdAt: new Date(),
-      checkIn: initialCheckIn ? toLocalISO(initialCheckIn) : '',
-      checkOut: initialCheckOut ? toLocalISO(initialCheckOut) : '',
-      nights,
-      mainGuest: { name, email, phone, cpf },
-      additionalGuests: [],
-      observations,
-      rooms: selectedRooms.map(r => ({ id: r.id, name: r.name, priceSnapshot: calculateRoomTotal(r) })),
-      extras: Object.entries(selectedExtras).map(([id, qty]) => {
-        const extra = extras.find(e => e.id === id);
-        return { name: extra?.name || id, quantity: qty as number, priceSnapshot: extra?.price || 0 };
-      }),
-      totalPrice: total,
-      discountApplied: appliedDiscount || undefined,
-      packageDiscountApplied: packageDiscountAmount > 0 ? { percentage: activePackage!.fullPeriodDiscountPct!, amount: packageDiscountAmount } : undefined,
-      paymentMethod,
-      cardDetails: paymentMethod === 'CREDIT_CARD' ? {
-        holderName: cardHolder,
-        number: cardNumber,
-        expiry: cardExpiry,
-        cvv: cardCvv,
-        installments: installments
-      } : undefined,
-      status: 'PENDING'
-    };
-
-    await onAddReservation(reservation);
   };
 
   if (step === 1) {

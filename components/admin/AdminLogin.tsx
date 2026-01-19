@@ -23,8 +23,12 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
             <div className="w-full max-w-md relative z-10">
                 <div className="bg-white rounded-[40px] shadow-2xl overflow-hidden border border-white/20 backdrop-blur-sm">
                     <div className="bg-slate-50/50 p-10 text-center border-b border-gray-100">
-                        <div className="w-20 h-20 bg-[#0F2820] rounded-3xl mx-auto flex items-center justify-center shadow-2xl mb-6 transform rotate-3 hover:rotate-0 transition-transform duration-500">
-                            <span className="text-solar-gold font-serif font-black text-4xl">S</span>
+                        <div className="mb-6 flex justify-center">
+                            <img
+                                src="/logo-gold.png"
+                                alt="Hotel Solar"
+                                className="h-20 w-auto transform hover:scale-110 transition-transform duration-500"
+                            />
                         </div>
                         <h2 className="text-2xl font-serif font-bold text-solar-green tracking-tight">Painel de Controle</h2>
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.3em] mt-2">Área Administrativa Restrita</p>

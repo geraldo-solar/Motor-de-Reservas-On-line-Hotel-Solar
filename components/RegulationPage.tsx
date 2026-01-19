@@ -11,7 +11,7 @@ export const RegulationPage: React.FC<{ onBack: () => void }> = ({ onBack }) => 
 
             <div className="bg-white rounded-3xl shadow-2xl border border-solar-gold/10 overflow-hidden">
                 <div className="bg-solar-green p-8 text-center">
-                    <img src="/logo.png" alt="Hotel Solar" className="h-20 mx-auto mb-4" />
+                    <img src="/logo-gold.png" alt="Hotel Solar" className="h-20 mx-auto mb-4" />
                     <h1 className="text-2xl md:text-3xl font-serif text-solar-gold">🌞 Política de Reservas, Cancelamento e Regras de Estada</h1>
                     <p className="text-solar-sand/80 mt-2">Hotel Solar – Salinópolis (PA)</p>
                 </div>

@@ -13,7 +13,7 @@ const HOTEL_CONFIG = {
   adminEmail: 'reserva@hotelsolar.tur.br',
   phone: '(91) 98100-0800',
   address: 'Belém, PA',
-  logoUrl: 'https://motor-de-reservas-on-line-hotel-sol.vercel.app/logo.png',
+  logoUrl: 'https://motor-de-reservas-on-line-hotel-sol.vercel.app/logo-gold.png',
   regulamentoUrl: 'https://motor-de-reservas-on-line-hotel-sol.vercel.app/?view=regulamento',
   // Dados PIX
   pix: {

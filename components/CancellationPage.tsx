@@ -235,7 +235,7 @@ export const CancellationPage: React.FC<CancellationPageProps> = ({ reservationI
 
             <div className="bg-white rounded-3xl shadow-2xl border border-solar-gold/10 overflow-hidden">
                 <div className="bg-solar-green p-8 text-center">
-                    <img src="/logo.png" alt="Hotel Solar" className="h-20 mx-auto mb-4" />
+                    <img src="/logo-gold.png" alt="Hotel Solar" className="h-20 mx-auto mb-4" />
                     <h1 className="text-2xl md:text-3xl font-serif text-solar-gold">Cancelamento de Reserva</h1>
                     <p className="text-solar-sand/80 mt-2">Gerencie sua reserva de forma simples e rápida</p>
                 </div>

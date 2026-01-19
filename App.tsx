@@ -8,6 +8,7 @@ import { toLocalISO, parseISODate, formatDisplayDate, calculateNights } from './
 import { getPublicImageUrl } from './utils/imageUtils';
 import { INITIAL_CONFIG } from './constants';
 import { useSupabaseData } from './hooks/useSupabaseData';
+import { offlineQueue } from './lib/offlineQueue';
 import { sendReservationEmails } from './services/emailService';
 import { ChevronLeft, ChevronRight, Check, CalendarDays, Share2, ShoppingCart, Plus, Minus, Users, Gift, Home, Ticket, Zap, AlertCircle } from 'lucide-react';
 import { RoomGallery } from './components/RoomGallery';
@@ -77,6 +78,29 @@ export const App: React.FC = () => {
   const [zoomData, setZoomData] = useState<{ images: string[], index: number } | null>(null);
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const [cancellationReservationId, setCancellationReservationId] = useState<string | null>(null);
+  const [offlineCount, setOfflineCount] = useState(0);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleQueueUpdate = (e: any) => {
+      setOfflineCount(e.detail.count);
+    };
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('offline-queue-updated', handleQueueUpdate);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // No useSupabaseData podemos ter o offlineQueue ou importar ele
+    // Dado que criamos o lib/offlineQueue, podemos importar aqui
+    return () => {
+      window.removeEventListener('offline-queue-updated', handleQueueUpdate);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -336,7 +360,12 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F9F8F6]">
-      {currentView !== ViewState.ADMIN && <Navbar currentView={currentView} onNavigate={handleNavigate} />}
+      {currentView !== ViewState.ADMIN && <Navbar
+        currentView={currentView}
+        onNavigate={setCurrentView}
+        offlineCount={offlineCount}
+        isOnline={isOnline}
+      />}
 
       <main className="flex-1">
         {(currentView === ViewState.HOME || currentView === ViewState.ROOMS || currentView === ViewState.PACKAGES) && (
@@ -1002,7 +1031,7 @@ export const App: React.FC = () => {
       }
 
       <footer className="bg-solar-green text-solar-sand py-24 px-4 text-center border-t border-solar-gold/10">
-        <img src="/logo.png" alt="Hotel Solar" className="h-24 md:h-32 w-auto mx-auto mb-8 drop-shadow-lg" />
+        <img src="/logo-gold.png" alt="Hotel Solar" className="h-24 md:h-32 w-auto mx-auto mb-8 drop-shadow-lg" />
         <p className="text-sm opacity-50 tracking-widest mb-12">Av. Atlântica • Salinópolis - PA<br />Tel: (91) 98100-0800</p>
         <button onClick={() => setCurrentView(ViewState.ADMIN)} className="text-[10px] font-bold uppercase tracking-[0.4em] opacity-30 hover:opacity-100 transition-all hover:text-solar-gold">Painel Gestão</button>
       </footer>

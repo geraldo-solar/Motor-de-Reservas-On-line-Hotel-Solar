@@ -2,7 +2,7 @@ import React from 'react';
 import { X, Mail, Send, Type, ArrowRight, MessageSquare, QrCode, CreditCard } from 'lucide-react';
 import { Reservation, ReservationStatus } from '../../types';
 import { sendPaymentConfirmedEmail, sendReservationCanceledEmail } from '../../services/emailService';
-import { formatDisplayDate } from '../../utils/dateUtils';
+import { formatDisplayDate, formatDisplayDateTime } from '../../utils/dateUtils';
 
 interface ReservationDetailModalProps {
     isOpen: boolean;
@@ -248,7 +248,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                 </div>
                             </div>
                             <div className="mt-4 pt-4 border-t border-slate-200">
-                                <span className="text-[9px] text-slate-400 italic block text-center">Data da Reserva: {formatDisplayDate(reservation.createdAt)}</span>
+                                <span className="text-[9px] text-slate-400 italic block text-center">Efetuada em: {formatDisplayDateTime(reservation.createdAt)}</span>
                             </div>
                         </div>
                     </div>
