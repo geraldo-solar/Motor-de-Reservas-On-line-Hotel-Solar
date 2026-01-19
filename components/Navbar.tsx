@@ -1,6 +1,6 @@
 import React from 'react';
 import { ViewState } from '../types';
-import { RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
 interface NavbarProps {
   currentView: ViewState;
@@ -31,25 +31,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate, offlineCount, 
               alt="Hotel Solar"
               className="h-14 sm:h-14 md:h-16 w-auto group-hover:scale-110 transition-transform duration-500"
             />
-            {/* Indicadores Offline/Sync */}
-            <div className="flex items-center gap-2 mt-2">
-              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-black/20 text-[10px] sm:text-xs">
-                {isOnline ? (
-                  <Wifi size={10} className="text-solar-gold" />
-                ) : (
-                  <WifiOff size={10} className="text-red-400" />
-                )}
-                <span className={isOnline ? 'text-solar-gold' : 'text-red-400'}>
-                  {isOnline ? 'ONLINE' : 'OFFLINE'}
-                </span>
-              </div>
-              {offlineCount > 0 && (
-                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-solar-gold/20 text-[10px] sm:text-xs animate-pulse">
-                  <RefreshCw size={10} className="text-solar-gold animate-spin" />
-                  <span className="text-solar-gold font-bold">{offlineCount} SINCRONIZANDO</span>
-                </div>
-              )}
-            </div>
+
           </div>
 
           {/* Linha 2: Menu Adaptativo - Texto maior no mobile */}
