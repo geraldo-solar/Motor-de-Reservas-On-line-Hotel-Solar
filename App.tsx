@@ -550,7 +550,7 @@ export const App: React.FC = () => {
                       dates: '16 a 19 de Julho',
                       checkIn: [2026, 6, 16],
                       checkOut: [2026, 6, 19],
-                      img: '/salinas_july_3_1768572318354.png',
+                      img: '/auge-do-verao-premium.jpg?v=1',
                       discount: '20',
                       description: 'O pico da temporada chegou! Viva o hotel em sua capacidade máxima de alegria, com eventos exclusivos e o melhor da nossa gastronomia regional.',
                       programming: ['Noite Paraense', 'Gincana na Piscina', 'Sunset com DJ']
