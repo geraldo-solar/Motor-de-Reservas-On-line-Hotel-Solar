@@ -655,13 +655,18 @@ export const App: React.FC = () => {
                                         }
                                       }, 150);
                                     }}
-                                    className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 cursor-pointer active:scale-95 z-30 ${isCurrentWeek
-                                      ? 'bg-solar-summer-orange border-solar-summer-orange text-white shadow-lg'
-                                      : 'bg-white border-solar-summer-orange/20 text-solar-summer-orange hover:border-solar-summer-orange hover:bg-solar-summer-orange/5 shadow-sm'
+                                    className={`group/week p-4 rounded-2xl border-2 transition-all duration-300 flex flex-col items-center gap-1 cursor-pointer active:scale-95 z-30 ${isCurrentWeek
+                                      ? 'bg-solar-summer-orange border-solar-summer-orange text-white shadow-xl scale-105 ring-4 ring-solar-summer-orange/20'
+                                      : 'bg-white border-slate-100 text-slate-400 hover:border-solar-summer-orange hover:text-solar-summer-orange hover:shadow-xl hover:-translate-y-1'
                                       }`}
                                   >
-                                    <span className="text-[9px] font-black uppercase tracking-tighter">Semana</span>
-                                    <span className="text-xs font-bold whitespace-nowrap font-sans">{week.label}</span>
+                                    <span className={`text-[8px] font-black uppercase tracking-[0.2em] mb-1 ${isCurrentWeek ? 'text-white/80' : 'text-slate-300 group-hover/week:text-solar-summer-orange/60'}`}>Semana</span>
+                                    <span className="text-sm font-black whitespace-nowrap font-sans tracking-tight">{week.label}</span>
+                                    {isCurrentWeek ? (
+                                      <Check size={12} className="mt-1 animate-bounce" />
+                                    ) : (
+                                      <span className="text-[7px] font-black uppercase opacity-0 group-hover/week:opacity-100 transition-all mt-1 tracking-widest bg-solar-summer-orange/10 px-2 py-0.5 rounded-full">Escolher</span>
+                                    )}
                                   </button>
                                 );
                               })}
