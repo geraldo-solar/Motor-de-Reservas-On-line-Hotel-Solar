@@ -4,6 +4,7 @@ import { Room, HolidayPackage } from '../../types';
 import { DateRangePickerModal } from './DateRangePickerModal';
 import { formatDisplayDate } from '../../utils/dateUtils';
 import { getPublicImageUrl } from '../../utils/imageUtils';
+import { generateUUID } from '../../utils/uuid';
 
 interface PackageEditorModalProps {
     isOpen: boolean;
@@ -48,7 +49,7 @@ const fileToBase64 = (file: File, maxWidth = 800, quality = 0.7): Promise<string
 
 export const PackageEditorModal: React.FC<PackageEditorModalProps> = ({ isOpen, onClose, pkg, rooms, onSave, onDelete }) => {
     const emptyPackage: HolidayPackage = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         name: '',
         description: '',
         imageUrl: '',
@@ -73,7 +74,7 @@ export const PackageEditorModal: React.FC<PackageEditorModalProps> = ({ isOpen, 
     useEffect(() => {
         if (isOpen) {
             setShowDeleteConfirm(false);
-            const initialPkg = pkg || { ...emptyPackage, id: crypto.randomUUID() };
+            const initialPkg = pkg || { ...emptyPackage, id: generateUUID() };
             const currentRoomPrices = [...(initialPkg.roomPrices || [])];
             rooms.forEach(r => {
                 if (!currentRoomPrices.find(rp => rp.roomId === r.id)) {

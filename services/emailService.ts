@@ -15,6 +15,7 @@ const HOTEL_CONFIG = {
   address: 'Belém, PA',
   logoUrl: 'https://motor-de-reservas-on-line-hotel-sol.vercel.app/logo-gold.png',
   regulamentoUrl: 'https://motor-de-reservas-on-line-hotel-sol.vercel.app/?view=regulamento',
+  erpUrl: 'https://solar-hotel-erp.vercel.app', // URL do ERP para o pré-check-in
   // Dados PIX
   pix: {
     chave: '(91) 98100-0800',
@@ -153,6 +154,8 @@ const generateClientEmailHTML = (reservation: Reservation): string => {
     `;
   }
 
+  const preCheckInUrl = `${HOTEL_CONFIG.erpUrl}/pre-checkin/${reservation.id}`;
+
   return `
 <!DOCTYPE html>
 <html>
@@ -182,8 +185,14 @@ const generateClientEmailHTML = (reservation: Reservation): string => {
         Olá <strong>${reservation.mainGuest.name}</strong>,
       </p>
       <p style="color: #475569; font-size: 14px; margin: 0 0 24px 0; line-height: 1.6;">
-        Recebemos sua solicitação de reserva no Hotel Solar! Obrigado por nos escolher.
+        Recebemos sua solicitação de reserva no Hotel Solar! Ficamos felizes com sua preferência. Para sua comodidade, você já pode agilizar sua chegada realizando o pré-check-in digital.
       </p>
+
+      <!-- Botão de Pré-Check-in -->
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="${preCheckInUrl}" style="background-color: #1a3c34; color: #d4a853; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">AGILIZAR MEU CHECK-IN AGORA</a>
+        <p style="color: #64748b; font-size: 11px; margin-top: 12px;">Preencha seus dados agora e ganhe tempo na recepção!</p>
+      </div>
       
       <!-- Número da Reserva -->
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
@@ -493,15 +502,69 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
     if (!hotelEmailResponse.ok) {
       const errorData = await hotelEmailResponse.json();
       console.error('[Email] Erro ao enviar e-mail para hotel:', errorData);
-      // Não retorna erro aqui pois o e-mail do cliente já foi enviado
     } else {
       console.log('[Email] E-mail enviado para hotel:', HOTEL_CONFIG.adminEmail);
+    }
+
+    // 3. Sincronizar com Brevo (Marketing)
+    try {
+      await syncContactToBrevo(
+        {
+          name: reservation.mainGuest.name,
+          email: reservation.mainGuest.email,
+          phone: reservation.mainGuest.phone
+        },
+        ['HOSPEDE', 'ORIGEM_ONLINE', `STATUS_${reservation.status}`, `ANO_${new Date().getFullYear()}`]
+      );
+    } catch (e) {
+      console.error('[Email] Erro ao sincronizar Brevo:', e);
     }
 
     return { success: true };
   } catch (error) {
     console.error('[Email] Erro ao enviar e-mails:', error);
     return { success: false, error: `Erro ao enviar e-mails: ${error}` };
+  }
+};
+
+// Sincronizar contato com Brevo (Marketing)
+export const syncContactToBrevo = async (guest: { name: string, email: string, phone: string }, tags: string[] = ['HOSPEDE']) => {
+  const BREVO_CONTACTS_URL = 'https://api.brevo.com/v3/contacts';
+
+  if (!BREVO_API_KEY) return { success: false, error: 'API Key não configurada' };
+  if (!guest.email) return { success: false, error: 'E-mail obrigatório' };
+
+  try {
+    let cleanPhone = guest.phone.replace(/\D/g, '');
+    if (cleanPhone.length === 11 && !cleanPhone.startsWith('55')) {
+      cleanPhone = '55' + cleanPhone;
+    }
+
+    const response = await fetch(BREVO_CONTACTS_URL, {
+      method: 'POST',
+      headers: {
+        'api-key': BREVO_API_KEY,
+        'content-type': 'application/json',
+        'accept': 'application/json'
+      },
+      body: JSON.stringify({
+        email: guest.email,
+        attributes: {
+          NOME: guest.name,
+          SMS: cleanPhone,
+          TELEFONE: cleanPhone
+        },
+        listIds: [2],
+        updateEnabled: true,
+        ext_id: guest.email,
+        tags: tags
+      })
+    });
+
+    return { success: response.ok };
+  } catch (err: any) {
+    console.error('Erro de rede Brevo Sync:', err);
+    return { success: false, error: err.message };
   }
 };
 

@@ -17,14 +17,15 @@ import { CancellationPage } from './components/CancellationPage';
 import { RegulationPage } from './components/RegulationPage';
 import { SuccessPage } from './components/SuccessPage';
 import { DateSelectorBar } from './components/DateSelectorBar';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Ordem de prioridade das acomodações
 const ROOM_ORDER = ['casal', 'triplo', 'sacada', 'quadruplo', 'quádruplo', 'varanda', 'loft'];
 
 const sortRoomsByPriority = (rooms: Room[]): Room[] => {
   return [...rooms].sort((a, b) => {
-    const nameA = a.name.toLowerCase();
-    const nameB = b.name.toLowerCase();
+    const nameA = (a.name || '').toLowerCase();
+    const nameB = (b.name || '').toLowerCase();
 
     const getOrderIndex = (name: string) => {
       for (let i = 0; i < ROOM_ORDER.length; i++) {
@@ -722,6 +723,8 @@ export const App: React.FC = () => {
             </section>
 
             {/* SEÇÃO DE ACOMODAÇÕES - REVELADA APENAS APÓS SELEÇÃO DE DATAS */}
+
+
             {checkIn && checkOut ? (
               <div id="quartos-section" className="max-w-7xl mx-auto px-4 py-24 scroll-mt-24 animate-in fade-in slide-in-from-bottom-10 duration-1000">
                 <div className="bg-solar-gold/10 border-2 border-solar-gold/30 rounded-[3rem] p-12 md:p-16 mb-20 flex flex-col md:flex-row items-center justify-between gap-10 shadow-2xl relative overflow-hidden group/summary">
@@ -995,38 +998,44 @@ export const App: React.FC = () => {
         {
           currentView === ViewState.ADMIN && (
             isAdminLoggedIn ? (
-              <AdminPanel
-                rooms={rooms}
-                packages={packages}
-                discounts={discounts}
-                extras={extras}
-                config={config}
-                reservations={reservations}
-                onUpdateRooms={setRooms}
-                onUpdatePackages={setPackages}
-                onUpdateDiscounts={setDiscounts}
-                onUpdateExtras={setExtras}
-                onUpdateConfig={setConfig}
-                onUpdateReservationStatus={updateReservationStatus}
-                onUpsertRoom={upsertRoom}
-                onUpsertRooms={upsertRooms}
-                onDeleteRoom={deleteRoom}
-                onUpsertPackage={upsertPackage}
-                onDeletePackage={deletePackage}
-                onUpsertExtra={upsertExtra}
-                onDeleteExtra={deleteExtra}
-                onUpsertDiscount={upsertDiscount}
-                onDeleteDiscount={deleteDiscount}
-                isSaving={isSaving}
-                onLogout={() => { setIsAdminLoggedIn(false); setCurrentView(ViewState.HOME); }}
-              />
+              <ErrorBoundary>
+                <AdminPanel
+                  rooms={rooms}
+                  packages={packages}
+                  discounts={discounts}
+                  extras={extras}
+                  config={config}
+                  reservations={reservations}
+                  onUpdateRooms={setRooms}
+                  onUpdatePackages={setPackages}
+                  onUpdateDiscounts={setDiscounts}
+                  onUpdateExtras={setExtras}
+                  onUpdateConfig={setConfig}
+                  onUpdateReservationStatus={updateReservationStatus}
+                  onUpsertRoom={upsertRoom}
+                  onUpsertRooms={upsertRooms}
+                  onDeleteRoom={deleteRoom}
+                  onUpsertPackage={upsertPackage}
+                  onDeletePackage={deletePackage}
+                  onUpsertExtra={upsertExtra}
+                  onDeleteExtra={deleteExtra}
+                  onUpsertDiscount={upsertDiscount}
+                  onDeleteDiscount={deleteDiscount}
+                  isSaving={isSaving}
+                  onRefreshData={refreshData}
+                  onLogout={() => { setIsAdminLoggedIn(false); setCurrentView(ViewState.HOME); }}
+                />
+              </ErrorBoundary>
             ) : (
               <AdminLogin
                 onLogin={(pass) => {
+                  console.log('[Admin] Tentativa de login...');
                   if (pass === 'metron82') {
+                    console.log('[Admin] Senha correta. Entrando no painel...');
                     setIsAdminLoggedIn(true);
                     setLoginError(false);
                   } else {
+                    console.warn('[Admin] Senha incorreta.');
                     setLoginError(true);
                   }
                 }}

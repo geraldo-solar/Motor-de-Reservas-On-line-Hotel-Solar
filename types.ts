@@ -92,6 +92,10 @@ export interface HotelConfig {
   contactEmail: string;
   aiKnowledgeBase: string;
   emailTemplates: EmailTemplate[];
+  whatsappNumber?: string;
+  notificationEmail?: string;
+  allowOnlineBooking?: boolean;
+  minBookingLeadTimeHours?: number;
 }
 
 export type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'CANCELED';

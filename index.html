@@ -1,70 +1,136 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hotel Solar - Reservas</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Montserrat', 'sans-serif'],
-              serif: ['Playfair Display', 'serif'],
-            },
-            colors: {
-              solar: {
-                gold: '#D4AF37',
-                'gold-light': '#F3E5AB',
-                green: '#0F2820',
-                moss: '#2F3A2F',
-                sand: '#E5D3B3',
-                // Verão Amazônico / Conversão
-                'summer-blue': '#0093E9',
-                'summer-teal': '#2DE2E2',
-                'summer-orange': '#FF6B6B',
-                'summer-sun': '#FFD93D'
-              }
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hotel Solar - Reservas</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap"
+    rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Montserrat', 'sans-serif'],
+            serif: ['Playfair Display', 'serif'],
+          },
+          colors: {
+            solar: {
+              gold: '#D4AF37',
+              'gold-light': '#F3E5AB',
+              green: '#0F2820',
+              moss: '#2F3A2F',
+              sand: '#E5D3B3',
+              'summer-blue': '#0093E9',
+              'summer-teal': '#2DE2E2',
+              'summer-orange': '#FF6B6B',
+              'summer-sun': '#FFD93D'
             }
           }
         }
       }
-    </script>
-    <style>
-      /* Custom scrollbar for chat */
-      .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-      }
-      .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-      }
-      body {
-        font-family: 'Montserrat', sans-serif;
-      }
-      h1, h2, h3, h4, h5, h6 {
-        font-family: 'Playfair Display', serif;
-      }
+    }
+  </script>
+  <style>
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+    }
 
-      /* REMOVER SETAS DE INPUT NUMBER (Chrome, Safari, Edge, Opera) */
-      input::-webkit-outer-spin-button,
-      input::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-      }
+    .scrollbar-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
 
-      /* REMOVER SETAS DE INPUT NUMBER (Firefox) */
-      input[type=number] {
-        -moz-appearance: textfield;
+    body {
+      font-family: 'Montserrat', sans-serif;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      font-family: 'Playfair Display', serif;
+    }
+
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    input[type=number] {
+      -moz-appearance: textfield;
+      appearance: textfield;
+    }
+
+    #error-overlay {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #991b1b;
+      color: white;
+      padding: 20px;
+      border-radius: 16px;
+      font-family: monospace;
+      font-size: 12px;
+      z-index: 1000000;
+      max-width: 400px;
+      display: none;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+      border: 2px solid white;
+    }
+  </style>
+  <script>
+    window.logError = function (msg, detail) {
+      console.error('[CRASH]', msg, detail);
+      try {
+        const stored = localStorage.getItem('solar_crash_logs');
+        const logs = JSON.parse(stored || '[]');
+        logs.push({ t: new Date().toISOString(), m: String(msg), d: String(detail) });
+        localStorage.setItem('solar_crash_logs', JSON.stringify(logs.slice(-10)));
+      } catch (e) { }
+
+      const overlay = document.getElementById('error-overlay');
+      if (overlay) {
+        overlay.style.display = 'block';
+        overlay.innerHTML = '<div style="font-weight:bold;margin-bottom:10px;font-size:14px;color:#fca5a5;">⚠️ ERRO CRÍTICO DETECTADO</div>' +
+          '<div style="background:rgba(0,0,0,0.3);padding:10px;border-radius:8px;margin-bottom:10px;font-family:monospace;overflow-wrap:break-word;">' + msg + '</div>' +
+          '<div style="font-size:10px;opacity:0.8;margin-bottom:15px;max-height:100px;overflow:auto;">' + (detail || 'Sem detalhes adicionais') + '</div>' +
+          '<button onclick="try{localStorage.clear();}catch(e){}window.location.reload(true);" style="background:white;color:#991b1b;border:none;padding:12px;border-radius:10px;font-weight:bold;cursor:pointer;width:100%;box-shadow:0 4px 6px rgba(0,0,0,0.2);">LIMPAR CACHE E RECARREGAR FORÇADO</button>' +
+          '<p style="font-size:9px;text-align:center;margin-top:10px;opacity:0.5;">Tente abrir o Console (F12) para mais detalhes.</p>';
       }
-    </style>
-  </head>
-  <body class="bg-[#F9F8F6] text-slate-800 antialiased selection:bg-solar-gold selection:text-white">
-    <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
-  </body>
+    };
+
+    window.onerror = function (msg, url, line, col, error) {
+      window.logError(msg, 'URL: ' + url + '\nLine: ' + line + ' Col: ' + col + '\n' + (error ? error.stack : ''));
+      return false;
+    };
+    window.onunhandledrejection = function (event) {
+      window.logError('Promise Rejected', event.reason);
+    };
+
+    // Watchdog: Se em 5 seg não houver nada no #root, avisa.
+    setTimeout(function () {
+      const root = document.getElementById('root');
+      if (root && root.innerHTML === "") {
+        console.warn('[Watchdog] App não montou em 5s. Mostrando overlay de emergência.');
+        window.logError("O aplicativo demorou muito para carregar ou falhou ao iniciar.", "Verifique sua conexão ou limpe o cache do navegador.");
+      }
+    }, 5000);
+  </script>
+</head>
+
+<body class="bg-[#F9F8F6] text-slate-800 antialiased selection:bg-solar-gold selection:text-white">
+  <div id="root"></div>
+  <div id="error-overlay"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
 </html>

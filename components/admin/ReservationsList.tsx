@@ -9,6 +9,7 @@ interface ReservationsListProps {
 }
 
 const getShortReservationId = (id: string): string => {
+    if (!id) return '---';
     return id.replace('RES-', '').replace(/-/g, '').substring(0, 8).toUpperCase();
 };
 
@@ -26,11 +27,13 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
 export const ReservationsList: React.FC<ReservationsListProps> = ({ reservations, onViewDetails }) => {
     const [searchTerm, setSearchTerm] = React.useState('');
 
-    const filteredReservations = reservations.filter(res =>
-        res.mainGuest.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        res.mainGuest.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        res.id.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredReservations = reservations.filter(res => {
+        const name = (res.mainGuest?.name || '').toLowerCase();
+        const email = (res.mainGuest?.email || '').toLowerCase();
+        const id = (res.id || '').toLowerCase();
+        const term = searchTerm.toLowerCase();
+        return name.includes(term) || email.includes(term) || id.includes(term);
+    });
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">

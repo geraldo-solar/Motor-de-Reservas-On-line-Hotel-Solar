@@ -40,7 +40,11 @@ export const INITIAL_CONFIG: HotelConfig = {
       subject: 'Pagamento Confirmado - Hotel Solar',
       body: 'Olá, {{nome_hospede}}!\n\nRecebemos o seu pagamento via PIX referente à reserva {{id_reserva}}.\n\nSua estadia está garantida!'
     }
-  ]
+  ],
+  whatsappNumber: '557399999999',
+  notificationEmail: 'reservas@hotelsolar.tur.br',
+  allowOnlineBooking: true,
+  minBookingLeadTimeHours: 24
 };
 
 export const INITIAL_EXTRAS: ExtraService[] = [

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, ListChecks, Check, Plus, Trash2, Camera } from 'lucide-react';
 import { Room } from '../../types';
 import { getPublicImageUrl } from '../../utils/imageUtils';
+import { generateUUID } from '../../utils/uuid';
 
 interface RoomEditorModalProps {
     isOpen: boolean;
@@ -44,7 +45,7 @@ const fileToBase64 = (file: File, maxWidth = 800, quality = 0.7): Promise<string
 
 export const RoomEditorModal: React.FC<RoomEditorModalProps> = ({ isOpen, onClose, room, onSave }) => {
     const emptyRoom: Room = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         name: '',
         description: '',
         price: 0,
@@ -64,7 +65,7 @@ export const RoomEditorModal: React.FC<RoomEditorModalProps> = ({ isOpen, onClos
 
     useEffect(() => {
         if (isOpen) {
-            const initialRoom = room || { ...emptyRoom, id: crypto.randomUUID() };
+            const initialRoom = room || { ...emptyRoom, id: generateUUID() };
             const existingUrls = initialRoom.imageUrls || [];
             const normalizedUrls = [
                 existingUrls[0] || '',

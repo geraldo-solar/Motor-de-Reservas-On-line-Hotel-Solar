@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { offlineQueue } from '../lib/offlineQueue';
 import { getPublicImageUrl } from '../utils/imageUtils';
 import { toLocalISO, parseISODate } from '../utils/dateUtils';
+import { safeArray, safeObject } from '../utils/dataSafety';
 
 // Chaves para localStorage (cache)
 const STORAGE_KEYS = {
@@ -81,61 +82,84 @@ export const useSupabaseData = () => {
 
   // Função para mapear dados do Supabase para o formato da aplicação
 
-  const mapRooms = (data: any[]): Room[] => data.map((r: any) => ({
-    id: r.id,
-    name: r.name,
+  const mapRooms = (data: any[]): Room[] => safeArray(data).map((r: any) => ({
+    id: String(r.id || ''),
+    name: r.name || 'Nova Acomodação',
     description: r.description || '',
     price: r.base_price || r.price || 0,
     capacity: r.capacity || 2,
-    imageUrls: (r.images || r.image_urls || r.imageUrls || []).map(getPublicImageUrl),
+    imageUrls: safeArray(r.images || r.image_urls || r.imageUrls).map(getPublicImageUrl),
     address: r.address || '',
-    features: r.amenities || r.features || [],
+    features: safeArray(r.amenities || r.features),
     totalQuantity: r.total_quantity || r.totalQuantity || 1,
     active: r.active !== false,
-    overrides: r.overrides || [],
+    overrides: safeArray(r.overrides || []),
   }));
 
-  const mapPackages = (data: any[]): HolidayPackage[] => data.map((p: any) => ({
-    id: p.id,
-    name: p.name,
+  const mapPackages = (data: any[]): HolidayPackage[] => safeArray(data).map((p: any) => ({
+    id: String(p.id || ''),
+    name: p.name || '',
     description: p.description || '',
     imageUrl: getPublicImageUrl(p.image_url || p.imageUrl || ''),
     location: p.location || '',
-    includes: p.includes || [],
-    benefits: p.benefits || p.includes || [],
+    includes: safeArray(p.includes || p.benefits || []),
+    benefits: safeArray(p.benefits || p.includes || []),
     active: p.active !== false,
     startIsoDate: p.start_iso_date || p.start_date || p.startIsoDate || '',
     endIsoDate: p.end_iso_date || p.end_date || p.endIsoDate || '',
-    roomPrices: p.room_prices || p.roomPrices || [],
-    noCheckoutDates: p.no_checkout_dates || p.noCheckoutDates || [],
-    noCheckInDates: p.no_checkin_dates || p.noCheckInDates || [],
+    roomPrices: safeArray(p.room_prices || p.roomPrices),
+    noCheckoutDates: safeArray(p.no_checkout_dates || p.noCheckoutDates),
+    noCheckInDates: safeArray(p.no_checkin_dates || p.noCheckInDates),
     fullPeriodDiscountPct: p.full_period_discount_pct || p.fullPeriodDiscountPct || 0,
     category: p.category || 'SPECIAL',
     isPromotional: p.is_promotional || p.isPromotional || false,
   }));
 
-  const mapReservations = (data: any[]): Reservation[] => data.map((r: any) => ({
-    id: r.id,
-    createdAt: new Date(r.created_at || r.createdAt),
-    checkIn: r.check_in || r.checkIn || '',
-    checkOut: r.check_out || r.checkOut || '',
-    nights: r.nights || 1,
-    mainGuest: r.main_guest || r.mainGuest || { name: '', cpf: '' },
-    additionalGuests: r.additional_guests || r.additionalGuests || [],
-    observations: r.observations || '',
-    rooms: r.rooms || [],
-    extras: r.extras || [],
-    totalPrice: r.total_price || r.totalPrice || 0,
-    discountApplied: r.discount_applied || r.discountApplied,
-    paymentMethod: r.payment_method || r.paymentMethod || 'PIX',
-    cardDetails: r.card_details || r.cardDetails,
-    status: r.status || 'PENDING',
-    cancellationReason: r.cancellation_reason || r.cancellationReason,
-    packageDiscountApplied: r.package_discount_applied || r.packageDiscountApplied,
-  }));
+  const mapReservations = (data: any[]): Reservation[] => safeArray(data).map((r: any) => {
+    try {
+      return {
+        id: String(r.id || ''),
+        createdAt: (r.created_at || r.createdAt) ? new Date(r.created_at || r.createdAt) : new Date(),
+        checkIn: String(r.check_in || r.checkIn || ''),
+        checkOut: String(r.check_out || r.checkOut || ''),
+        nights: Number(r.nights || 1),
+        mainGuest: safeObject(r.main_guest || r.mainGuest, { name: 'Hóspede', email: '', phone: '', cpf: '' }),
+        additionalGuests: safeArray(r.additional_guests || r.additionalGuests),
+        observations: String(r.observations || ''),
+        rooms: safeArray(r.rooms || r.reservation_rooms).map((rm: any) => ({
+          id: String(rm.id || rm.room_id || ''),
+          name: String(rm.name || 'Acomodação'),
+          priceSnapshot: Number(rm.priceSnapshot || rm.price_snapshot || 0)
+        })),
+        extras: safeArray(r.extras || r.reservation_extras).map((ex: any) => ({
+          id: String(ex.id || ex.extra_id || ''),
+          name: String(ex.name || 'Serviço'),
+          priceSnapshot: Number(ex.priceSnapshot || ex.price_snapshot || 0),
+          quantity: Number(ex.quantity || 1)
+        })),
+        totalPrice: Number(r.total_price || r.totalPrice || 0),
+        discountApplied: (r.discount_applied || r.discountApplied) ? {
+          code: String((r.discount_applied || r.discountApplied).code || ''),
+          amount: Number((r.discount_applied || r.discountApplied).amount || 0)
+        } : undefined,
+        paymentMethod: (r.payment_method || r.paymentMethod || 'PIX') as 'PIX' | 'CREDIT_CARD',
+        cardDetails: r.card_details || r.cardDetails ? safeObject(r.card_details || r.cardDetails, undefined) : undefined,
+        status: (r.status || 'PENDING') as any,
+        cancellationReason: r.cancellation_reason || r.cancellationReason || '',
+        packageDiscountApplied: (r.package_discount_applied || r.packageDiscountApplied) ? {
+          percentage: Number((r.package_discount_applied || r.packageDiscountApplied).percentage || 0),
+          amount: Number((r.package_discount_applied || r.packageDiscountApplied).amount || 0)
+        } : undefined,
+      };
+    } catch (e) {
+      console.error('[Mapper] Erro ao mapear reserva individual:', e, r);
+      // Retorna uma reserva mínima para não quebrar o loop
+      return { id: 'ERR', mainGuest: { name: 'Erro Dados', email: '', phone: '', cpf: '' }, status: 'PENDING', totalPrice: 0, rooms: [], extras: [], checkIn: '', checkOut: '', nights: 1, createdAt: new Date() } as any;
+    }
+  });
 
-  const mapExtras = (data: any[]): ExtraService[] => data.map((e: any) => ({
-    id: e.id,
+  const mapExtras = (data: any[]): ExtraService[] => safeArray(data).map((e: any) => ({
+    id: String(e.id || ''),
     name: e.name,
     description: e.description || '',
     price: e.price || 0,
@@ -143,8 +167,8 @@ export const useSupabaseData = () => {
     active: e.active !== false,
   }));
 
-  const mapDiscounts = (data: any[]): DiscountCode[] => data.map((d: any) => ({
-    code: d.code,
+  const mapDiscounts = (data: any[]): DiscountCode[] => safeArray(data).map((d: any) => ({
+    code: String(d.code || ''),
     percentage: d.percentage || 0,
     active: d.active !== false,
     startDate: d.start_date || d.startDate || '',
@@ -161,60 +185,62 @@ export const useSupabaseData = () => {
     try {
       console.log('[Supabase] Iniciando sincronização...');
 
-      // Adicionar um timeout menor para a consulta inicial para não travar o site
-      const fetchPromise = Promise.all([
-        supabase.from('room_types').select('*').order('name'),
-        supabase.from('packages').select('*'),
-        supabase.from('reservations').select('*').order('created_at', { ascending: false }).limit(200),
-        supabase.from('extras').select('*'),
-        supabase.from('discount_codes').select('*'),
-      ]);
+      const startTime = Date.now();
 
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('FETCH_TIMEOUT')), 8000)
-      );
+      // Funções de busca individuais para melhor controle de erro
+      const fetchRooms = () => supabase.from('room_types').select('*').order('name');
+      const fetchPackages = () => supabase.from('packages').select('*');
+      const fetchReservations = () => supabase.from('reservations').select('*').order('created_at', { ascending: false }).limit(300);
+      const fetchExtras = () => supabase.from('extras').select('*');
+      const fetchDiscounts = () => supabase.from('discount_codes').select('*');
 
-      const [rRes, pRes, resRes, eRes, dRes] = await Promise.race([
-        fetchPromise,
-        timeoutPromise
-      ]) as any;
+      // Executamos em paralelo mas tratamos individualmente se necessário
+      // Usamos um timeout global maior (15s)
+      const results = await Promise.race([
+        Promise.all([fetchRooms(), fetchPackages(), fetchReservations(), fetchExtras(), fetchDiscounts()]),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('FETCH_TIMEOUT')), 15000))
+      ]) as any[];
 
-      // Verificamos erros individuais. Se for erro de quota (429 ou similar), usamos o cache.
-      const hasQuotaError = [rRes, pRes, resRes, eRes, dRes].some(res =>
-        res.error && (res.error.status === 429 || res.error.status === 403 || res.error.message?.includes('quota'))
-      );
+      const [rRes, pRes, resRes, eRes, dRes] = results;
+      const duration = Date.now() - startTime;
+      console.log(`[Supabase] Busca concluída em ${duration}ms`);
 
-      if (hasQuotaError) {
-        console.warn('[Supabase] Limite de cota atingido (Egress). Usando dados do cache local.');
+      // Verificamos erros individuais de quota
+      const quotaError = results.find(r => r.error && (r.error.status === 429 || r.error.status === 403));
+      if (quotaError) {
+        console.warn('[Supabase] Limite de cota atingido (Egress). Usando cache.', quotaError.error);
         return false;
       }
 
-      // Se chegamos aqui, processamos os dados normalmente...
-      if (rRes.data && rRes.data.length > 0) {
+      // Processar cada resultado se não houver erro crítico
+      if (!rRes.error && rRes.data) {
         const mapped = mapRooms(rRes.data);
         setRoomsState(mapped);
         saveToStorage(STORAGE_KEYS.rooms, mapped);
       }
 
-      if (pRes.data && pRes.data.length > 0) {
+      if (!pRes.error && pRes.data) {
         const mapped = mapPackages(pRes.data);
         setPackagesState(mapped);
         saveToStorage(STORAGE_KEYS.packages, mapped);
       }
 
-      if (resRes.data) {
+      if (!resRes.error && resRes.data) {
         const mapped = mapReservations(resRes.data);
+        console.log(`[Supabase] ${mapped.length} reservas carregadas.`);
         setReservationsState(mapped);
         saveToStorage(STORAGE_KEYS.reservations, mapped);
+      } else if (resRes.error) {
+        console.error('[Supabase] Erro ao carregar reservas:', resRes.error);
       }
 
-      if (eRes.data && eRes.data.length > 0) {
+      if (!eRes.error && eRes.data) {
         const mapped = mapExtras(eRes.data);
         setExtrasState(mapped);
         saveToStorage(STORAGE_KEYS.extras, mapped);
       }
 
-      if (dRes.data && dRes.data.length > 0) {
+      if (!dRes.error && dRes.data) {
         const mapped = mapDiscounts(dRes.data);
         setDiscountsState(mapped);
         saveToStorage(STORAGE_KEYS.discounts, mapped);
@@ -224,15 +250,15 @@ export const useSupabaseData = () => {
       return true;
     } catch (err: any) {
       if (err.message === 'FETCH_TIMEOUT') {
-        console.warn('[Supabase] Tempo de sincronização esgotado (provável limite de Egress). Mantendo dados locais.');
+        console.warn('[Supabase] Tempo esgotado (15s). Mantendo dados locais para fluidez.');
       } else {
-        console.error('[Supabase] Erro ao carregar dados:', err);
+        console.error('[Supabase] Falha na sincronização:', err);
       }
       return false;
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [packages.length, extras.length]);
+  }, []);
 
   // Inicialização
   useEffect(() => {
@@ -553,7 +579,49 @@ export const useSupabaseData = () => {
 
       console.log('[Supabase] Reserva salva com sucesso no banco');
 
-      // ... rest of inventory logic (keeping it as is for now as it's secondary) ...
+      // --- SINCRONIZAÇÃO DE INVENTÁRIO (DECREMENTO) ---
+      // Caso a reserva venha do site, decrementamos o estoque imediatamente
+      const syncInventory = async (res: Reservation) => {
+        try {
+          for (const roomSnapshot of res.rooms) {
+            const { data: roomData } = await supabase.from('room_types').select('*').eq('id', roomSnapshot.id).single();
+            if (roomData) {
+              const currentRoom = mapRooms([roomData])[0];
+              const checkInDate = parseISODate(res.checkIn);
+              const checkOutDate = parseISODate(res.checkOut);
+              const updatedOverrides = [...(currentRoom.overrides || [])];
+
+              let current = new Date(checkInDate);
+              while (current < checkOutDate) {
+                const iso = toLocalISO(current);
+                const ovIndex = updatedOverrides.findIndex(o => o.dateIso === iso);
+
+                if (ovIndex >= 0) {
+                  const currentQty = updatedOverrides[ovIndex].availableQuantity ?? currentRoom.totalQuantity;
+                  updatedOverrides[ovIndex] = {
+                    ...updatedOverrides[ovIndex],
+                    availableQuantity: Math.max(0, currentQty - 1)
+                  };
+                } else {
+                  updatedOverrides.push({
+                    dateIso: iso,
+                    price: currentRoom.price,
+                    availableQuantity: Math.max(0, currentRoom.totalQuantity - 1),
+                    isClosed: false
+                  });
+                }
+                current.setDate(current.getDate() + 1);
+              }
+              await supabase.from('room_types').update({ overrides: updatedOverrides }).eq('id', roomSnapshot.id);
+            }
+          }
+        } catch (err) {
+          console.error('[Inventory] Erro ao decrementar estoque:', err);
+        }
+      };
+
+      await syncInventory(reservation);
+      // --- FIM DA SINCRONIZAÇÃO ---
       setReservationsState(prev => [reservation, ...prev].slice(0, 500));
       saveToStorage(STORAGE_KEYS.reservations, [reservation, ...reservations].slice(0, 500));
       return { success: true };
@@ -594,35 +662,53 @@ export const useSupabaseData = () => {
         }
       }
 
-      // --- ATUALIZAÇÃO DE INVENTÁRIO (REPOSIÇÃO EM CASO DE CANCELAMENTO) ---
-      if (status === 'CANCELED') {
-        const resToUpdate = reservations.find(r => r.id === id);
-        if (resToUpdate) {
-          console.log('[Supabase] Reserva cancelada detectada. Restaurando inventário...');
-          for (const roomSnapshot of resToUpdate.rooms) {
+      // --- SINCRONIZAÇÃO DE INVENTÁRIO ---
+      const syncInventory = async (res: Reservation, operation: 'increase' | 'decrease') => {
+        try {
+          for (const roomSnapshot of res.rooms) {
             const { data: roomData } = await supabase.from('room_types').select('*').eq('id', roomSnapshot.id).single();
             if (roomData) {
               const currentRoom = mapRooms([roomData])[0];
-              const checkInDate = parseISODate(resToUpdate.checkIn);
-              const checkOutDate = parseISODate(resToUpdate.checkOut);
+              const checkInDate = parseISODate(res.checkIn);
+              const checkOutDate = parseISODate(res.checkOut);
               const updatedOverrides = [...(currentRoom.overrides || [])];
 
               let current = new Date(checkInDate);
               while (current < checkOutDate) {
                 const iso = toLocalISO(current);
                 const ovIndex = updatedOverrides.findIndex(o => o.dateIso === iso);
+
                 if (ovIndex >= 0) {
                   const currentQty = updatedOverrides[ovIndex].availableQuantity ?? currentRoom.totalQuantity;
                   updatedOverrides[ovIndex] = {
                     ...updatedOverrides[ovIndex],
-                    availableQuantity: Math.min(currentRoom.totalQuantity, currentQty + 1)
+                    availableQuantity: operation === 'increase'
+                      ? Math.min(currentRoom.totalQuantity, currentQty + 1)
+                      : Math.max(0, currentQty - 1)
                   };
+                } else if (operation === 'decrease') {
+                  updatedOverrides.push({
+                    dateIso: iso,
+                    price: currentRoom.price, // Use base price if no override exists
+                    availableQuantity: Math.max(0, currentRoom.totalQuantity - 1),
+                    isClosed: false
+                  });
                 }
                 current.setDate(current.getDate() + 1);
               }
               await supabase.from('room_types').update({ overrides: updatedOverrides }).eq('id', roomSnapshot.id);
             }
           }
+        } catch (err) {
+          console.error('[Inventory] Erro na sincronização:', err);
+        }
+      };
+
+      if (status === 'CANCELED') {
+        const resToUpdate = reservations.find(r => r.id === id);
+        if (resToUpdate) {
+          console.log('[Supabase] Reserva cancelada detectada. Restaurando inventário...');
+          await syncInventory(resToUpdate, 'increase');
           loadFromSupabase(true);
         }
       }

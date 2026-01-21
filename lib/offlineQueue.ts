@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { generateUUID } from '../utils/uuid';
 
 export interface PendingAction {
     id: string;
@@ -25,26 +26,30 @@ class OfflineQueue {
 
     private loadQueue() {
         if (typeof window === 'undefined') return;
-        const stored = localStorage.getItem(QUEUE_STORAGE_KEY);
-        if (stored) {
-            try {
+        try {
+            const stored = localStorage.getItem(QUEUE_STORAGE_KEY);
+            if (stored) {
                 this.queue = JSON.parse(stored);
-            } catch (e) {
-                console.error('Erro ao carregar fila offline:', e);
-                this.queue = [];
             }
+        } catch (e) {
+            console.error('Erro ao carregar fila offline:', e);
+            this.queue = [];
         }
     }
 
     private saveQueue() {
         if (typeof window === 'undefined') return;
-        localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(this.queue));
+        try {
+            localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(this.queue));
+        } catch (e) {
+            console.error('Erro ao salvar fila offline:', e);
+        }
     }
 
     async enqueue(action: Omit<PendingAction, 'id' | 'timestamp' | 'retries'>) {
         const pendingAction: PendingAction = {
             ...action,
-            id: crypto.randomUUID(),
+            id: generateUUID(),
             timestamp: Date.now(),
             retries: 0
         };

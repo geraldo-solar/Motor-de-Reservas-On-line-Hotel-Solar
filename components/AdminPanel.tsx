@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   LogOut, Grid, BedDouble, Ticket, ShoppingBag,
-  Tag, Settings, Loader2, MessageSquare, Menu, X
+  Tag, Settings, Loader2, MessageSquare, Menu, X, RefreshCw
 } from 'lucide-react';
 import { Room, HolidayPackage, DiscountCode, ExtraService, Reservation, HotelConfig, RoomDateOverride, ReservationStatus } from '../types';
 import { toLocalISO } from '../utils/dateUtils';
@@ -48,6 +48,7 @@ interface AdminPanelProps {
   onUpsertDiscount: (discount: DiscountCode) => Promise<boolean>;
   onDeleteDiscount: (code: string) => Promise<boolean>;
   isSaving: boolean;
+  onRefreshData: () => Promise<boolean>;
   onLogout: () => void;
 }
 
@@ -59,8 +60,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
   const {
     rooms, packages, discounts, extras, config, reservations,
     onUpdateRooms, onUpdatePackages, onUpdateDiscounts, onUpdateExtras, onUpdateConfig,
-    onUpdateReservationStatus, onUpsertRoom, onUpsertRooms, onDeleteRoom, onUpsertPackage, onDeletePackage,
-    onUpsertExtra, onDeleteExtra, onUpsertDiscount, onDeleteDiscount, isSaving, onLogout
+    onUpdateReservationStatus, onUpsertRoom, onUpsertRooms, onDeleteRoom,
+    onUpsertPackage, onDeletePackage, onUpsertExtra, onDeleteExtra,
+    onUpsertDiscount, onDeleteDiscount, isSaving, onLogout, onRefreshData
   } = props;
 
   const [activeTab, setActiveTab] = useState<AdminTab>('RESERVATIONS');
@@ -159,6 +161,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
                 <h1 className="font-serif font-bold text-base tracking-wider text-solar-gold leading-none">Painel Solar</h1>
                 <p className="text-[8px] font-black uppercase tracking-[0.2em] opacity-40 mt-1">Management</p>
               </div>
+              <div className="flex items-center gap-1 ml-4 bg-white/5 p-1 rounded-xl border border-white/10">
+                <button
+                  onClick={() => onRefreshData()}
+                  title="Sincronizar Dados do Banco"
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors text-solar-gold"
+                >
+                  <RefreshCw size={14} className={isSaving ? 'animate-spin' : ''} />
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm('Isso irá limpar todos os dados salvos no navegador e recarregar a página. Continuar?')) {
+                      localStorage.clear();
+                      window.location.reload();
+                    }
+                  }}
+                  title="Limpar Cache e Recarregar"
+                  className="p-2 hover:bg-red-500/20 rounded-lg transition-colors text-white/40 hover:text-red-400"
+                >
+                  <X size={14} />
+                </button>
+              </div>
             </div>
 
             {/* Nav Items (Desktop/Tablet) */}
@@ -172,7 +195,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
                     : 'text-white/60 hover:text-white hover:bg-white/5'
                     }`}
                 >
-                  {React.cloneElement(item.icon as React.ReactElement, { size: 14 })}
+                  {item.icon}
                   {item.label}
                 </button>
               ))}

@@ -12,6 +12,7 @@ interface ReservationDetailModalProps {
 }
 
 const getShortReservationId = (id: string): string => {
+    if (!id) return '---';
     return id.replace('RES-', '').replace(/-/g, '').substring(0, 8).toUpperCase();
 };
 

@@ -2,10 +2,9 @@
  * Converte um objeto Date para uma string YYYY-MM-DD no fuso horário local.
  */
 export const toLocalISO = (date: Date): string => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    if (!date || isNaN(date.getTime())) return '';
+    const tzoffset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - tzoffset).toISOString().split('T')[0];
 };
 
 /**
@@ -19,13 +18,15 @@ export const parseISODate = (isoDate: string): Date => {
 /**
  * Formata uma data ISO para o padrão brasileiro DD/MM/YYYY.
  */
-export const formatDisplayDate = (isoDate: string): string => {
+export const formatDisplayDate = (isoDate: string | Date): string => {
     if (!isoDate) return '---';
-    // Se for um timestamp completo (com T), trata diferente do YYYY-MM-DD puro
-    if (isoDate.includes('T')) {
-        return new Date(isoDate).toLocaleDateString('pt-BR');
+    const dateStr = typeof isoDate === 'object' ? isoDate.toISOString() : isoDate;
+
+    // Se for um timestamp completo (com T) ou um objeto Date, usa toLocaleDateString direto
+    if (dateStr.includes('T')) {
+        return new Date(dateStr).toLocaleDateString('pt-BR');
     }
-    return parseISODate(isoDate).toLocaleDateString('pt-BR');
+    return parseISODate(dateStr).toLocaleDateString('pt-BR');
 };
 
 /**
