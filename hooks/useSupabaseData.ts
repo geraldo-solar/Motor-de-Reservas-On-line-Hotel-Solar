@@ -617,11 +617,17 @@ export const useSupabaseData = () => {
           }
         } catch (err) {
           console.error('[Inventory] Erro ao decrementar estoque:', err);
+          // Tenta recarregar os dados mesmo se falhar para tentar manter sincronia
+          loadFromSupabase(true);
         }
       };
 
       await syncInventory(reservation);
       // --- FIM DA SINCRONIZAÇÃO ---
+
+      // Importante: Recarregar dados para atualizar estoque local e map de disponibilidade
+      await loadFromSupabase(true);
+
       setReservationsState(prev => [reservation, ...prev].slice(0, 500));
       saveToStorage(STORAGE_KEYS.reservations, [reservation, ...reservations].slice(0, 500));
       return { success: true };
@@ -709,9 +715,11 @@ export const useSupabaseData = () => {
         if (resToUpdate) {
           console.log('[Supabase] Reserva cancelada detectada. Restaurando inventário...');
           await syncInventory(resToUpdate, 'increase');
-          loadFromSupabase(true);
         }
       }
+
+      // Forçar recarregamento dos dados de acomodações/estoque
+      await loadFromSupabase(true);
       // --- FIM DA ATUALIZAÇÃO DE INVENTÁRIO ---
 
       setReservationsState(prev => {
