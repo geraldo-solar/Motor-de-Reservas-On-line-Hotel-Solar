@@ -6,8 +6,8 @@ export const getPublicImageUrl = (url: string): string => {
 
     const trimmedUrl = url.trim();
 
-    // Se já for uma imagem base64, retorna como está
-    if (trimmedUrl.startsWith('data:image')) return trimmedUrl;
+    // Se já for uma imagem base64 ou caminho local, retorna como está
+    if (trimmedUrl.startsWith('data:image') || trimmedUrl.startsWith('/')) return trimmedUrl;
 
     // Se for Google Drive (drive.google, docs.google, drive.usercontent)
     if (trimmedUrl.includes('google.com')) {
