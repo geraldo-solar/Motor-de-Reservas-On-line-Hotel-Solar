@@ -27,9 +27,9 @@ export const getPublicImageUrl = (url: string): string => {
                 if (secondaryMatch) fileId = secondaryMatch[1];
             }
 
-            // O formato /d/ID é o mais estável para evitar bloqueios de Referer e CORS do Drive antigo
-            // Ele aponta para o servidor de arquivos estáticos do Google.
-            return `https://lh3.googleusercontent.com/d/${fileId}`;
+            // O formato thumbnail é mais robusto e menos propenso a bloqueios de hotlinking/CORS do que o lh3 direto.
+            // sz=w2000 garante uma boa resolu  o (até 2000px de largura).
+            return `https://drive.google.com/thumbnail?id=${fileId}&sz=w2000`;
         }
     }
 

@@ -15,7 +15,7 @@ const HOTEL_CONFIG = {
   address: 'Belém, PA',
   logoUrl: 'https://motor-de-reservas-on-line-hotel-sol.vercel.app/logo-gold.png',
   regulamentoUrl: 'https://motor-de-reservas-on-line-hotel-sol.vercel.app/?view=regulamento',
-  erpUrl: 'https://solar-hotel-erp.vercel.app', // URL do ERP para o pré-check-in
+  erpUrl: 'https://hotel-solar-erp.vercel.app', // URL do ERP para o pré-check-in
   // Dados PIX
   pix: {
     chave: '(91) 98100-0800',
@@ -506,7 +506,34 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
       console.log('[Email] E-mail enviado para hotel:', HOTEL_CONFIG.adminEmail);
     }
 
-    // 3. Sincronizar com Brevo (Marketing)
+    // 3. SE RESERVA < 26H PARA CHECKIN, ENVIAR PRÉ-CHECKIN (IGUAL AO ERP)
+    try {
+      const checkInDay = reservation.checkIn.split('T')[0];
+      const checkInDate = new Date(`${checkInDay}T14:00:00`);
+      const now = new Date();
+      const diffInHours = (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+      console.log(`[Email] DEBUG PRÉ-CHECKIN:`, {
+        resId: shortId,
+        checkIn: reservation.checkIn,
+        checkInDate: checkInDate.toISOString(),
+        now: now.toISOString(),
+        diffInHours: diffInHours.toFixed(1)
+      });
+
+      // Se o check-in for HOJE ou AMANHÃ (até 26h antes), envia o pré-check-in.
+      // Aumentamos o limite inferior para -24h para garantir que quem reservou hoje à noite receba.
+      if (diffInHours > -24 && diffInHours < 26) {
+        console.log(`[Email] Condição atendida (${diffInHours.toFixed(1)}h). Enviando e-mail de pré-check-in...`);
+        await sendPreCheckInEmail(reservation);
+      } else {
+        console.log(`[Email] Ignorado: fora da janela de 26h (dif: ${Math.round(diffInHours)}h)`);
+      }
+    } catch (e) {
+      console.error('[Email] Erro ao calcular tempo para pré-checkin:', e);
+    }
+
+    // 4. Sincronizar com Brevo (Marketing)
     try {
       await syncContactToBrevo(
         {
@@ -805,6 +832,102 @@ const generateReservationCanceledEmailHTML = (reservation: Reservation, customRe
 </html>
   `;
 };
+
+// Template de e-mail para pré-check-in (Copiado do ERP conforme pedido)
+const generatePreCheckInEmailHTML = (reservation: Reservation): string => {
+  const shortId = getShortReservationId(reservation.id);
+  const preCheckInUrl = `${HOTEL_CONFIG.erpUrl}/pre-checkin/${reservation.id}`;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+  <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+    <div style="background: linear-gradient(135deg, #d4a853 0%, #b88a3e 100%); padding: 40px 20px; text-align: center;">
+      <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
+      <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: normal;">📋 Agilize seu Check-in!</h1>
+      <p style="color: #1a3c34; margin: 10px 0 0 0; font-size: 16px;">Sua chegada está próxima no Hotel Solar.</p>
+    </div>
+    <div style="background-color: #ffffff; padding: 32px 24px;">
+      <p style="color: #1e293b; font-size: 16px; margin: 0 0 24px 0;">Olá <strong>${reservation.mainGuest.name}</strong>,</p>
+      <p style="color: #475569; font-size: 14px; margin: 0 0 24px 0; line-height: 1.6;">Para garantir uma entrada mais rápida e tranquila no hotel, convidamos você a realizar o seu <strong>Pré-Check-in Digital</strong>. Leva menos de 2 minutos!</p>
+      
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="${preCheckInUrl}" style="background-color: #1a3c34; color: #d4a853; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">FAZER PRÉ-CHECK-IN AGORA</a>
+      </div>
+
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+        <h3 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">📅 Sua Reserva: #${shortId}</h3>
+        <p style="color: #475569; margin: 0; font-size: 13px;">Previsão de Check-in: <strong>${formatDate(reservation.checkIn)}</strong></p>
+      </div>
+
+      <div style="background: rgba(212, 168, 83, 0.1); border-left: 4px solid #d4a853; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+        <h4 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">💡 Por que fazer o pré-check-in?</h4>
+        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.6; font-size: 13px;">
+          <li>Menos tempo preenchendo fichas no balcão</li>
+          <li>Garante que todos os seus dados estejam corretos</li>
+          <li>Cumprimento da legislação FNRH eletronicamente</li>
+        </ul>
+      </div>
+
+      <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e2e8f0;">
+        <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">Nos vemos em breve!</p>
+        <p style="color: #64748b; margin: 0; font-size: 12px;">${HOTEL_CONFIG.name} - ${HOTEL_CONFIG.address}</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+};
+
+// Função para enviar e e-mail de pré-check-in
+export const sendPreCheckInEmail = async (reservation: Reservation): Promise<{ success: boolean; error?: string }> => {
+  const shortId = getShortReservationId(reservation.id);
+
+  if (!BREVO_API_KEY) {
+    console.warn('[Email] API Key do Brevo não configurada. E-mail de pré-check-in não será enviado.');
+    return { success: false, error: 'API Key do Brevo não configurada' };
+  }
+
+  try {
+    const response = await fetch(BREVO_API_URL, {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': BREVO_API_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: {
+          name: HOTEL_CONFIG.name,
+          email: HOTEL_CONFIG.email,
+        },
+        to: [
+          {
+            email: reservation.mainGuest.email,
+            name: reservation.mainGuest.name,
+          },
+        ],
+        subject: `📋 Pré-Check-in Digital - Reserva #${shortId} - Hotel Solar`,
+        htmlContent: generatePreCheckInEmailHTML(reservation),
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('[Email] Erro ao enviar e-mail de pré-check-in:', errorData);
+      return { success: false, error: `Erro ao enviar e-mail: ${errorData.message || 'Erro desconhecido'}` };
+    }
+
+    console.log('[Email] E-mail de pré-check-in enviado para:', reservation.mainGuest.email);
+    return { success: true };
+  } catch (error) {
+    console.error('[Email] Erro ao enviar e-mail de pré-check-in:', error);
+    return { success: false, error: `Erro ao enviar e-mail: ${error}` };
+  }
+};
+
 
 // Função para enviar e-mail de confirmação de pagamento
 export const sendPaymentConfirmedEmail = async (reservation: Reservation): Promise<{ success: boolean; error?: string }> => {

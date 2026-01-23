@@ -96,6 +96,13 @@ const BookingForm: React.FC<BookingFormProps> = ({
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
+  // ID persistente para evitar duplicidade em caso de retentativa/instabilidade de rede
+  const [persistentId] = useState(() => {
+    return (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+      ? crypto.randomUUID()
+      : 'RES-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+  });
+
   const formTopRef = useRef<HTMLDivElement>(null);
 
   const nights = initialCheckIn && initialCheckOut
@@ -158,9 +165,13 @@ const BookingForm: React.FC<BookingFormProps> = ({
     setAppliedDiscount({ code: discount.code, amount: discountAmount });
   };
 
+  const isSubmittingRef = useRef(false);
+
   const handleFinalSubmit = async () => {
+    if (isSubmittingRef.current) return;
     try {
       if (!agreedToPolicies) return;
+      isSubmittingRef.current = true;
 
       const newErrors: { [key: string]: string } = {};
       if (!name.trim()) newErrors.name = 'O nome completo é obrigatório';
@@ -187,18 +198,15 @@ const BookingForm: React.FC<BookingFormProps> = ({
 
       if (Object.keys(newErrors).length > 0) {
         setErrors(newErrors);
+        isSubmittingRef.current = false;
         if (formTopRef.current) {
           formTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
         return;
       }
 
-      const reservationId = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
-        ? crypto.randomUUID()
-        : 'RES-' + Math.random().toString(36).substring(2, 9).toUpperCase();
-
       const reservation: Reservation = {
-        id: reservationId,
+        id: persistentId,
         createdAt: new Date(),
         checkIn: initialCheckIn ? toLocalISO(initialCheckIn) : '',
         checkOut: initialCheckOut ? toLocalISO(initialCheckOut) : '',
@@ -225,9 +233,11 @@ const BookingForm: React.FC<BookingFormProps> = ({
         status: 'PENDING'
       };
 
-      await onAddReservation(reservation);
+      const success = await onAddReservation(reservation);
+      if (!success) isSubmittingRef.current = false;
     } catch (err: any) {
       console.error('Erro na submissão da reserva:', err);
+      isSubmittingRef.current = false;
     }
   };
 

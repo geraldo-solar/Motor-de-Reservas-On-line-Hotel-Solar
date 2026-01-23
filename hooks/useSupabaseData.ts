@@ -277,6 +277,35 @@ export const useSupabaseData = () => {
     init();
   }, [loadFromSupabase]);
 
+  // Realtime subscription para manter o Painel Admin sincronizado com o ERP e outras mudanças
+  useEffect(() => {
+    const channel = supabase
+      .channel('db-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reservations' },
+        (payload) => {
+          console.log('[Realtime] Reserva atualizada/alterada. Sincronizando...', payload);
+          loadFromSupabase(true);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'room_types' },
+        (payload) => {
+          console.log('[Realtime] Acomodações/Estoque alterados. Sincronizando...', payload);
+          loadFromSupabase(true);
+        }
+      )
+      .subscribe((status) => {
+        setIsConnected(status === 'SUBSCRIBED');
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadFromSupabase]);
+
   // --- FUNÇÕES DE SALVAMENTO ---
 
   const upsertRoom = async (room: Room) => {
@@ -579,6 +608,17 @@ export const useSupabaseData = () => {
 
       console.log('[Supabase] Reserva salva com sucesso no banco');
 
+      // Notifica o ERP em tempo real via Broadcast (mais rápido que a replicação do Postgres)
+      supabase.channel('erp-sync').subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          supabase.channel('erp-sync').send({
+            type: 'broadcast',
+            event: 'new-online-res',
+            payload: { name: reservation.mainGuest.name, id: reservation.id }
+          });
+        }
+      });
+
       // --- SINCRONIZAÇÃO DE INVENTÁRIO (DECREMENTO) ---
       // Caso a reserva venha do site, decrementamos o estoque imediatamente
       const syncInventory = async (res: Reservation) => {
@@ -625,15 +665,65 @@ export const useSupabaseData = () => {
       await syncInventory(reservation);
       // --- FIM DA SINCRONIZAÇÃO ---
 
-      // Importante: Recarregar dados para atualizar estoque local e map de disponibilidade
+      // Recarregar dados para atualizar estoque local e map de disponibilidade
       await loadFromSupabase(true);
 
-      setReservationsState(prev => [reservation, ...prev].slice(0, 500));
-      saveToStorage(STORAGE_KEYS.reservations, [reservation, ...reservations].slice(0, 500));
+      // Adiciona apenas se ainda não estiver na lista (evita duplicação por fetch rápido)
+      setReservationsState(prev => {
+        if (prev.some(r => r.id === reservation.id)) return prev;
+        const updated = [reservation, ...prev].slice(0, 500);
+        saveToStorage(STORAGE_KEYS.reservations, updated);
+        return updated;
+      });
       return { success: true };
 
     } catch (err: any) {
       console.error('[Supabase] Erro de rede ou conexão:', err);
+
+      // Se for erro de rede/conexão no catch (ex: TypeError: Failed to fetch), 
+      // tentamos enfileirar offline para não perder a reserva e permitir que o usuário continue.
+      const isNetworkError = err.name === 'TypeError' || err.message?.includes('failed to fetch') || err.message?.includes('NetworkError');
+
+      if (isNetworkError) {
+        console.warn('[Offline] Erro detectado no catch. Enfileirando reserva de segurança...');
+
+        // Dados para salvar (repetindo a estrutura se necessário ou criando uma variável acima)
+        // Como o reservationId agora é persistente no BookingForm, isso evita duplicatas mesmo se o 
+        // primeiro request "quase" deu certo.
+        const dataToSave = {
+          id: reservation.id,
+          created_at: reservation.createdAt instanceof Date ? reservation.createdAt.toISOString() : reservation.createdAt,
+          check_in: reservation.checkIn,
+          check_out: reservation.checkOut,
+          nights: reservation.nights,
+          main_guest: reservation.mainGuest,
+          additional_guests: reservation.additionalGuests,
+          observations: reservation.observations || '',
+          rooms: reservation.rooms,
+          extras: reservation.extras,
+          total_price: reservation.totalPrice,
+          discount_applied: reservation.discountApplied || null,
+          payment_method: reservation.paymentMethod,
+          status: reservation.status
+        };
+
+        await offlineQueue.enqueue({
+          table: 'reservations',
+          action: 'INSERT',
+          data: dataToSave
+        });
+
+        // Adiciona ao estado local apenas se ainda não existir (prevenção contra duplicidade na UI)
+        setReservationsState(prev => {
+          if (prev.some(r => r.id === reservation.id)) return prev;
+          const updated = [reservation, ...prev].slice(0, 500);
+          saveToStorage(STORAGE_KEYS.reservations, updated);
+          return updated;
+        });
+
+        return { success: true }; // Retornamos sucesso otimista
+      }
+
       return {
         success: false,
         error: err.name === 'TypeError' ? 'Erro de conexão com o servidor. Verifique sua internet ou se há algum bloqueador ativado.' : err.message

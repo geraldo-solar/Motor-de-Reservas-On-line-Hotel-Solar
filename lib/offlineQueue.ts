@@ -130,6 +130,16 @@ class OfflineQueue {
                     this.saveQueue();
                 } else {
                     console.error(`[OfflineQueue] Erro ao processar ${action.id}:`, error);
+
+                    // Se for erro de chave duplicada (23505), significa que os dados já chegaram no servidor
+                    // em uma tentativa anterior que o cliente achou que falhou. Removemos da fila.
+                    if (error.code === '23505' || error.message?.includes('duplicate key')) {
+                        console.log('[OfflineQueue] Chave duplicada detectada. Removendo da fila pois os dados já existem no banco.');
+                        this.queue = this.queue.filter(a => a.id !== action.id);
+                        this.saveQueue();
+                        continue;
+                    }
+
                     if (error.message?.includes('failed to fetch') || error.message?.includes('NetworkError')) {
                         break;
                     }

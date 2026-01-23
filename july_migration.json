@@ -8,7 +8,11 @@
     "end_iso_date": "2026-07-05",
     "active": true,
     "is_promotional": false,
-    "includes": ["Festa de Aniversário", "Música ao Vivo", "Coquetel de Boas-vindas"]
+    "includes": [
+      "Festa de Aniversário",
+      "Música ao Vivo",
+      "Coquetel de Boas-vindas"
+    ]
   },
   {
     "id": "jul-family",
@@ -19,7 +23,12 @@
     "end_iso_date": "2026-07-30",
     "active": true,
     "is_promotional": true,
-    "includes": ["Jantar Cortesia Incluso", "Buffet de Sopas & Massas", "Menor Tarifa do Mês", "Recreação para Crianças"]
+    "includes": [
+      "Jantar Cortesia Incluso",
+      "Buffet de Sopas & Massas",
+      "Menor Tarifa do Mês",
+      "Recreação para Crianças"
+    ]
   },
   {
     "id": "jul-2",
@@ -30,7 +39,11 @@
     "end_iso_date": "2026-07-12",
     "active": true,
     "is_promotional": false,
-    "includes": ["Oficinas Criativas", "Check-in Animado", "Recreação Infantil"]
+    "includes": [
+      "Oficinas Criativas",
+      "Check-in Animado",
+      "Recreação Infantil"
+    ]
   },
   {
     "id": "jul-3",
@@ -41,7 +54,11 @@
     "end_iso_date": "2026-07-19",
     "active": true,
     "is_promotional": false,
-    "includes": ["Noite Paraense", "Gincana na Piscina", "Sunset com DJ"]
+    "includes": [
+      "Noite Paraense",
+      "Gincana na Piscina",
+      "Sunset com DJ"
+    ]
   },
   {
     "id": "jul-4",
@@ -52,17 +69,25 @@
     "end_iso_date": "2026-07-26",
     "active": true,
     "is_promotional": false,
-    "includes": ["Luau de Verão", "Show de Talentos", "Beach Tennis"]
+    "includes": [
+      "Luau de Verão",
+      "Show de Talentos",
+      "Beach Tennis"
+    ]
   },
   {
     "id": "jul-5",
     "name": "Bye Bye July: A Saideira",
     "description": "A despedida em grande estilo que Salinas merece. Aproveite os últimos momentos do mês com condições especiais e muita diversão.",
-    "image_url": "/salinas_july_5_1768572353236.png",
+    "image_url": "/bye-bye-july-premium.jpg",
     "start_iso_date": "2026-07-30",
     "end_iso_date": "2026-08-02",
     "active": true,
     "is_promotional": false,
-    "includes": ["Baile de Despedida", "Fotos em Família", "Personagens Infantis"]
+    "includes": [
+      "Baile de Despedida",
+      "Fotos em Família",
+      "Personagens Infantis"
+    ]
   }
 ]

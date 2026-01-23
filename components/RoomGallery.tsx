@@ -43,6 +43,7 @@ export const RoomGallery: React.FC<{ room: Room, onZoom: (index: number) => void
                 className={`w-full h-full object-cover transition-all duration-700 hover:scale-105 cursor-zoom-in ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
                 onClick={() => onZoom(currentIndex)}
                 onLoad={() => setImageLoaded(true)}
+                onError={() => setImageLoaded(true)}
                 loading="lazy"
             />
             {images.length > 1 && (

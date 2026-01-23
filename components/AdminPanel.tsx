@@ -141,7 +141,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
     { id: 'PACKAGES', label: 'Pacotes', icon: <Ticket size={18} /> },
     { id: 'EXTRAS', label: 'Serviços', icon: <ShoppingBag size={18} /> },
     { id: 'DISCOUNTS', label: 'Cupons', icon: <Tag size={18} /> },
-    { id: 'SETTINGS', label: 'Configurações', icon: <Settings size={18} /> },
   ];
 
   return (
@@ -212,7 +211,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
 
               <button
                 onClick={onLogout}
-                className="hidden md:flex items-center gap-2 px-4 py-2 text-white/40 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all text-[10px] font-bold uppercase tracking-widest"
+                className="flex items-center gap-2 px-4 py-2 text-white hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all text-[10px] font-bold uppercase tracking-widest"
               >
                 <LogOut size={16} /> Sair
               </button>
