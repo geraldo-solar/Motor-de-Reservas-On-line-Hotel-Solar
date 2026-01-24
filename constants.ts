@@ -94,12 +94,12 @@ export const INITIAL_ROOMS: Room[] = [
   {
     id: 'varanda-terreo',
     name: 'Suíte Varanda Térreo',
-    description: 'Acomodação prática e confortável no térreo, ideal para fácil acesso.',
-    price: 0,
+    description: 'Acomodação prática e confortável no térreo, com varanda privativa e fácil acesso às áreas comuns.',
+    price: 550,
     capacity: 3,
-    imageUrls: [],
-    features: ['Varanda Térrea', 'Fácil Acesso'],
-    totalQuantity: 0,
+    imageUrls: ['https://images.unsplash.com/photo-1578683010236-d716f9a3f461?q=80&w=800'],
+    features: ['Varanda Térrea', 'Fácil Acesso', 'Ar Condicionado', 'Rede de Descanso', 'Smart TV'],
+    totalQuantity: 4,
     active: true,
     overrides: []
   },
