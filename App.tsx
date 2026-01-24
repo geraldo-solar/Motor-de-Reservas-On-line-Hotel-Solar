@@ -180,24 +180,23 @@ export const App: React.FC = () => {
     if (view === ViewState.ROOMS || view === ViewState.PACKAGES) {
       const targetId = view === ViewState.ROOMS ? 'quartos-section' : 'pacotes-section';
 
-      const performScroll = () => {
+      const performScroll = (attempts = 0) => {
         const element = document.getElementById(targetId);
         if (element) {
-          // Utilizando window.scrollTo para maior controle sobre o offset (evitar navbar cobrindo)
-          const yOffset = -100;
-          const y = element.getBoundingClientRect().top + window.scrollY + yOffset;
-
-          window.scrollTo({ top: y, behavior: 'smooth' });
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else if (attempts < 10) {
+          // Se o elemento ainda não existe (renderização do React), tenta novamente em breve
+          setTimeout(() => performScroll(attempts + 1), 100);
         }
       };
 
       if (currentView !== ViewState.HOME) {
         setCurrentView(ViewState.HOME);
-        // Timeout maior para garantir renderização completa antes do scroll
-        setTimeout(performScroll, 500);
+        // Inicia a tentativa de scroll logo após a mudança de estado
+        setTimeout(() => performScroll(), 100);
       } else {
-        // Se já está na home, rola imediatamente (pequeno delay para event loop)
-        setTimeout(performScroll, 100);
+        // Se já está na home, rola imediatamente
+        performScroll();
       }
       return;
     }
