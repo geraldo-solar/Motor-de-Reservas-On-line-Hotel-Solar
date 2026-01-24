@@ -27,6 +27,17 @@ export const DateSelectorBar: React.FC<DateSelectorBarProps> = ({
     const [isOpen, setIsOpen] = useState(false);
     const activeRooms = rooms.filter(r => r.active);
 
+    React.useEffect(() => {
+        if (isOpen) {
+            setTimeout(() => {
+                const element = document.getElementById('reserva-section');
+                if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 200);
+        }
+    }, [isOpen]);
+
     return (
         <div id="reserva-section" className="relative -mt-10 max-w-5xl mx-auto px-4 z-40">
             <div className="bg-white rounded-[2rem] shadow-2xl border border-slate-100 overflow-hidden backdrop-blur-md">
