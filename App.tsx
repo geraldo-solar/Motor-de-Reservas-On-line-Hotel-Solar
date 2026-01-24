@@ -179,11 +179,27 @@ export const App: React.FC = () => {
   const handleNavigate = (view: ViewState) => {
     if (view === ViewState.ROOMS || view === ViewState.PACKAGES) {
       const targetId = view === ViewState.ROOMS ? 'quartos-section' : 'pacotes-section';
+
+      const performScroll = () => {
+        const element = document.getElementById(targetId);
+        if (element) {
+          // Ajuste de scroll para garantir que a navbar não cubra o título, se for sticky no futuro, 
+          // ou apenas para garantir o posicionamento correto.
+          const yOffset = -100; // Offset manual caso o scroll-mt não funcione como esperado em alguns browsers
+          const y = element.getBoundingClientRect().top + window.scrollY + yOffset;
+
+          // Tenta usar o nativo primeiro se suportado corretamente com scroll-margin
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      };
+
       if (currentView !== ViewState.HOME) {
         setCurrentView(ViewState.HOME);
-        setTimeout(() => document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth' }), 100);
+        // Timeout maior para garantir que a troca de view e o scroll to top (useEffect) ocorram antes
+        setTimeout(performScroll, 400);
       } else {
-        document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth' });
+        // Pequeno delay para garantir que a UI esteja estável
+        setTimeout(performScroll, 100);
       }
       return;
     }
