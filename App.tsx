@@ -449,7 +449,7 @@ export const App: React.FC = () => {
                       {/* Destaques da Experiência */}
                       {(pkg.includes && pkg.includes.length > 0) && (
                         <div className="mb-8 space-y-3">
-                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 text-left">O que está incluso:</p>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 text-left">Destaques da experiência:</p>
                           <div className="flex flex-wrap gap-2">
                             {pkg.includes.map((item, idx) => (
                               <span key={idx} className="px-3 py-1.5 bg-slate-50 border border-slate-100 text-slate-600 rounded-lg text-[10px] font-bold flex items-center gap-2">
