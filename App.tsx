@@ -7,6 +7,7 @@ import { ViewState, Room, HolidayPackage, DiscountCode, HotelConfig, ExtraServic
 import { toLocalISO, parseISODate, formatDisplayDate, calculateNights } from './utils/dateUtils';
 import { getPublicImageUrl } from './utils/imageUtils';
 import { INITIAL_CONFIG, INITIAL_ROOMS } from './constants';
+import { sortRoomsByPriority } from './utils/roomUtils';
 import { useSupabaseData } from './hooks/useSupabaseData';
 import { offlineQueue } from './lib/offlineQueue';
 import { sendReservationEmails } from './services/emailService';

@@ -3,6 +3,8 @@ import { Grid, ChevronLeft, ChevronRight, Eye, EyeOff, Layers, Calendar as Calen
 import { Room, RoomDateOverride } from '../../types';
 import { DateRangePickerModal } from './DateRangePickerModal';
 import { toLocalISO, parseISODate, formatDisplayDate } from '../../utils/dateUtils';
+import { getPublicImageUrl } from '../../utils/imageUtils';
+import { sortRoomsByPriority } from '../../utils/roomUtils';
 
 interface InventoryMapProps {
     rooms: Room[];
@@ -10,23 +12,6 @@ interface InventoryMapProps {
     onBulkUpdate: (startIso: string, endIso: string, roomId: string, selectedDays: number[], updates: Partial<RoomDateOverride> | null, priceOp?: any) => void;
     isSaving?: boolean;
 }
-
-
-const ROOM_ORDER = ['casal', 'triplo', 'sacada', 'quadruplo', 'quádruplo', 'varanda', 'loft'];
-
-const sortRoomsByPriority = (rooms: Room[]): Room[] => {
-    return [...rooms].sort((a, b) => {
-        const nameA = (a.name || '').toLowerCase();
-        const nameB = (b.name || '').toLowerCase();
-        const getOrderIndex = (name: string) => {
-            for (let i = 0; i < ROOM_ORDER.length; i++) {
-                if (name.includes(ROOM_ORDER[i])) return i;
-            }
-            return ROOM_ORDER.length;
-        };
-        return getOrderIndex(nameA) - getOrderIndex(nameB);
-    });
-};
 
 const MapCell: React.FC<{
     type: 'price' | 'qty' | 'restr';

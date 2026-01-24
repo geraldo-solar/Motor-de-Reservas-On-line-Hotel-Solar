@@ -2,6 +2,7 @@ import React from 'react';
 import { Plus, Trash2, BedDouble, Users, Check, XCircle } from 'lucide-react';
 import { Room } from '../../types';
 import { getPublicImageUrl } from '../../utils/imageUtils';
+import { sortRoomsByPriority } from '../../utils/roomUtils';
 
 interface RoomsManagementProps {
     rooms: Room[];
@@ -10,22 +11,6 @@ interface RoomsManagementProps {
     onDeleteRoom: (roomId: string) => Promise<boolean>;
     onUpdateRooms: React.Dispatch<React.SetStateAction<Room[]>>;
 }
-
-const ROOM_ORDER = ['casal', 'triplo', 'sacada', 'quadruplo', 'quádruplo', 'varanda', 'loft'];
-
-const sortRoomsByPriority = (rooms: Room[]): Room[] => {
-    return [...rooms].sort((a, b) => {
-        const nameA = (a.name || '').toLowerCase();
-        const nameB = (b.name || '').toLowerCase();
-        const getOrderIndex = (name: string) => {
-            for (let i = 0; i < ROOM_ORDER.length; i++) {
-                if (name.includes(ROOM_ORDER[i])) return i;
-            }
-            return ROOM_ORDER.length;
-        };
-        return getOrderIndex(nameA) - getOrderIndex(nameB);
-    });
-};
 
 export const RoomsManagement: React.FC<RoomsManagementProps> = ({ rooms, onEditRoom, onNewRoom, onDeleteRoom, onUpdateRooms }) => {
     return (
@@ -65,7 +50,7 @@ export const RoomsManagement: React.FC<RoomsManagementProps> = ({ rooms, onEditR
                             <button
                                 onClick={async (e) => {
                                     e.stopPropagation();
-                                    if (window.confirm(`ATENÇÃO: Deseja excluir permanentemente a acomodação "${room.name}"? Esta ação não pode ser desfeita.`)) {
+                                    if (window.confirm(`ATENÇÃO: Deseja excluir permanentemente a acomodação "${room.name}"?Esta ação não pode ser desfeita.`)) {
                                         const success = await onDeleteRoom(room.id);
                                         if (success) {
                                             onUpdateRooms(prev => prev.filter(r => r.id !== room.id));
