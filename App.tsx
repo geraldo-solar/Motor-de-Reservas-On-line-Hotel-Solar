@@ -183,22 +183,20 @@ export const App: React.FC = () => {
       const performScroll = () => {
         const element = document.getElementById(targetId);
         if (element) {
-          // Ajuste de scroll para garantir que a navbar não cubra o título, se for sticky no futuro, 
-          // ou apenas para garantir o posicionamento correto.
-          const yOffset = -100; // Offset manual caso o scroll-mt não funcione como esperado em alguns browsers
+          // Utilizando window.scrollTo para maior controle sobre o offset (evitar navbar cobrindo)
+          const yOffset = -100;
           const y = element.getBoundingClientRect().top + window.scrollY + yOffset;
 
-          // Tenta usar o nativo primeiro se suportado corretamente com scroll-margin
-          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          window.scrollTo({ top: y, behavior: 'smooth' });
         }
       };
 
       if (currentView !== ViewState.HOME) {
         setCurrentView(ViewState.HOME);
-        // Timeout maior para garantir que a troca de view e o scroll to top (useEffect) ocorram antes
-        setTimeout(performScroll, 400);
+        // Timeout maior para garantir renderização completa antes do scroll
+        setTimeout(performScroll, 500);
       } else {
-        // Pequeno delay para garantir que a UI esteja estável
+        // Se já está na home, rola imediatamente (pequeno delay para event loop)
         setTimeout(performScroll, 100);
       }
       return;
