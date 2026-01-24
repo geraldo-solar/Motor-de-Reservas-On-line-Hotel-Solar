@@ -92,6 +92,18 @@ export const INITIAL_ROOMS: Room[] = [
     overrides: []
   },
   {
+    id: 'varanda-terreo',
+    name: 'Suíte Varanda Térreo',
+    description: 'Acomodação prática e confortável no térreo, ideal para fácil acesso.',
+    price: 0,
+    capacity: 3,
+    imageUrls: [],
+    features: ['Varanda Térrea', 'Fácil Acesso'],
+    totalQuantity: 0,
+    active: true,
+    overrides: []
+  },
+  {
     id: 'quadruplo',
     name: 'Suíte Família Quádrupla',
     description: 'Amplo espaço para acomodar toda a família com conforto e praticidade.',
