@@ -124,7 +124,7 @@ export const setCustomFields = async (subscriberId: string, fields: Record<strin
 }
 
 // Função principal de notificação
-export const sendManychatNotification = async (reservation: Reservation, type: 'CONFIRMATION' | 'CANCELLATION' | 'PAYMENT_CONFIRMED'): Promise<boolean> => {
+export const sendManychatNotification = async (reservation: Reservation, type: 'CONFIRMATION' | 'CANCELLATION' | 'PAYMENT_CONFIRMED' | 'PRE_CHECKIN'): Promise<boolean> => {
     if (!MANYCHAT_TOKEN) {
         console.warn('[Manychat] Token não configurado.');
         return false;
@@ -133,7 +133,8 @@ export const sendManychatNotification = async (reservation: Reservation, type: '
     // Obter IDs dos Flows das variáveis de ambiente
     const FLOW_CONFIRMATION = import.meta.env.VITE_MANYCHAT_FLOW_CONFIRMATION;
     const FLOW_CANCELLATION = import.meta.env.VITE_MANYCHAT_FLOW_CANCELLATION;
-    const FLOW_PAYMENT = import.meta.env.VITE_MANYCHAT_FLOW_PAYMENT; // Novo
+    const FLOW_PAYMENT = import.meta.env.VITE_MANYCHAT_FLOW_PAYMENT;
+    const FLOW_PRE_CHECKIN = import.meta.env.VITE_MANYCHAT_FLOW_PRE_CHECKIN;
 
     const subscriber = await findOsCreateSubscriber({
         name: reservation.mainGuest.name,
@@ -173,6 +174,7 @@ export const sendManychatNotification = async (reservation: Reservation, type: '
         case 'CONFIRMATION': targetFlowId = FLOW_CONFIRMATION; break;
         case 'CANCELLATION': targetFlowId = FLOW_CANCELLATION; break;
         case 'PAYMENT_CONFIRMED': targetFlowId = FLOW_PAYMENT; break;
+        case 'PRE_CHECKIN': targetFlowId = FLOW_PRE_CHECKIN; break;
     }
 
     if (targetFlowId) {

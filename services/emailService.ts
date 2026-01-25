@@ -487,12 +487,12 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
     const clientEmailResponse = await fetch(BREVO_API_URL, { ... });
     */
 
-    return { success: clientSuccess };
+
 
     /* CÓDIGO ORIGINAL ABAIXO MANTIDO APENAS COMO REFERÊNCIA DE FLUXO ANTERIOR */
     /*
     const clientEmailResponse = await fetch(BREVO_API_URL, {
-    
+     
       method: 'POST',
       headers: {
         'accept': 'application/json',
@@ -514,53 +514,25 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
         htmlContent: generateClientEmailHTML(reservation),
       }),
     });
-    
+     
     if (!clientEmailResponse.ok) {
       const errorData = await clientEmailResponse.json();
       console.error('[Email] Erro ao enviar e-mail para cliente:', errorData);
       return { success: false, error: `Erro ao enviar e-mail para cliente: ${errorData.message || 'Erro desconhecido'}` };
     }
-    
+     
     console.log('[Email] E-mail enviado para cliente:', reservation.mainGuest.email);
-    
-    // 2. Enviar e-mail para o hotel
-    const hotelEmailResponse = await fetch(BREVO_API_URL, {
-      method: 'POST',
-      headers: {
-        'accept': 'application/json',
-        'api-key': BREVO_API_KEY,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        sender: {
-          name: 'Sistema de Reservas',
-          email: HOTEL_CONFIG.email,
-        },
-        to: [
-          {
-            email: HOTEL_CONFIG.adminEmail,
-            name: 'Administração Hotel Solar',
-          },
-        ],
-        subject: `🔔 Nova Reserva #${shortId} - ${reservation.mainGuest.name}`,
-        htmlContent: generateHotelEmailHTML(reservation),
-      }),
-    });
-    
-    if (!hotelEmailResponse.ok) {
-      const errorData = await hotelEmailResponse.json();
-      console.error('[Email] Erro ao enviar e-mail para hotel:', errorData);
-    } else {
-      console.log('[Email] E-mail enviado para hotel:', HOTEL_CONFIG.adminEmail);
-    }
-    
+    */
+
+
+
     // 3. SE RESERVA < 26H PARA CHECKIN, ENVIAR PRÉ-CHECKIN (IGUAL AO ERP)
     try {
       const checkInDay = reservation.checkIn.split('T')[0];
       const checkInDate = new Date(`${checkInDay}T14:00:00`);
       const now = new Date();
       const diffInHours = (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-    
+
       console.log(`[Email] DEBUG PRÉ-CHECKIN:`, {
         resId: shortId,
         checkIn: reservation.checkIn,
@@ -568,7 +540,7 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
         now: now.toISOString(),
         diffInHours: diffInHours.toFixed(1)
       });
-    
+
       // Se o check-in for HOJE ou AMANHÃ (até 26h antes), envia o pré-check-in.
       // Aumentamos o limite inferior para -24h para garantir que quem reservou hoje à noite receba.
       if (diffInHours > -24 && diffInHours < 26) {
@@ -580,7 +552,7 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
     } catch (e) {
       console.error('[Email] Erro ao calcular tempo para pré-checkin:', e);
     }
-    
+
     // 4. Sincronizar com Brevo (Marketing)
     try {
       await syncContactToBrevo(
@@ -594,27 +566,27 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
     } catch (e) {
       console.error('[Email] Erro ao sincronizar Brevo:', e);
     }
-    
+
     return { success: true };
-    } catch (error) {
+  } catch (error) {
     console.error('[Email] Erro ao enviar e-mails:', error);
     return { success: false, error: `Erro ao enviar e-mails: ${error}` };
-    }
-    };
-    
-    // Sincronizar contato com Brevo (Marketing)
-    export const syncContactToBrevo = async (guest: { name: string, email: string, phone: string }, tags: string[] = ['HOSPEDE']) => {
-    const BREVO_CONTACTS_URL = 'https://api.brevo.com/v3/contacts';
-    
-    if (!BREVO_API_KEY) return { success: false, error: 'API Key não configurada' };
-    if (!guest.email) return { success: false, error: 'E-mail obrigatório' };
-    
-    try {
+  }
+};
+
+// Sincronizar contato com Brevo (Marketing)
+export const syncContactToBrevo = async (guest: { name: string, email: string, phone: string }, tags: string[] = ['HOSPEDE']) => {
+  const BREVO_CONTACTS_URL = 'https://api.brevo.com/v3/contacts';
+
+  if (!BREVO_API_KEY) return { success: false, error: 'API Key não configurada' };
+  if (!guest.email) return { success: false, error: 'E-mail obrigatório' };
+
+  try {
     let cleanPhone = guest.phone.replace(/\D/g, '');
     if (cleanPhone.length === 11 && !cleanPhone.startsWith('55')) {
       cleanPhone = '55' + cleanPhone;
     }
-    
+
     const response = await fetch(BREVO_CONTACTS_URL, {
       method: 'POST',
       headers: {
@@ -635,755 +607,611 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
         tags: tags
       })
     });
-    
+
     return { success: response.ok };
-    } catch (err: any) {
+  } catch (err: any) {
     console.error('Erro de rede Brevo Sync:', err);
     return { success: false, error: err.message };
-    }
-    };
-    
-    export default sendReservationEmails;
-    
-    
-    // Template de e-mail para confirmação de pagamento
-    const generatePaymentConfirmedEmailHTML = (reservation: Reservation): string => {
-    const shortId = getShortReservationId(reservation.id);
-    const isPix = reservation.paymentMethod === 'PIX';
-    
-    const paymentMethodText = isPix
+  }
+};
+
+export default sendReservationEmails;
+
+
+// Template de e-mail para confirmação de pagamento
+const generatePaymentConfirmedEmailHTML = (reservation: Reservation): string => {
+  const shortId = getShortReservationId(reservation.id);
+  const isPix = reservation.paymentMethod === 'PIX';
+
+  const paymentMethodText = isPix
     ? 'PIX Confirmado'
     : reservation.cardDetails?.installments && reservation.cardDetails.installments > 1
       ? `Cartão Aprovado (${reservation.cardDetails.installments}x)`
       : 'Cartão Aprovado';
-    
-    // Gerar lista de acomodações
-    const roomsHTML = reservation.rooms.map(room => `
-    <li style="margin-bottom: 4px;">${room.name}</li>
-    `).join('');
-    
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-     
-    <!-- Header com Logo -->
-    <div style="background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); padding: 40px 20px; text-align: center;">
-      <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
-      <h1 style="color: #4ade80; margin: 0; font-size: 28px; font-weight: normal;">
-        ✅ Pagamento Confirmado!
-      </h1>
-      <p style="color: #d4a853; margin: 10px 0 0 0; font-size: 16px;">
-        Sua reserva está garantida!
+
+  // Gerar lista de acomodações
+  const roomsHTML = reservation.rooms.map(room => `
+<li style="margin-bottom: 4px;">${room.name}</li>
+`).join('');
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+<div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+ 
+<!-- Header com Logo -->
+<div style="background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); padding: 40px 20px; text-align: center;">
+  <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
+  <h1 style="color: #4ade80; margin: 0; font-size: 28px; font-weight: normal;">
+    ✅ Pagamento Confirmado!
+  </h1>
+  <p style="color: #d4a853; margin: 10px 0 0 0; font-size: 16px;">
+    Sua reserva está garantida!
+  </p>
+</div>
+ 
+<!-- Conteúdo Principal -->
+<div style="background-color: #ffffff; padding: 32px 24px;">
+  
+  <!-- Saudação -->
+  <p style="color: #1e293b; font-size: 16px; margin: 0 0 24px 0;">
+    Olá <strong>${reservation.mainGuest.name}</strong>,
+  </p>
+  <p style="color: #475569; font-size: 14px; margin: 0 0 24px 0; line-height: 1.6;">
+    Temos o prazer de informar que seu pagamento foi confirmado com sucesso! Sua reserva no Hotel Solar está garantida.
+  </p>
+  
+  <!-- Status do Pagamento -->
+  <div style="background: linear-gradient(135deg, #166534 0%, #15803d 100%); border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
+    <p style="color: rgba(255,255,255,0.8); margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
+      Status do Pagamento
+    </p>
+    <p style="color: #ffffff; margin: 0; font-size: 24px; font-weight: bold;">
+      ${paymentMethodText}
+    </p>
+    <div style="margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 12px;">
+      ${reservation.discountApplied ? `
+        <p style="color: #86efac; margin: 4px 0; font-size: 12px;">Cupom: - ${formatCurrency(reservation.discountApplied.amount)}</p>
+      ` : ''}
+      ${reservation.packageDiscountApplied ? `
+        <p style="color: #86efac; margin: 4px 0; font-size: 12px;">Desconto Pacote: - ${formatCurrency(reservation.packageDiscountApplied.amount)}</p>
+      ` : ''}
+      <p style="color: #ffffff; margin: 8px 0 0 0; font-size: 18px; font-weight: bold;">
+        Total Pago: ${formatCurrency(reservation.totalPrice)}
       </p>
     </div>
-     
-    <!-- Conteúdo Principal -->
-    <div style="background-color: #ffffff; padding: 32px 24px;">
-      
-      <!-- Saudação -->
-      <p style="color: #1e293b; font-size: 16px; margin: 0 0 24px 0;">
-        Olá <strong>${reservation.mainGuest.name}</strong>,
-      </p>
-      <p style="color: #475569; font-size: 14px; margin: 0 0 24px 0; line-height: 1.6;">
-        Temos o prazer de informar que seu pagamento foi confirmado com sucesso! Sua reserva no Hotel Solar está garantida.
-      </p>
-      
-      <!-- Status do Pagamento -->
-      <div style="background: linear-gradient(135deg, #166534 0%, #15803d 100%); border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
-        <p style="color: rgba(255,255,255,0.8); margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
-          Status do Pagamento
-        </p>
-        <p style="color: #ffffff; margin: 0; font-size: 24px; font-weight: bold;">
-          ${paymentMethodText}
-        </p>
-        <div style="margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 12px;">
-          ${reservation.discountApplied ? `
-            <p style="color: #86efac; margin: 4px 0; font-size: 12px;">Cupom: - ${formatCurrency(reservation.discountApplied.amount)}</p>
-          ` : ''}
-          ${reservation.packageDiscountApplied ? `
-            <p style="color: #86efac; margin: 4px 0; font-size: 12px;">Desconto Pacote: - ${formatCurrency(reservation.packageDiscountApplied.amount)}</p>
-          ` : ''}
-          <p style="color: #ffffff; margin: 8px 0 0 0; font-size: 18px; font-weight: bold;">
-            Total Pago: ${formatCurrency(reservation.totalPrice)}
-          </p>
-        </div>
-      </div>
-      
-      <!-- Número da Reserva -->
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
-        <p style="color: #64748b; margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
-          Número da Reserva
-        </p>
-        <p style="color: #d4a853; margin: 0; font-size: 32px; font-weight: bold; letter-spacing: 4px;">
-          ${shortId}
-        </p>
-      </div>
-      
-      <!-- Detalhes da Reserva -->
-      <div style="margin-bottom: 24px;">
-        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
-          📋 Detalhes da Reserva
-        </h3>
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
-          <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
-          <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
-          <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Noites:</strong> ${reservation.nights}</p>
-          <p style="color: #475569; margin: 12px 0 8px 0; border-top: 1px solid #e2e8f0; padding-top: 8px;"><strong style="color: #1e293b;">Acomodações:</strong></p>
-          <ul style="color: #475569; margin: 8px 0 0 0; padding-left: 20px;">
-            ${roomsHTML}
-          </ul>
-        </div>
-      </div>
-      
-      <!-- Informações Importantes -->
-      <div style="background: rgba(212, 168, 83, 0.1); border-left: 4px solid #d4a853; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
-        <h4 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">📌 Informações Importantes</h4>
-        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
-          <li>Check-in a partir das 14h</li>
-          <li>Check-out até às 12h</li>
-          <li>Apresente um documento de identificação no check-in</li>
-        </ul>
-      </div>
-      
-      <!-- Rodapé -->
-      <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e2e8f0;">
-        <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">
-          Estamos ansiosos para recebê-lo!
-        </p>
-        <p style="color: #64748b; margin: 0; font-size: 12px;">
-          ${HOTEL_CONFIG.name} - ${HOTEL_CONFIG.address}
-        </p>
-        <p style="color: #64748b; margin: 8px 0 0 0; font-size: 12px;">
-          Email: <a href="mailto:${HOTEL_CONFIG.email}" style="color: #d4a853; text-decoration: none;">${HOTEL_CONFIG.email}</a>
-        </p>
-      </div>
-      
+  </div>
+  
+  <!-- Número da Reserva -->
+  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+    <p style="color: #64748b; margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
+      Número da Reserva
+    </p>
+    <p style="color: #d4a853; margin: 0; font-size: 32px; font-weight: bold; letter-spacing: 4px;">
+      ${shortId}
+    </p>
+  </div>
+  
+  <!-- Detalhes da Reserva -->
+  <div style="margin-bottom: 24px;">
+    <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+      📋 Detalhes da Reserva
+    </h3>
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
+      <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
+      <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
+      <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Noites:</strong> ${reservation.nights}</p>
+      <p style="color: #475569; margin: 12px 0 8px 0; border-top: 1px solid #e2e8f0; padding-top: 8px;"><strong style="color: #1e293b;">Acomodações:</strong></p>
+      <ul style="color: #475569; margin: 8px 0 0 0; padding-left: 20px;">
+        ${roomsHTML}
+      </ul>
     </div>
-     
-    </div>
-    </body>
-    </html>
-    `;
-    };
-    
-    // Template de e-mail para cancelamento de reserva
-    const generateReservationCanceledEmailHTML = (reservation: Reservation, customReason?: string): string => {
-    const shortId = getShortReservationId(reservation.id);
-    const isPix = reservation.paymentMethod === 'PIX';
-    
-    const cancelReasonText = customReason || (isPix
+  </div>
+  
+  <!-- Informações Importantes -->
+  <div style="background: rgba(212, 168, 83, 0.1); border-left: 4px solid #d4a853; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <h4 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">📌 Informações Importantes</h4>
+    <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
+      <li>Check-in a partir das 14h</li>
+      <li>Check-out até às 12h</li>
+      <li>Apresente um documento de identificação no check-in</li>
+    </ul>
+  </div>
+  
+  <!-- Rodapé -->
+  <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e2e8f0;">
+    <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">
+      Estamos ansiosos para recebê-lo!
+    </p>
+    <p style="color: #64748b; margin: 0; font-size: 12px;">
+      ${HOTEL_CONFIG.name} - ${HOTEL_CONFIG.address}
+    </p>
+    <p style="color: #64748b; margin: 8px 0 0 0; font-size: 12px;">
+      Email: <a href="mailto:${HOTEL_CONFIG.email}" style="color: #d4a853; text-decoration: none;">${HOTEL_CONFIG.email}</a>
+    </p>
+  </div>
+  
+</div>
+ 
+</div>
+</body>
+</html>
+`;
+};
+
+// Template de e-mail para cancelamento de reserva
+const generateReservationCanceledEmailHTML = (reservation: Reservation, customReason?: string): string => {
+  const shortId = getShortReservationId(reservation.id);
+  const isPix = reservation.paymentMethod === 'PIX';
+
+  const cancelReasonText = customReason || (isPix
     ? 'Não recebemos o comprovante de pagamento PIX dentro do prazo estabelecido.'
     : 'O pagamento via cartão de crédito não foi aprovado pela operadora.');
-    
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="margin: 0; padding: 0; background-color: #fef2f2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-     
-    <!-- Header com Logo -->
-    <div style="background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%); padding: 40px 20px; text-align: center;">
-      <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
-      <h1 style="color: #fca5a5; margin: 0; font-size: 28px; font-weight: normal;">
-        ❌ Reserva Cancelada
-      </h1>
-      <p style="color: #fecaca; margin: 10px 0 0 0; font-size: 16px;">
-        Sua reserva não pôde ser confirmada
-      </p>
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #fef2f2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+<div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+ 
+<!-- Header com Logo -->
+<div style="background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%); padding: 40px 20px; text-align: center;">
+  <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
+  <h1 style="color: #fca5a5; margin: 0; font-size: 28px; font-weight: normal;">
+    ❌ Reserva Cancelada
+  </h1>
+  <p style="color: #fecaca; margin: 10px 0 0 0; font-size: 16px;">
+    Sua reserva não pôde ser confirmada
+  </p>
+</div>
+ 
+<!-- Conteúdo Principal -->
+<div style="background-color: #ffffff; padding: 32px 24px;">
+  
+  <!-- Saudação -->
+  <p style="color: #1e293b; font-size: 16px; margin: 0 0 24px 0;">
+    Olá <strong>${reservation.mainGuest.name}</strong>,
+  </p>
+  <p style="color: #475569; font-size: 14px; margin: 0 0 24px 0; line-height: 1.6;">
+    Infelizmente, precisamos informar que sua reserva no Hotel Solar foi cancelada.
+  </p>
+  
+  <!-- Motivo do Cancelamento -->
+  <div style="background: #fef2f2; border: 1px solid #fee2e2; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+    <h3 style="color: #991b1b; margin: 0 0 12px 0; font-size: 16px;">
+      ⚠️ Motivo do Cancelamento
+    </h3>
+    <p style="color: #b91c1c; margin: 0; font-size: 14px; line-height: 1.6;">
+      ${cancelReasonText}
+    </p>
+  </div>
+  
+  <!-- Número da Reserva -->
+  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+    <p style="color: #64748b; margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
+      Reserva Cancelada
+    </p>
+    <p style="color: #ef4444; margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 4px; text-decoration: line-through;">
+      ${shortId}
+    </p>
+  </div>
+  
+  <!-- Detalhes da Reserva -->
+  <div style="margin-bottom: 24px; opacity: 0.7;">
+    <h3 style="color: #1e293b; margin: 0 0 16px 0; font-size: 16px;">
+      📋 Detalhes da Reserva Cancelada
+    </h3>
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
+      <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
+      <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
+      <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">Valor:</strong> ${formatCurrency(reservation.totalPrice)}</p>
     </div>
-     
-    <!-- Conteúdo Principal -->
-    <div style="background-color: #ffffff; padding: 32px 24px;">
-      
-      <!-- Saudação -->
-      <p style="color: #1e293b; font-size: 16px; margin: 0 0 24px 0;">
-        Olá <strong>${reservation.mainGuest.name}</strong>,
-      </p>
-      <p style="color: #475569; font-size: 14px; margin: 0 0 24px 0; line-height: 1.6;">
-        Infelizmente, precisamos informar que sua reserva no Hotel Solar foi cancelada.
-      </p>
-      
-      <!-- Motivo do Cancelamento -->
-      <div style="background: #fef2f2; border: 1px solid #fee2e2; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
-        <h3 style="color: #991b1b; margin: 0 0 12px 0; font-size: 16px;">
-          ⚠️ Motivo do Cancelamento
-        </h3>
-        <p style="color: #b91c1c; margin: 0; font-size: 14px; line-height: 1.6;">
-          ${cancelReasonText}
-        </p>
-      </div>
-      
-      <!-- Número da Reserva -->
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
-        <p style="color: #64748b; margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
-          Reserva Cancelada
-        </p>
-        <p style="color: #ef4444; margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 4px; text-decoration: line-through;">
-          ${shortId}
-        </p>
-      </div>
-      
-      <!-- Detalhes da Reserva -->
-      <div style="margin-bottom: 24px; opacity: 0.7;">
-        <h3 style="color: #1e293b; margin: 0 0 16px 0; font-size: 16px;">
-          📋 Detalhes da Reserva Cancelada
-        </h3>
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
-          <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
-          <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
-          <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">Valor:</strong> ${formatCurrency(reservation.totalPrice)}</p>
-        </div>
-      </div>
-      
-      <!-- Nova Reserva -->
-      <div style="background: rgba(212, 168, 83, 0.1); border-left: 4px solid #d4a853; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
-        <h4 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">🔄 Deseja fazer uma nova reserva?</h4>
-        <p style="color: #475569; margin: 0; font-size: 13px; line-height: 1.6;">
-          Você pode realizar uma nova reserva a qualquer momento através do nosso site ou entrando em contato conosco.
-        </p>
-      </div>
-      
-      <!-- Botão Nova Reserva -->
-      <div style="text-align: center; margin-bottom: 24px;">
-        <a href="https://motor-de-reservas-on-line-hotel-sol.vercel.app" style="display: inline-block; background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); color: #4ade80; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: bold; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">
-          Fazer Nova Reserva
-        </a>
-      </div>
-      
-      <!-- Rodapé -->
-      <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e2e8f0;">
-        <p style="color: #64748b; margin: 0 0 8px 0; font-size: 12px;">
-          Lamentamos o ocorrido e esperamos atendê-lo em breve!
-        </p>
-        <p style="color: #64748b; margin: 0; font-size: 12px;">
-          ${HOTEL_CONFIG.name} - ${HOTEL_CONFIG.address}
-        </p>
-        <p style="color: #64748b; margin: 8px 0 0 0; font-size: 12px;">
-          Email: <a href="mailto:${HOTEL_CONFIG.email}" style="color: #d4a853; text-decoration: none;">${HOTEL_CONFIG.email}</a>
-        </p>
-      </div>
-      
-    </div>
-     
-    </div>
-    </body>
-    </html>
-    `;
-    };
-    
-    // Template de e-mail para pré-check-in (Copiado do ERP conforme pedido)
-    const generatePreCheckInEmailHTML = (reservation: Reservation): string => {
-    const shortId = getShortReservationId(reservation.id);
-    const preCheckInUrl = `${HOTEL_CONFIG.erpUrl}/pre-checkin/${reservation.id}`;
-    
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head><meta charset="utf-8"></head>
-    <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-    <div style="background: linear-gradient(135deg, #d4a853 0%, #b88a3e 100%); padding: 40px 20px; text-align: center;">
-      <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
-      <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: normal;">📋 Agilize seu Check-in!</h1>
-      <p style="color: #1a3c34; margin: 10px 0 0 0; font-size: 16px;">Sua chegada está próxima no Hotel Solar.</p>
-    </div>
-    <div style="background-color: #ffffff; padding: 32px 24px;">
-      <p style="color: #1e293b; font-size: 16px; margin: 0 0 24px 0;">Olá <strong>${reservation.mainGuest.name}</strong>,</p>
-      <p style="color: #475569; font-size: 14px; margin: 0 0 24px 0; line-height: 1.6;">Para garantir uma entrada mais rápida e tranquila no hotel, convidamos você a realizar o seu <strong>Pré-Check-in Digital</strong>. Leva menos de 2 minutos!</p>
-      
-      <div style="text-align: center; margin: 32px 0;">
-        <a href="${preCheckInUrl}" style="background-color: #1a3c34; color: #d4a853; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">FAZER PRÉ-CHECK-IN AGORA</a>
-      </div>
-    
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
-        <h3 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">📅 Sua Reserva: #${shortId}</h3>
-        <p style="color: #475569; margin: 0; font-size: 13px;">Previsão de Check-in: <strong>${formatDate(reservation.checkIn)}</strong></p>
-      </div>
-    
-      <div style="background: rgba(212, 168, 83, 0.1); border-left: 4px solid #d4a853; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
-        <h4 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">💡 Por que fazer o pré-check-in?</h4>
-        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.6; font-size: 13px;">
-          <li>Menos tempo preenchendo fichas no balcão</li>
-          <li>Garante que todos os seus dados estejam corretos</li>
-          <li>Cumprimento da legislação FNRH eletronicamente</li>
-        </ul>
-      </div>
-    
-      <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e2e8f0;">
-        <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">Nos vemos em breve!</p>
-        <p style="color: #64748b; margin: 0; font-size: 12px;">${HOTEL_CONFIG.name} - ${HOTEL_CONFIG.address}</p>
-      </div>
-    </div>
-    </div>
-    </body>
-    </html>`;
-    };
-    
-    // Função para enviar e e-mail de pré-check-in
-    export const sendPreCheckInEmail = async (reservation: Reservation): Promise<{ success: boolean; error?: string }> => {
-    const shortId = getShortReservationId(reservation.id);
-    
-    if (!BREVO_API_KEY) {
-    console.warn('[Email] API Key do Brevo não configurada. E-mail de pré-check-in não será enviado.');
-    return { success: false, error: 'API Key do Brevo não configurada' };
+  </div>
+  
+  <!-- Nova Reserva -->
+  <div style="background: rgba(212, 168, 83, 0.1); border-left: 4px solid #d4a853; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <h4 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">🔄 Deseja fazer uma nova reserva?</h4>
+    <p style="color: #475569; margin: 0; font-size: 13px; line-height: 1.6;">
+      Você pode realizar uma nova reserva a qualquer momento através do nosso site ou entrando em contato conosco.
+    </p>
+  </div>
+  
+  <!-- Botão Nova Reserva -->
+  <div style="text-align: center; margin-bottom: 24px;">
+    <a href="https://motor-de-reservas-on-line-hotel-sol.vercel.app" style="display: inline-block; background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); color: #4ade80; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: bold; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">
+      Fazer Nova Reserva
+    </a>
+  </div>
+  
+  <!-- Rodapé -->
+  <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e2e8f0;">
+    <p style="color: #64748b; margin: 0 0 8px 0; font-size: 12px;">
+      Lamentamos o ocorrido e esperamos atendê-lo em breve!
+    </p>
+    <p style="color: #64748b; margin: 0; font-size: 12px;">
+      ${HOTEL_CONFIG.name} - ${HOTEL_CONFIG.address}
+    </p>
+    <p style="color: #64748b; margin: 8px 0 0 0; font-size: 12px;">
+      Email: <a href="mailto:${HOTEL_CONFIG.email}" style="color: #d4a853; text-decoration: none;">${HOTEL_CONFIG.email}</a>
+    </p>
+  </div>
+  
+</div>
+ 
+</div>
+</body>
+</html>
+`;
+};
+
+// Template de e-mail para pré-check-in (Copiado do ERP conforme pedido)
+const generatePreCheckInEmailHTML = (reservation: Reservation): string => {
+  const shortId = getShortReservationId(reservation.id);
+  const preCheckInUrl = `${HOTEL_CONFIG.erpUrl}/pre-checkin/${reservation.id}`;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+<div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+<div style="background: linear-gradient(135deg, #d4a853 0%, #b88a3e 100%); padding: 40px 20px; text-align: center;">
+  <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
+  <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: normal;">📋 Agilize seu Check-in!</h1>
+  <p style="color: #1a3c34; margin: 10px 0 0 0; font-size: 16px;">Sua chegada está próxima no Hotel Solar.</p>
+</div>
+<div style="background-color: #ffffff; padding: 32px 24px;">
+  <p style="color: #1e293b; font-size: 16px; margin: 0 0 24px 0;">Olá <strong>${reservation.mainGuest.name}</strong>,</p>
+  <p style="color: #475569; font-size: 14px; margin: 0 0 24px 0; line-height: 1.6;">Para garantir uma entrada mais rápida e tranquila no hotel, convidamos você a realizar o seu <strong>Pré-Check-in Digital</strong>. Leva menos de 2 minutos!</p>
+  
+  <div style="text-align: center; margin: 32px 0;">
+    <a href="${preCheckInUrl}" style="background-color: #1a3c34; color: #d4a853; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">FAZER PRÉ-CHECK-IN AGORA</a>
+  </div>
+ 
+  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+    <h3 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">📅 Sua Reserva: #${shortId}</h3>
+    <p style="color: #475569; margin: 0; font-size: 13px;">Previsão de Check-in: <strong>${formatDate(reservation.checkIn)}</strong></p>
+  </div>
+ 
+  <div style="background: rgba(212, 168, 83, 0.1); border-left: 4px solid #d4a853; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <h4 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">💡 Por que fazer o pré-check-in?</h4>
+    <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.6; font-size: 13px;">
+      <li>Menos tempo preenchendo fichas no balcão</li>
+      <li>Garante que todos os seus dados estejam corretos</li>
+      <li>Cumprimento da legislação FNRH eletronicamente</li>
+    </ul>
+  </div>
+ 
+  <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e2e8f0;">
+    <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">Nos vemos em breve!</p>
+    <p style="color: #64748b; margin: 0; font-size: 12px;">${HOTEL_CONFIG.name} - ${HOTEL_CONFIG.address}</p>
+  </div>
+</div>
+</div>
+</body>
+</html>`;
+};
+
+
+
+// Função para enviar e e-mail de pré-check-in
+export const sendPreCheckInEmail = async (reservation: Reservation): Promise<{ success: boolean; error?: string }> => {
+  const shortId = getShortReservationId(reservation.id);
+
+  try {
+    // --- MUDANÇA: WHATSAPP PRIMEIRO ---
+    console.log('[Notification] Iniciando envio de pré-checkin via Manychat...');
+    const whatsSuccess = await sendManychatNotification(reservation, 'PRE_CHECKIN');
+
+    if (whatsSuccess) {
+      console.log('[Manychat] Pré-checkin enviado para', reservation.mainGuest.phone);
+    } else {
+      console.error('[Manychat] Falha no envio de pré-checkin via WhatsApp.');
     }
-    
-    try {
-    const response = await fetch(BREVO_API_URL, {
-      method: 'POST',
-      headers: {
-        'accept': 'application/json',
-        'api-key': BREVO_API_KEY,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        sender: {
-          name: HOTEL_CONFIG.name,
-          email: HOTEL_CONFIG.email,
-        },
-        to: [
-          {
-            email: reservation.mainGuest.email,
-            name: reservation.mainGuest.name,
-          },
-        ],
-        subject: `📋 Pré-Check-in Digital - Reserva #${shortId} - Hotel Solar`,
-        htmlContent: generatePreCheckInEmailHTML(reservation),
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('[Email] Erro ao enviar e-mail de pré-check-in:', errorData);
-      return { success: false, error: `Erro ao enviar e-mail: ${errorData.message || 'Erro desconhecido'}` };
-    }
-    
-    console.log('[Email] E-mail de pré-check-in enviado para:', reservation.mainGuest.email);
+
+    // Fallback de email removido/comentado para evitar erros de sintaxe e complexidade
+
     return { success: true };
-    } catch (error) {
-    console.error('[Email] Erro ao enviar e-mail de pré-check-in:', error);
-    return { success: false, error: `Erro ao enviar e-mail: ${error}` };
+  } catch (error) {
+    console.error('[Email] Erro ao enviar notificação de pré-check-in:', error);
+    return { success: false, error: `Erro ao enviar notificação: ${error}` };
+  }
+};
+
+
+// Função para enviar e-mail de confirmação de pagamento
+export const sendPaymentConfirmedEmail = async (reservation: Reservation): Promise<{ success: boolean; error?: string }> => {
+  const shortId = getShortReservationId(reservation.id);
+
+  try {
+    // --- MUDANÇA: WHATSAPP PRIMEIRO ---
+    console.log('[Notification] Iniciando envio de confirmação de pagamento via Manychat...');
+    const whatsSuccess = await sendManychatNotification(reservation, 'PAYMENT_CONFIRMED');
+
+    if (whatsSuccess) {
+      console.log('[Manychat] Pagamento confirmado enviado para', reservation.mainGuest.phone);
+    } else {
+      console.error('[Manychat] Falha no envio de pagamento confirmado via WhatsApp.');
     }
-    };
-    
-    
-    // Função para enviar e-mail de confirmação de pagamento
-    export const sendPaymentConfirmedEmail = async (reservation: Reservation): Promise<{ success: boolean; error?: string }> => {
-    const shortId = getShortReservationId(reservation.id);
-    
-    if (!BREVO_API_KEY) {
-    console.warn('[Email] API Key do Brevo não configurada. E-mail não será enviado.');
-    return { success: false, error: 'API Key do Brevo não configurada' };
-    }
-    
-    
-      try {
-        // --- MUDANÇA: WHATSAPP PRIMEIRO ---
-        console.log('[Notification] Iniciando envio de confirmação de pagamento via Manychat...');
-        const whatsSuccess = await sendManychatNotification(reservation, 'PAYMENT_CONFIRMED');
-    
-        // Se preferir, mantém o email apenas como log ou não envia se WhatsApp for sucesso.
-        // Aqui seguiremos a mesma lógica: Envia whats, se der erro loga.
-        // E-mail é enviado como backup ou paralelo se desejado, mas vamos focar no pedido "toda a lógica para whats".
-        // Vamos comentar o envio de email para o cliente.
-        
-        if (whatsSuccess) {
-            console.log('[Manychat] Pagamento confirmado enviado para', reservation.mainGuest.phone);
-        } else {
-            console.error('[Manychat] Falha no envio de pagamento confirmado via WhatsApp.');
-        }
-        
-        // Manter envio original comentado
-        /*
-        const response = await fetch(BREVO_API_URL, {
-    
-      method: 'POST',
-      headers: {
-        'accept': 'application/json',
-        'api-key': BREVO_API_KEY,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        sender: {
-          name: HOTEL_CONFIG.name,
-          email: HOTEL_CONFIG.email,
-        },
-        to: [
-          {
-            email: reservation.mainGuest.email,
-            name: reservation.mainGuest.name,
-          },
-        ],
-        subject: `✅ Pagamento Confirmado - Reserva #${shortId} - Hotel Solar`,
-        htmlContent: generatePaymentConfirmedEmailHTML(reservation),
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('[Email] Erro ao enviar e-mail de confirmação:', errorData);
-      return { success: false, error: `Erro ao enviar e-mail: ${errorData.message || 'Erro desconhecido'}` };
-    }
-    
-    console.log('[Email] E-mail de confirmação de pagamento enviado para:', reservation.mainGuest.email);
+
     return { success: true };
-    } catch (error) {
+  } catch (error) {
     console.error('[Email] Erro ao enviar e-mail de confirmação:', error);
     return { success: false, error: `Erro ao enviar e-mail: ${error}` };
+  }
+};
+
+// Função para enviar e-mail de cancelamento de reserva
+export const sendReservationCanceledEmail = async (reservation: Reservation, reason?: string): Promise<{ success: boolean; error?: string }> => {
+  const shortId = getShortReservationId(reservation.id);
+
+  try {
+    // --- MUDANÇA: WHATSAPP PRIMEIRO ---
+    console.log('[Notification] Iniciando envio de cancelamento via Manychat...');
+    const whatsSuccess = await sendManychatNotification(reservation, 'CANCELLATION');
+
+    if (whatsSuccess) {
+      console.log('[Manychat] Cancelamento enviado para', reservation.mainGuest.phone);
+    } else {
+      console.error('[Manychat] Falha no envio de cancelamento via WhatsApp.');
     }
-    };
-    
-    // Função para enviar e-mail de cancelamento de reserva
-    export const sendReservationCanceledEmail = async (reservation: Reservation, reason?: string): Promise<{ success: boolean; error?: string }> => {
-    const shortId = getShortReservationId(reservation.id);
-    
-    if (!BREVO_API_KEY) {
-    console.warn('[Email] API Key do Brevo não configurada. E-mail não será enviado.');
-    return { success: false, error: 'API Key do Brevo não configurada' };
-    }
-    
-    
-      try {
-        // --- MUDANÇA: WHATSAPP PRIMEIRO ---
-        console.log('[Notification] Iniciando envio de cancelamento via Manychat...');
-        const whatsSuccess = await sendManychatNotification(reservation, 'CANCELLATION'); // Usaremos CANCELLATION genérico
-    
-        if (whatsSuccess) {
-            console.log('[Manychat] Cancelamento enviado para', reservation.mainGuest.phone);
-        } else {
-            console.error('[Manychat] Falha no envio de cancelamento via WhatsApp.');
-        }
-    
-        // Manter envio original para o cliente comentado
-        /*
-        const response = await fetch(BREVO_API_URL, {
-    
-      method: 'POST',
-      headers: {
-        'accept': 'application/json',
-        'api-key': BREVO_API_KEY,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        sender: {
-          name: HOTEL_CONFIG.name,
-          email: HOTEL_CONFIG.email,
-        },
-        to: [
-          {
-            email: reservation.mainGuest.email,
-            name: reservation.mainGuest.name,
-          },
-        ],
-        subject: `❌ Reserva Cancelada #${shortId} - Hotel Solar`,
-        htmlContent: generateReservationCanceledEmailHTML(reservation, reason),
-      }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('[Email] Erro ao enviar e-mail de cancelamento:', errorData);
-      return { success: false, error: `Erro ao enviar e-mail: ${errorData.message || 'Erro desconhecido'}` };
-    }
-    
-    console.log('[Email] E-mail de cancelamento enviado para:', reservation.mainGuest.email);
+
     return { success: true };
-    } catch (error) {
+  } catch (error) {
     console.error('[Email] Erro ao enviar e-mail de cancelamento:', error);
     return { success: false, error: `Erro ao enviar e-mail: ${error}` };
-    }
-    };
-    
-    
-    // Template de e-mail para cancelamento feito pelo cliente
-    const generateClientCancellationEmailHTML = (reservation: Reservation, cancelledItems?: { rooms?: string[], extras?: string[] }): string => {
-    const shortId = getShortReservationId(reservation.id);
-    const isPartialCancellation = cancelledItems && (cancelledItems.rooms?.length || cancelledItems.extras?.length);
-    
-    const cancelledRoomsHTML = cancelledItems?.rooms?.map(room => `<li style="margin-bottom: 4px;">${room}</li>`).join('') || '';
-    const cancelledExtrasHTML = cancelledItems?.extras?.map(extra => `<li style="margin-bottom: 4px;">${extra}</li>`).join('') || '';
-    
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-     
-    <!-- Header com Logo -->
-    <div style="background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); padding: 40px 20px; text-align: center;">
-      <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
-      <h1 style="color: #f97316; margin: 0; font-size: 28px; font-weight: normal;">
-        ${isPartialCancellation ? '⚠️ Cancelamento Parcial Confirmado' : '❌ Cancelamento Confirmado'}
-      </h1>
-      <p style="color: #d4a853; margin: 10px 0 0 0; font-size: 16px;">
-        Seu cancelamento foi processado com sucesso
-      </p>
-    </div>
-     
-    <!-- Conteúdo Principal -->
-    <div style="background-color: #ffffff; padding: 32px 24px;">
-      
-      <!-- Saudação -->
-      <p style="color: #1e293b; font-size: 16px; margin: 0 0 24px 0;">
-        Olá <strong>${reservation.mainGuest.name}</strong>,
-      </p>
-      <p style="color: #475569; font-size: 14px; margin: 0 0 24px 0; line-height: 1.6;">
-        ${isPartialCancellation
+  }
+};
+
+
+// Template de e-mail para cancelamento feito pelo cliente
+const generateClientCancellationEmailHTML = (reservation: Reservation, cancelledItems?: { rooms?: string[], extras?: string[] }): string => {
+  const shortId = getShortReservationId(reservation.id);
+  const isPartialCancellation = cancelledItems && (cancelledItems.rooms?.length || cancelledItems.extras?.length);
+
+  const cancelledRoomsHTML = cancelledItems?.rooms?.map(room => `<li style="margin-bottom: 4px;">${room}</li>`).join('') || '';
+  const cancelledExtrasHTML = cancelledItems?.extras?.map(extra => `<li style="margin-bottom: 4px;">${extra}</li>`).join('') || '';
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+<div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+ 
+<!-- Header com Logo -->
+<div style="background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); padding: 40px 20px; text-align: center;">
+<img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
+<h1 style="color: #f97316; margin: 0; font-size: 28px; font-weight: normal;">
+  ${isPartialCancellation ? '⚠️ Cancelamento Parcial Confirmado' : '❌ Cancelamento Confirmado'}
+</h1>
+<p style="color: #d4a853; margin: 10px 0 0 0; font-size: 16px;">
+  Seu cancelamento foi processado com sucesso
+</p>
+</div>
+ 
+<!-- Conteúdo Principal -->
+<div style="background-color: #ffffff; padding: 32px 24px;">
+ 
+<!-- Saudação -->
+<p style="color: #1e293b; font-size: 16px; margin: 0 0 24px 0;">
+  Olá <strong>${reservation.mainGuest.name}</strong>,
+</p>
+<p style="color: #475569; font-size: 14px; margin: 0 0 24px 0; line-height: 1.6;">
+  ${isPartialCancellation
       ? 'Confirmamos o cancelamento parcial da sua reserva conforme solicitado. Veja abaixo os itens cancelados.'
       : 'Confirmamos o cancelamento completo da sua reserva conforme solicitado. Lamentamos que não poderemos recebê-lo desta vez.'}
-      </p>
-      
-      <!-- Número da Reserva -->
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
-        <p style="color: #64748b; margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
-          Número da Reserva
-        </p>
-        <p style="color: #d4a853; margin: 0; font-size: 32px; font-weight: bold; letter-spacing: 4px;">
-          ${shortId}
-        </p>
-      </div>
-      
-      ${isPartialCancellation ? `
-      <!-- Itens Cancelados -->
-      <div style="background: rgba(249, 115, 22, 0.05); border-left: 4px solid #f97316; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
-        <h4 style="color: #f97316; margin: 0 0 12px 0; font-size: 14px;">🚫 Itens Cancelados:</h4>
-        ${cancelledRoomsHTML ? `
-        <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 13px;"><strong>Acomodações:</strong></p>
-        <ul style="color: #475569; margin: 0 0 12px 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
-          ${cancelledRoomsHTML}
-        </ul>
-        ` : ''}
-        ${cancelledExtrasHTML ? `
-        <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 13px;"><strong>Serviços Extras:</strong></p>
-        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
-          ${cancelledExtrasHTML}
-        </ul>
-        ` : ''}
-      </div>
-      ` : `
-      <!-- Detalhes da Reserva Cancelada -->
-      <div style="margin-bottom: 24px;">
-        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
-          📋 Detalhes da Reserva Cancelada
-        </h3>
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
-          <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
-          <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
-          <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">Valor:</strong> ${formatCurrency(reservation.totalPrice)}</p>
-        </div>
-      </div>
-      `}
-      
-      <!-- Política de Cancelamento -->
-      <div style="background: rgba(212, 168, 83, 0.1); border-left: 4px solid #d4a853; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
-        <h4 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">📌 Política de Cancelamento</h4>
-        <p style="color: #475569; margin: 0; font-size: 13px; line-height: 1.6;">
-          Conforme nossa política, cancelamentos estão sujeitos às condições descritas no momento da reserva. 
-          Para mais informações sobre reembolsos, entre em contato conosco.
-        </p>
-      </div>
-      
-      <!-- Botão Nova Reserva -->
-      <div style="text-align: center; margin: 32px 0;">
-        <a href="https://motor-de-reservas-on-line-hotel-sol.vercel.app" style="display: inline-block; background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); color: #4ade80; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; font-size: 14px;">
-          Fazer Nova Reserva
-        </a>
-      </div>
-      
-      <!-- Rodapé -->
-      <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e2e8f0;">
-        <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">
-          Esperamos vê-lo em breve!
-        </p>
-        <p style="color: #64748b; margin: 0; font-size: 12px;">
-          ${HOTEL_CONFIG.name} - ${HOTEL_CONFIG.address}
-        </p>
-        <p style="color: #64748b; margin: 8px 0 0 0; font-size: 12px;">
-          Email: <a href="mailto:${HOTEL_CONFIG.email}" style="color: #d4a853; text-decoration: none;">${HOTEL_CONFIG.email}</a>
-        </p>
-      </div>
-      
-    </div>
-     
-    </div>
-    </body>
-    </html>
-    `;
-    };
-    
-    // Template de e-mail para notificar o hotel sobre cancelamento feito pelo cliente
-    const generateAdminCancellationNotificationHTML = (reservation: Reservation, cancelledItems?: { rooms?: string[], extras?: string[] }): string => {
-    const shortId = getShortReservationId(reservation.id);
-    const isPartialCancellation = cancelledItems && (cancelledItems.rooms?.length || cancelledItems.extras?.length);
-    
-    const cancelledRoomsHTML = cancelledItems?.rooms?.map(room => `<li style="margin-bottom: 4px;">${room}</li>`).join('') || '';
-    const cancelledExtrasHTML = cancelledItems?.extras?.map(extra => `<li style="margin-bottom: 4px;">${extra}</li>`).join('') || '';
-    
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden;">
-     
-    <!-- Header com Logo -->
-    <div style="background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); padding: 30px 20px; text-align: center; border-bottom: 3px solid #d4a853;">
-      <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 100px; margin-bottom: 10px;">
-    </div>
-     
-    <!-- Conteúdo Principal -->
-    <div style="background-color: #ffffff; padding: 32px 24px;">
-      
-      <!-- Alerta -->
-      <div style="text-align: center; margin-bottom: 24px;">
-        <span style="font-size: 48px;">⚠️</span>
-        <h1 style="color: #f97316; margin: 16px 0 0 0; font-size: 24px;">
-          ${isPartialCancellation ? 'Cancelamento Parcial pelo Cliente' : 'Cancelamento pelo Cliente'}
-        </h1>
-      </div>
-      
-      <!-- Número da Reserva -->
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center; margin-bottom: 24px;">
-        <p style="color: #64748b; margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 2px;">
-          Número da Reserva
-        </p>
-        <p style="color: #d4a853; margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 2px;">
-          ${shortId}
-        </p>
-      </div>
-      
-      <!-- Dados do Hóspede -->
-      <div style="margin-bottom: 24px;">
-        <h2 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
-          Dados do Hóspede
-        </h2>
-        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Nome:</strong> ${reservation.mainGuest.name}</p>
-        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Email:</strong> ${reservation.mainGuest.email}</p>
-        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Telefone:</strong> ${reservation.mainGuest.phone}</p>
-      </div>
-      
-      <!-- Detalhes da Reserva -->
-      <div style="margin-bottom: 24px;">
-        <h2 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
-          Detalhes da Reserva
-        </h2>
-        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
-        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
-        <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">Valor Total:</strong> ${formatCurrency(reservation.totalPrice)}</p>
-      </div>
-      
-      ${isPartialCancellation ? `
-      <!-- Itens Cancelados -->
-      <div style="background: rgba(249, 115, 22, 0.05); border-left: 4px solid #f97316; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
-        <h4 style="color: #f97316; margin: 0 0 12px 0; font-size: 14px;">🚫 Itens Cancelados pelo Cliente:</h4>
-        ${cancelledRoomsHTML ? `
-        <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 13px;"><strong>Acomodações:</strong></p>
-        <ul style="color: #475569; margin: 0 0 12px 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
-          ${cancelledRoomsHTML}
-        </ul>
-        ` : ''}
-        ${cancelledExtrasHTML ? `
-        <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 13px;"><strong>Serviços Extras:</strong></p>
-        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
-          ${cancelledExtrasHTML}
-        </ul>
-        ` : ''}
-      </div>
-      ` : `
-      <!-- Alerta de Cancelamento Total -->
-      <div style="background: rgba(239, 68, 68, 0.05); border-left: 4px solid #ef4444; padding: 16px; border-radius: 0 8px 8px 0;">
-        <p style="color: #ef4444; margin: 0; font-size: 14px;">
-          <strong>⚠️ Reserva Cancelada:</strong> O cliente cancelou toda a reserva através do link no e-mail.
-        </p>
-      </div>
-      `}
-      
-    </div>
-     
-    </div>
-    </body>
-    </html>
-    `;
-    };
-    
-    // Função para enviar e-mails de cancelamento feito pelo cliente
-    export const sendClientCancellationEmails = async (
-    reservation: Reservation,
-    cancelledItems?: { rooms?: string[], extras?: string[] }
-    ): Promise<{ success: boolean; error?: string }> => {
-    const shortId = getShortReservationId(reservation.id);
-    const isPartialCancellation = cancelledItems && (cancelledItems.rooms?.length || cancelledItems.extras?.length);
-    
-    if (!BREVO_API_KEY) {
-    console.warn('[Email] API Key do Brevo não configurada. E-mails não serão enviados.');
-    return { success: false, error: 'API Key do Brevo não configurada' };
-    }
-    
-    
-      try {
-        // --- MUDANÇA: WHATSAPP PRIMEIRO ---
-        console.log('[Notification] Iniciando envio de cancelamento (pelo cliente) via Manychat...');
-        const whatsSuccess = await sendManychatNotification(reservation, 'CANCELLATION');
-    
-        if (whatsSuccess) {
-            console.log('[Manychat] Cancelamento pelo cliente enviado para', reservation.mainGuest.phone);
-        }
-    
-        // Manter envio original para o cliente comentado
-        /*
-        // 1. Enviar e-mail para o cliente confirmando o cancelamento
-        const clientEmailResponse = await fetch(BREVO_API_URL, {
-    
-      method: 'POST',
-      headers: {
-        'accept': 'application/json',
-        'api-key': BREVO_API_KEY,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        sender: {
-          name: HOTEL_CONFIG.name,
-          email: HOTEL_CONFIG.email,
-        },
-        to: [
-          {
-            email: reservation.mainGuest.email,
-            name: reservation.mainGuest.name,
-          },
-        ],
-        subject: isPartialCancellation
-          ? `⚠️ Cancelamento Parcial Confirmado - Reserva #${shortId} - Hotel Solar`
-          : `❌ Cancelamento Confirmado - Reserva #${shortId} - Hotel Solar`,
-      }),
-      });
-      */
+</p>
+ 
+<!-- Número da Reserva -->
+<div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+  <p style="color: #64748b; margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
+    Número da Reserva
+  </p>
+  <p style="color: #d4a853; margin: 0; font-size: 32px; font-weight: bold; letter-spacing: 4px;">
+    ${shortId}
+  </p>
+</div>
+ 
+${isPartialCancellation ? `
+<!-- Itens Cancelados -->
+<div style="background: rgba(249, 115, 22, 0.05); border-left: 4px solid #f97316; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+  <h4 style="color: #f97316; margin: 0 0 12px 0; font-size: 14px;">🚫 Itens Cancelados:</h4>
+  ${cancelledRoomsHTML ? `
+  <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 13px;"><strong>Acomodações:</strong></p>
+  <ul style="color: #475569; margin: 0 0 12px 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
+    ${cancelledRoomsHTML}
+  </ul>
+  ` : ''}
+  ${cancelledExtrasHTML ? `
+  <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 13px;"><strong>Serviços Extras:</strong></p>
+  <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
+    ${cancelledExtrasHTML}
+  </ul>
+  ` : ''}
+</div>
+` : `
+<!-- Detalhes da Reserva Cancelada -->
+<div style="margin-bottom: 24px;">
+  <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+    📋 Detalhes da Reserva Cancelada
+  </h3>
+  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
+    <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
+    <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
+    <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">Valor:</strong> ${formatCurrency(reservation.totalPrice)}</p>
+  </div>
+</div>
+`}
+ 
+<!-- Política de Cancelamento -->
+<div style="background: rgba(212, 168, 83, 0.1); border-left: 4px solid #d4a853; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+  <h4 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">📌 Política de Cancelamento</h4>
+  <p style="color: #475569; margin: 0; font-size: 13px; line-height: 1.6;">
+    Conforme nossa política, cancelamentos estão sujeitos às condições descritas no momento da reserva. 
+    Para mais informações sobre reembolsos, entre em contato conosco.
+  </p>
+</div>
+ 
+<!-- Botão Nova Reserva -->
+<div style="text-align: center; margin: 32px 0;">
+  <a href="https://motor-de-reservas-on-line-hotel-sol.vercel.app" style="display: inline-block; background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); color: #4ade80; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; font-size: 14px;">
+    Fazer Nova Reserva
+  </a>
+</div>
+ 
+<!-- Rodapé -->
+<div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e2e8f0;">
+  <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">
+    Esperamos vê-lo em breve!
+  </p>
+  <p style="color: #64748b; margin: 0; font-size: 12px;">
+    ${HOTEL_CONFIG.name} - ${HOTEL_CONFIG.address}
+  </p>
+  <p style="color: #64748b; margin: 8px 0 0 0; font-size: 12px;">
+    Email: <a href="mailto:${HOTEL_CONFIG.email}" style="color: #d4a853; text-decoration: none;">${HOTEL_CONFIG.email}</a>
+  </p>
+</div>
+ 
+</div>
+ 
+</div>
+</body>
+</html>
+`;
+};
 
-    if (!clientEmailResponse.ok) {
-      const errorData = await clientEmailResponse.json();
-      console.error('[Email] Erro ao enviar e-mail de cancelamento para cliente:', errorData);
-      return { success: false, error: `Erro ao enviar e-mail: ${errorData.message || 'Erro desconhecido'}` };
+// Template de e-mail para notificar o hotel sobre cancelamento feito pelo cliente
+const generateAdminCancellationNotificationHTML = (reservation: Reservation, cancelledItems?: { rooms?: string[], extras?: string[] }): string => {
+  const shortId = getShortReservationId(reservation.id);
+  const isPartialCancellation = cancelledItems && (cancelledItems.rooms?.length || cancelledItems.extras?.length);
+
+  const cancelledRoomsHTML = cancelledItems?.rooms?.map(room => `<li style="margin-bottom: 4px;">${room}</li>`).join('') || '';
+  const cancelledExtrasHTML = cancelledItems?.extras?.map(extra => `<li style="margin-bottom: 4px;">${extra}</li>`).join('') || '';
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+<div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden;">
+ 
+<!-- Header com Logo -->
+<div style="background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); padding: 30px 20px; text-align: center; border-bottom: 3px solid #d4a853;">
+<img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 100px; margin-bottom: 10px;">
+</div>
+ 
+<!-- Conteúdo Principal -->
+<div style="background-color: #ffffff; padding: 32px 24px;">
+ 
+<!-- Alerta -->
+<div style="text-align: center; margin-bottom: 24px;">
+  <span style="font-size: 48px;">⚠️</span>
+  <h1 style="color: #f97316; margin: 16px 0 0 0; font-size: 24px;">
+    ${isPartialCancellation ? 'Cancelamento Parcial pelo Cliente' : 'Cancelamento pelo Cliente'}
+  </h1>
+</div>
+ 
+<!-- Número da Reserva -->
+<div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; text-align: center; margin-bottom: 24px;">
+  <p style="color: #64748b; margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 2px;">
+    Número da Reserva
+  </p>
+  <p style="color: #d4a853; margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 2px;">
+    ${shortId}
+  </p>
+</div>
+ 
+<!-- Dados do Hóspede -->
+<div style="margin-bottom: 24px;">
+  <h2 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+    Dados do Hóspede
+  </h2>
+  <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Nome:</strong> ${reservation.mainGuest.name}</p>
+  <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Email:</strong> ${reservation.mainGuest.email}</p>
+  <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Telefone:</strong> ${reservation.mainGuest.phone}</p>
+</div>
+ 
+<!-- Detalhes da Reserva -->
+<div style="margin-bottom: 24px;">
+  <h2 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+    Detalhes da Reserva
+  </h2>
+  <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
+  <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
+  <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">Valor Total:</strong> ${formatCurrency(reservation.totalPrice)}</p>
+</div>
+ 
+${isPartialCancellation ? `
+<!-- Itens Cancelados -->
+<div style="background: rgba(249, 115, 22, 0.05); border-left: 4px solid #f97316; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+  <h4 style="color: #f97316; margin: 0 0 12px 0; font-size: 14px;">🚫 Itens Cancelados pelo Cliente:</h4>
+  ${cancelledRoomsHTML ? `
+  <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 13px;"><strong>Acomodações:</strong></p>
+  <ul style="color: #475569; margin: 0 0 12px 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
+    ${cancelledRoomsHTML}
+  </ul>
+  ` : ''}
+  ${cancelledExtrasHTML ? `
+  <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 13px;"><strong>Serviços Extras:</strong></p>
+  <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
+    ${cancelledExtrasHTML}
+  </ul>
+  ` : ''}
+</div>
+` : `
+<!-- Alerta de Cancelamento Total -->
+<div style="background: rgba(239, 68, 68, 0.05); border-left: 4px solid #ef4444; padding: 16px; border-radius: 0 8px 8px 0;">
+  <p style="color: #ef4444; margin: 0; font-size: 14px;">
+    <strong>⚠️ Reserva Cancelada:</strong> O cliente cancelou toda a reserva através do link no e-mail.
+  </p>
+</div>
+`}
+ 
+</div>
+ 
+</div>
+</body>
+</html>
+`;
+};
+
+// Função para enviar e-mails de cancelamento feito pelo cliente
+export const sendClientCancellationEmails = async (
+  reservation: Reservation,
+  cancelledItems?: { rooms?: string[], extras?: string[] }
+): Promise<{ success: boolean; error?: string }> => {
+  const shortId = getShortReservationId(reservation.id);
+  const isPartialCancellation = cancelledItems && (cancelledItems.rooms?.length || cancelledItems.extras?.length);
+
+  try {
+    // --- MUDANÇA: WHATSAPP PRIMEIRO ---
+    console.log('[Notification] Iniciando envio de cancelamento (pelo cliente) via Manychat...');
+    const whatsSuccess = await sendManychatNotification(reservation, 'CANCELLATION');
+
+    if (whatsSuccess) {
+      console.log('[Manychat] Cancelamento pelo cliente enviado para', reservation.mainGuest.phone);
     }
 
-    console.log('[Email] E-mail de cancelamento enviado para cliente:', reservation.mainGuest.email);
+    // --- NOTIFICAÇÃO PARA O HOTEL (MANTIDA via EMAIL) ---
+    // Mesmo mudando o cliente para whats, o hotel precisa saber do cancelamento.
+    // Se quisermos remover também, comentaríamos aqui. Mas por segurança mantemos para o Admin.
 
-    // 2. Enviar notificação para o hotel
     const hotelEmailResponse = await fetch(BREVO_API_URL, {
       method: 'POST',
       headers: {
