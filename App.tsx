@@ -77,6 +77,7 @@ export default function App() {
   }, [currentView]);
 
   // Auto-restore Varanda Térreo if missing or broken (Maintenance)
+  /*
   useEffect(() => {
     if (rooms.length > 0 && !isSaving) {
       const varandaDef = INITIAL_ROOMS.find(r => r.id === 'varanda-terreo');
@@ -89,6 +90,7 @@ export default function App() {
       }
     }
   }, [rooms, isSaving, upsertRoom]);
+  */
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
