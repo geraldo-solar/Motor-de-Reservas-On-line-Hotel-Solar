@@ -1,6 +1,7 @@
 // Serviço de envio de e-mails via Brevo (Sendinblue)
 
 import { Reservation } from '../types';
+import { sendManychatNotification } from './manychatService';
 
 // API Key deve ser configurada como variável de ambiente na Vercel
 const BREVO_API_KEY = import.meta.env.VITE_BREVO_API_KEY || '';
@@ -437,14 +438,61 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
   const shortId = getShortReservationId(reservation.id);
 
   // Verificar se a API key está configurada
+  /*
   if (!BREVO_API_KEY) {
     console.warn('[Email] API Key do Brevo não configurada. E-mails não serão enviados.');
     return { success: false, error: 'API Key do Brevo não configurada' };
   }
+  */
 
   try {
-    // 1. Enviar e-mail para o cliente
+    // --- MUDANÇA: PRIORIDADE PARA WHATSAPP (MANYCHAT) ---
+    console.log('[Notification] Iniciando envio via Manychat...');
+
+    // 1. Enviar Notificação para o Cliente
+    const clientSuccess = await sendManychatNotification(reservation, 'CONFIRMATION');
+
+    if (clientSuccess) {
+      console.log('[Manychat] Notificação de confirmação enviada com sucesso para:', reservation.mainGuest.phone);
+    } else {
+      console.error('[Manychat] Falha ao enviar notificação de confirmação.');
+      // Fallback para e-mail original se desejar, mas o usuário pediu "toda a lógica para Manychat".
+      // Vamos manter o log de erro mas não bloquear
+    }
+
+    // 2. Não enviamos notificação para o hotel via Manychat (normalmente Admin usa email ou sistema), 
+    // mas se o admin tiver cadastro no Manychat poderia. 
+    // Vamos manter o e-mail APENAS para o ADM (Hotel) como backup de segurança ou remover se o user quiser 100% whats.
+    // O pedido foi "toda a lógica de envios de email para enviar via whatsapp". 
+    // Assumiremos que o cliente quer receber no whats DELE. O hotel continua recebendo por onde der (email).
+
+    const hotelEmailResponse = await fetch(BREVO_API_URL, {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': BREVO_API_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: 'Sistema de Reservas', email: HOTEL_CONFIG.email },
+        to: [{ email: HOTEL_CONFIG.adminEmail, name: 'Administração Hotel Solar' }],
+        subject: `🔔 Nova Reserva #${shortId} - ${reservation.mainGuest.name}`,
+        htmlContent: generateHotelEmailHTML(reservation),
+      }),
+    });
+    // Ignoramos erro do email do admin para não falhar o processo do usuário
+
+    /* 
+       --- CÓDIGO ANTIGO DE E-MAIL DO CLIENTE COMENTADO ---
+    const clientEmailResponse = await fetch(BREVO_API_URL, { ... });
+    */
+
+    return { success: clientSuccess };
+
+    /* CÓDIGO ORIGINAL ABAIXO MANTIDO APENAS COMO REFERÊNCIA DE FLUXO ANTERIOR */
+    /*
     const clientEmailResponse = await fetch(BREVO_API_URL, {
+    
       method: 'POST',
       headers: {
         'accept': 'application/json',
@@ -466,15 +514,15 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
         htmlContent: generateClientEmailHTML(reservation),
       }),
     });
-
+    
     if (!clientEmailResponse.ok) {
       const errorData = await clientEmailResponse.json();
       console.error('[Email] Erro ao enviar e-mail para cliente:', errorData);
       return { success: false, error: `Erro ao enviar e-mail para cliente: ${errorData.message || 'Erro desconhecido'}` };
     }
-
+    
     console.log('[Email] E-mail enviado para cliente:', reservation.mainGuest.email);
-
+    
     // 2. Enviar e-mail para o hotel
     const hotelEmailResponse = await fetch(BREVO_API_URL, {
       method: 'POST',
@@ -498,21 +546,21 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
         htmlContent: generateHotelEmailHTML(reservation),
       }),
     });
-
+    
     if (!hotelEmailResponse.ok) {
       const errorData = await hotelEmailResponse.json();
       console.error('[Email] Erro ao enviar e-mail para hotel:', errorData);
     } else {
       console.log('[Email] E-mail enviado para hotel:', HOTEL_CONFIG.adminEmail);
     }
-
+    
     // 3. SE RESERVA < 26H PARA CHECKIN, ENVIAR PRÉ-CHECKIN (IGUAL AO ERP)
     try {
       const checkInDay = reservation.checkIn.split('T')[0];
       const checkInDate = new Date(`${checkInDay}T14:00:00`);
       const now = new Date();
       const diffInHours = (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-
+    
       console.log(`[Email] DEBUG PRÉ-CHECKIN:`, {
         resId: shortId,
         checkIn: reservation.checkIn,
@@ -520,7 +568,7 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
         now: now.toISOString(),
         diffInHours: diffInHours.toFixed(1)
       });
-
+    
       // Se o check-in for HOJE ou AMANHÃ (até 26h antes), envia o pré-check-in.
       // Aumentamos o limite inferior para -24h para garantir que quem reservou hoje à noite receba.
       if (diffInHours > -24 && diffInHours < 26) {
@@ -532,7 +580,7 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
     } catch (e) {
       console.error('[Email] Erro ao calcular tempo para pré-checkin:', e);
     }
-
+    
     // 4. Sincronizar com Brevo (Marketing)
     try {
       await syncContactToBrevo(
@@ -546,27 +594,27 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
     } catch (e) {
       console.error('[Email] Erro ao sincronizar Brevo:', e);
     }
-
+    
     return { success: true };
-  } catch (error) {
+    } catch (error) {
     console.error('[Email] Erro ao enviar e-mails:', error);
     return { success: false, error: `Erro ao enviar e-mails: ${error}` };
-  }
-};
-
-// Sincronizar contato com Brevo (Marketing)
-export const syncContactToBrevo = async (guest: { name: string, email: string, phone: string }, tags: string[] = ['HOSPEDE']) => {
-  const BREVO_CONTACTS_URL = 'https://api.brevo.com/v3/contacts';
-
-  if (!BREVO_API_KEY) return { success: false, error: 'API Key não configurada' };
-  if (!guest.email) return { success: false, error: 'E-mail obrigatório' };
-
-  try {
+    }
+    };
+    
+    // Sincronizar contato com Brevo (Marketing)
+    export const syncContactToBrevo = async (guest: { name: string, email: string, phone: string }, tags: string[] = ['HOSPEDE']) => {
+    const BREVO_CONTACTS_URL = 'https://api.brevo.com/v3/contacts';
+    
+    if (!BREVO_API_KEY) return { success: false, error: 'API Key não configurada' };
+    if (!guest.email) return { success: false, error: 'E-mail obrigatório' };
+    
+    try {
     let cleanPhone = guest.phone.replace(/\D/g, '');
     if (cleanPhone.length === 11 && !cleanPhone.startsWith('55')) {
       cleanPhone = '55' + cleanPhone;
     }
-
+    
     const response = await fetch(BREVO_CONTACTS_URL, {
       method: 'POST',
       headers: {
@@ -587,43 +635,43 @@ export const syncContactToBrevo = async (guest: { name: string, email: string, p
         tags: tags
       })
     });
-
+    
     return { success: response.ok };
-  } catch (err: any) {
+    } catch (err: any) {
     console.error('Erro de rede Brevo Sync:', err);
     return { success: false, error: err.message };
-  }
-};
-
-export default sendReservationEmails;
-
-
-// Template de e-mail para confirmação de pagamento
-const generatePaymentConfirmedEmailHTML = (reservation: Reservation): string => {
-  const shortId = getShortReservationId(reservation.id);
-  const isPix = reservation.paymentMethod === 'PIX';
-
-  const paymentMethodText = isPix
+    }
+    };
+    
+    export default sendReservationEmails;
+    
+    
+    // Template de e-mail para confirmação de pagamento
+    const generatePaymentConfirmedEmailHTML = (reservation: Reservation): string => {
+    const shortId = getShortReservationId(reservation.id);
+    const isPix = reservation.paymentMethod === 'PIX';
+    
+    const paymentMethodText = isPix
     ? 'PIX Confirmado'
     : reservation.cardDetails?.installments && reservation.cardDetails.installments > 1
       ? `Cartão Aprovado (${reservation.cardDetails.installments}x)`
       : 'Cartão Aprovado';
-
-  // Gerar lista de acomodações
-  const roomsHTML = reservation.rooms.map(room => `
-    <li style="margin-bottom: 4px;">${room.name}</li>
-  `).join('');
-
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-  <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
     
+    // Gerar lista de acomodações
+    const roomsHTML = reservation.rooms.map(room => `
+    <li style="margin-bottom: 4px;">${room.name}</li>
+    `).join('');
+    
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+     
     <!-- Header com Logo -->
     <div style="background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); padding: 40px 20px; text-align: center;">
       <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
@@ -634,7 +682,7 @@ const generatePaymentConfirmedEmailHTML = (reservation: Reservation): string => 
         Sua reserva está garantida!
       </p>
     </div>
-    
+     
     <!-- Conteúdo Principal -->
     <div style="background-color: #ffffff; padding: 32px 24px;">
       
@@ -717,32 +765,32 @@ const generatePaymentConfirmedEmailHTML = (reservation: Reservation): string => 
       </div>
       
     </div>
+     
+    </div>
+    </body>
+    </html>
+    `;
+    };
     
-  </div>
-</body>
-</html>
-  `;
-};
-
-// Template de e-mail para cancelamento de reserva
-const generateReservationCanceledEmailHTML = (reservation: Reservation, customReason?: string): string => {
-  const shortId = getShortReservationId(reservation.id);
-  const isPix = reservation.paymentMethod === 'PIX';
-
-  const cancelReasonText = customReason || (isPix
+    // Template de e-mail para cancelamento de reserva
+    const generateReservationCanceledEmailHTML = (reservation: Reservation, customReason?: string): string => {
+    const shortId = getShortReservationId(reservation.id);
+    const isPix = reservation.paymentMethod === 'PIX';
+    
+    const cancelReasonText = customReason || (isPix
     ? 'Não recebemos o comprovante de pagamento PIX dentro do prazo estabelecido.'
     : 'O pagamento via cartão de crédito não foi aprovado pela operadora.');
-
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="margin: 0; padding: 0; background-color: #fef2f2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-  <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
     
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #fef2f2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+     
     <!-- Header com Logo -->
     <div style="background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%); padding: 40px 20px; text-align: center;">
       <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
@@ -753,7 +801,7 @@ const generateReservationCanceledEmailHTML = (reservation: Reservation, customRe
         Sua reserva não pôde ser confirmada
       </p>
     </div>
-    
+     
     <!-- Conteúdo Principal -->
     <div style="background-color: #ffffff; padding: 32px 24px;">
       
@@ -826,24 +874,24 @@ const generateReservationCanceledEmailHTML = (reservation: Reservation, customRe
       </div>
       
     </div>
+     
+    </div>
+    </body>
+    </html>
+    `;
+    };
     
-  </div>
-</body>
-</html>
-  `;
-};
-
-// Template de e-mail para pré-check-in (Copiado do ERP conforme pedido)
-const generatePreCheckInEmailHTML = (reservation: Reservation): string => {
-  const shortId = getShortReservationId(reservation.id);
-  const preCheckInUrl = `${HOTEL_CONFIG.erpUrl}/pre-checkin/${reservation.id}`;
-
-  return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-  <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+    // Template de e-mail para pré-check-in (Copiado do ERP conforme pedido)
+    const generatePreCheckInEmailHTML = (reservation: Reservation): string => {
+    const shortId = getShortReservationId(reservation.id);
+    const preCheckInUrl = `${HOTEL_CONFIG.erpUrl}/pre-checkin/${reservation.id}`;
+    
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
     <div style="background: linear-gradient(135deg, #d4a853 0%, #b88a3e 100%); padding: 40px 20px; text-align: center;">
       <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
       <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: normal;">📋 Agilize seu Check-in!</h1>
@@ -856,12 +904,12 @@ const generatePreCheckInEmailHTML = (reservation: Reservation): string => {
       <div style="text-align: center; margin: 32px 0;">
         <a href="${preCheckInUrl}" style="background-color: #1a3c34; color: #d4a853; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">FAZER PRÉ-CHECK-IN AGORA</a>
       </div>
-
+    
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
         <h3 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">📅 Sua Reserva: #${shortId}</h3>
         <p style="color: #475569; margin: 0; font-size: 13px;">Previsão de Check-in: <strong>${formatDate(reservation.checkIn)}</strong></p>
       </div>
-
+    
       <div style="background: rgba(212, 168, 83, 0.1); border-left: 4px solid #d4a853; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
         <h4 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">💡 Por que fazer o pré-check-in?</h4>
         <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.6; font-size: 13px;">
@@ -870,27 +918,27 @@ const generatePreCheckInEmailHTML = (reservation: Reservation): string => {
           <li>Cumprimento da legislação FNRH eletronicamente</li>
         </ul>
       </div>
-
+    
       <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e2e8f0;">
         <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 14px; font-weight: bold;">Nos vemos em breve!</p>
         <p style="color: #64748b; margin: 0; font-size: 12px;">${HOTEL_CONFIG.name} - ${HOTEL_CONFIG.address}</p>
       </div>
     </div>
-  </div>
-</body>
-</html>`;
-};
-
-// Função para enviar e e-mail de pré-check-in
-export const sendPreCheckInEmail = async (reservation: Reservation): Promise<{ success: boolean; error?: string }> => {
-  const shortId = getShortReservationId(reservation.id);
-
-  if (!BREVO_API_KEY) {
+    </div>
+    </body>
+    </html>`;
+    };
+    
+    // Função para enviar e e-mail de pré-check-in
+    export const sendPreCheckInEmail = async (reservation: Reservation): Promise<{ success: boolean; error?: string }> => {
+    const shortId = getShortReservationId(reservation.id);
+    
+    if (!BREVO_API_KEY) {
     console.warn('[Email] API Key do Brevo não configurada. E-mail de pré-check-in não será enviado.');
     return { success: false, error: 'API Key do Brevo não configurada' };
-  }
-
-  try {
+    }
+    
+    try {
     const response = await fetch(BREVO_API_URL, {
       method: 'POST',
       headers: {
@@ -913,33 +961,52 @@ export const sendPreCheckInEmail = async (reservation: Reservation): Promise<{ s
         htmlContent: generatePreCheckInEmailHTML(reservation),
       }),
     });
-
+    
     if (!response.ok) {
       const errorData = await response.json();
       console.error('[Email] Erro ao enviar e-mail de pré-check-in:', errorData);
       return { success: false, error: `Erro ao enviar e-mail: ${errorData.message || 'Erro desconhecido'}` };
     }
-
+    
     console.log('[Email] E-mail de pré-check-in enviado para:', reservation.mainGuest.email);
     return { success: true };
-  } catch (error) {
+    } catch (error) {
     console.error('[Email] Erro ao enviar e-mail de pré-check-in:', error);
     return { success: false, error: `Erro ao enviar e-mail: ${error}` };
-  }
-};
-
-
-// Função para enviar e-mail de confirmação de pagamento
-export const sendPaymentConfirmedEmail = async (reservation: Reservation): Promise<{ success: boolean; error?: string }> => {
-  const shortId = getShortReservationId(reservation.id);
-
-  if (!BREVO_API_KEY) {
+    }
+    };
+    
+    
+    // Função para enviar e-mail de confirmação de pagamento
+    export const sendPaymentConfirmedEmail = async (reservation: Reservation): Promise<{ success: boolean; error?: string }> => {
+    const shortId = getShortReservationId(reservation.id);
+    
+    if (!BREVO_API_KEY) {
     console.warn('[Email] API Key do Brevo não configurada. E-mail não será enviado.');
     return { success: false, error: 'API Key do Brevo não configurada' };
-  }
-
-  try {
-    const response = await fetch(BREVO_API_URL, {
+    }
+    
+    
+      try {
+        // --- MUDANÇA: WHATSAPP PRIMEIRO ---
+        console.log('[Notification] Iniciando envio de confirmação de pagamento via Manychat...');
+        const whatsSuccess = await sendManychatNotification(reservation, 'PAYMENT_CONFIRMED');
+    
+        // Se preferir, mantém o email apenas como log ou não envia se WhatsApp for sucesso.
+        // Aqui seguiremos a mesma lógica: Envia whats, se der erro loga.
+        // E-mail é enviado como backup ou paralelo se desejado, mas vamos focar no pedido "toda a lógica para whats".
+        // Vamos comentar o envio de email para o cliente.
+        
+        if (whatsSuccess) {
+            console.log('[Manychat] Pagamento confirmado enviado para', reservation.mainGuest.phone);
+        } else {
+            console.error('[Manychat] Falha no envio de pagamento confirmado via WhatsApp.');
+        }
+        
+        // Manter envio original comentado
+        /*
+        const response = await fetch(BREVO_API_URL, {
+    
       method: 'POST',
       headers: {
         'accept': 'application/json',
@@ -961,32 +1028,46 @@ export const sendPaymentConfirmedEmail = async (reservation: Reservation): Promi
         htmlContent: generatePaymentConfirmedEmailHTML(reservation),
       }),
     });
-
+    
     if (!response.ok) {
       const errorData = await response.json();
       console.error('[Email] Erro ao enviar e-mail de confirmação:', errorData);
       return { success: false, error: `Erro ao enviar e-mail: ${errorData.message || 'Erro desconhecido'}` };
     }
-
+    
     console.log('[Email] E-mail de confirmação de pagamento enviado para:', reservation.mainGuest.email);
     return { success: true };
-  } catch (error) {
+    } catch (error) {
     console.error('[Email] Erro ao enviar e-mail de confirmação:', error);
     return { success: false, error: `Erro ao enviar e-mail: ${error}` };
-  }
-};
-
-// Função para enviar e-mail de cancelamento de reserva
-export const sendReservationCanceledEmail = async (reservation: Reservation, reason?: string): Promise<{ success: boolean; error?: string }> => {
-  const shortId = getShortReservationId(reservation.id);
-
-  if (!BREVO_API_KEY) {
+    }
+    };
+    
+    // Função para enviar e-mail de cancelamento de reserva
+    export const sendReservationCanceledEmail = async (reservation: Reservation, reason?: string): Promise<{ success: boolean; error?: string }> => {
+    const shortId = getShortReservationId(reservation.id);
+    
+    if (!BREVO_API_KEY) {
     console.warn('[Email] API Key do Brevo não configurada. E-mail não será enviado.');
     return { success: false, error: 'API Key do Brevo não configurada' };
-  }
-
-  try {
-    const response = await fetch(BREVO_API_URL, {
+    }
+    
+    
+      try {
+        // --- MUDANÇA: WHATSAPP PRIMEIRO ---
+        console.log('[Notification] Iniciando envio de cancelamento via Manychat...');
+        const whatsSuccess = await sendManychatNotification(reservation, 'CANCELLATION'); // Usaremos CANCELLATION genérico
+    
+        if (whatsSuccess) {
+            console.log('[Manychat] Cancelamento enviado para', reservation.mainGuest.phone);
+        } else {
+            console.error('[Manychat] Falha no envio de cancelamento via WhatsApp.');
+        }
+    
+        // Manter envio original para o cliente comentado
+        /*
+        const response = await fetch(BREVO_API_URL, {
+    
       method: 'POST',
       headers: {
         'accept': 'application/json',
@@ -1008,40 +1089,40 @@ export const sendReservationCanceledEmail = async (reservation: Reservation, rea
         htmlContent: generateReservationCanceledEmailHTML(reservation, reason),
       }),
     });
-
+    
     if (!response.ok) {
       const errorData = await response.json();
       console.error('[Email] Erro ao enviar e-mail de cancelamento:', errorData);
       return { success: false, error: `Erro ao enviar e-mail: ${errorData.message || 'Erro desconhecido'}` };
     }
-
+    
     console.log('[Email] E-mail de cancelamento enviado para:', reservation.mainGuest.email);
     return { success: true };
-  } catch (error) {
+    } catch (error) {
     console.error('[Email] Erro ao enviar e-mail de cancelamento:', error);
     return { success: false, error: `Erro ao enviar e-mail: ${error}` };
-  }
-};
-
-
-// Template de e-mail para cancelamento feito pelo cliente
-const generateClientCancellationEmailHTML = (reservation: Reservation, cancelledItems?: { rooms?: string[], extras?: string[] }): string => {
-  const shortId = getShortReservationId(reservation.id);
-  const isPartialCancellation = cancelledItems && (cancelledItems.rooms?.length || cancelledItems.extras?.length);
-
-  const cancelledRoomsHTML = cancelledItems?.rooms?.map(room => `<li style="margin-bottom: 4px;">${room}</li>`).join('') || '';
-  const cancelledExtrasHTML = cancelledItems?.extras?.map(extra => `<li style="margin-bottom: 4px;">${extra}</li>`).join('') || '';
-
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-  <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+    }
+    };
     
+    
+    // Template de e-mail para cancelamento feito pelo cliente
+    const generateClientCancellationEmailHTML = (reservation: Reservation, cancelledItems?: { rooms?: string[], extras?: string[] }): string => {
+    const shortId = getShortReservationId(reservation.id);
+    const isPartialCancellation = cancelledItems && (cancelledItems.rooms?.length || cancelledItems.extras?.length);
+    
+    const cancelledRoomsHTML = cancelledItems?.rooms?.map(room => `<li style="margin-bottom: 4px;">${room}</li>`).join('') || '';
+    const cancelledExtrasHTML = cancelledItems?.extras?.map(extra => `<li style="margin-bottom: 4px;">${extra}</li>`).join('') || '';
+    
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+     
     <!-- Header com Logo -->
     <div style="background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); padding: 40px 20px; text-align: center;">
       <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
@@ -1052,7 +1133,7 @@ const generateClientCancellationEmailHTML = (reservation: Reservation, cancelled
         Seu cancelamento foi processado com sucesso
       </p>
     </div>
-    
+     
     <!-- Conteúdo Principal -->
     <div style="background-color: #ffffff; padding: 32px 24px;">
       
@@ -1137,36 +1218,36 @@ const generateClientCancellationEmailHTML = (reservation: Reservation, cancelled
       </div>
       
     </div>
+     
+    </div>
+    </body>
+    </html>
+    `;
+    };
     
-  </div>
-</body>
-</html>
-  `;
-};
-
-// Template de e-mail para notificar o hotel sobre cancelamento feito pelo cliente
-const generateAdminCancellationNotificationHTML = (reservation: Reservation, cancelledItems?: { rooms?: string[], extras?: string[] }): string => {
-  const shortId = getShortReservationId(reservation.id);
-  const isPartialCancellation = cancelledItems && (cancelledItems.rooms?.length || cancelledItems.extras?.length);
-
-  const cancelledRoomsHTML = cancelledItems?.rooms?.map(room => `<li style="margin-bottom: 4px;">${room}</li>`).join('') || '';
-  const cancelledExtrasHTML = cancelledItems?.extras?.map(extra => `<li style="margin-bottom: 4px;">${extra}</li>`).join('') || '';
-
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-  <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden;">
+    // Template de e-mail para notificar o hotel sobre cancelamento feito pelo cliente
+    const generateAdminCancellationNotificationHTML = (reservation: Reservation, cancelledItems?: { rooms?: string[], extras?: string[] }): string => {
+    const shortId = getShortReservationId(reservation.id);
+    const isPartialCancellation = cancelledItems && (cancelledItems.rooms?.length || cancelledItems.extras?.length);
     
+    const cancelledRoomsHTML = cancelledItems?.rooms?.map(room => `<li style="margin-bottom: 4px;">${room}</li>`).join('') || '';
+    const cancelledExtrasHTML = cancelledItems?.extras?.map(extra => `<li style="margin-bottom: 4px;">${extra}</li>`).join('') || '';
+    
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+    <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden;">
+     
     <!-- Header com Logo -->
     <div style="background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); padding: 30px 20px; text-align: center; border-bottom: 3px solid #d4a853;">
       <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 100px; margin-bottom: 10px;">
     </div>
-    
+     
     <!-- Conteúdo Principal -->
     <div style="background-color: #ffffff; padding: 32px 24px;">
       
@@ -1235,29 +1316,41 @@ const generateAdminCancellationNotificationHTML = (reservation: Reservation, can
       `}
       
     </div>
+     
+    </div>
+    </body>
+    </html>
+    `;
+    };
     
-  </div>
-</body>
-</html>
-  `;
-};
-
-// Função para enviar e-mails de cancelamento feito pelo cliente
-export const sendClientCancellationEmails = async (
-  reservation: Reservation,
-  cancelledItems?: { rooms?: string[], extras?: string[] }
-): Promise<{ success: boolean; error?: string }> => {
-  const shortId = getShortReservationId(reservation.id);
-  const isPartialCancellation = cancelledItems && (cancelledItems.rooms?.length || cancelledItems.extras?.length);
-
-  if (!BREVO_API_KEY) {
+    // Função para enviar e-mails de cancelamento feito pelo cliente
+    export const sendClientCancellationEmails = async (
+    reservation: Reservation,
+    cancelledItems?: { rooms?: string[], extras?: string[] }
+    ): Promise<{ success: boolean; error?: string }> => {
+    const shortId = getShortReservationId(reservation.id);
+    const isPartialCancellation = cancelledItems && (cancelledItems.rooms?.length || cancelledItems.extras?.length);
+    
+    if (!BREVO_API_KEY) {
     console.warn('[Email] API Key do Brevo não configurada. E-mails não serão enviados.');
     return { success: false, error: 'API Key do Brevo não configurada' };
-  }
-
-  try {
-    // 1. Enviar e-mail para o cliente confirmando o cancelamento
-    const clientEmailResponse = await fetch(BREVO_API_URL, {
+    }
+    
+    
+      try {
+        // --- MUDANÇA: WHATSAPP PRIMEIRO ---
+        console.log('[Notification] Iniciando envio de cancelamento (pelo cliente) via Manychat...');
+        const whatsSuccess = await sendManychatNotification(reservation, 'CANCELLATION');
+    
+        if (whatsSuccess) {
+            console.log('[Manychat] Cancelamento pelo cliente enviado para', reservation.mainGuest.phone);
+        }
+    
+        // Manter envio original para o cliente comentado
+        /*
+        // 1. Enviar e-mail para o cliente confirmando o cancelamento
+        const clientEmailResponse = await fetch(BREVO_API_URL, {
+    
       method: 'POST',
       headers: {
         'accept': 'application/json',
@@ -1278,9 +1371,9 @@ export const sendClientCancellationEmails = async (
         subject: isPartialCancellation
           ? `⚠️ Cancelamento Parcial Confirmado - Reserva #${shortId} - Hotel Solar`
           : `❌ Cancelamento Confirmado - Reserva #${shortId} - Hotel Solar`,
-        htmlContent: generateClientCancellationEmailHTML(reservation, cancelledItems),
       }),
-    });
+      });
+      */
 
     if (!clientEmailResponse.ok) {
       const errorData = await clientEmailResponse.json();
