@@ -16,12 +16,16 @@ export default async function handler(request: VercelRequest, response: VercelRe
     }
 
     if (request.method === 'GET') {
-        const hasKey = !!(process.env.VITE_BREVO_API_KEY || process.env.BREVO_API_KEY);
+        const key = process.env.VITE_BREVO_API_KEY || process.env.BREVO_API_KEY || '';
+        const masked = key.length > 10 ? `${key.substring(0, 8)}...${key.substring(key.length - 4)}` : 'INVALID_OR_SHORT';
+
         return response.status(200).json({
             status: 'online',
             provider: 'Brevo',
-            configured: hasKey,
-            message: hasKey ? 'Ready to send' : 'MISSING_API_KEY'
+            configured: !!key,
+            keyDebug: masked,
+            keyLength: key.length,
+            message: !!key ? 'Ready to send' : 'MISSING_API_KEY'
         });
     }
 
