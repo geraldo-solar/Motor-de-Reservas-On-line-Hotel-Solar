@@ -448,7 +448,8 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
 
   try {
     // --- MUDANÇA: PRIORIDADE PARA WHATSAPP (MANYCHAT) ---
-    console.log('[Notification] Iniciando envio via Manychat...');
+    console.log('[Notification] Iniciando envio de notificações...');
+    console.log('[Email] Verificando API Key:', BREVO_API_KEY ? '✅ Configurada' : '❌ AUSENTE (Check Vercel Env Vars)');
 
     // 1. Enviar Notificação para o Cliente
     const clientSuccess = await sendManychatNotification(reservation, 'CONFIRMATION');
@@ -457,15 +458,12 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
       console.log('[Manychat] Notificação de confirmação enviada com sucesso para:', reservation.mainGuest.phone);
     } else {
       console.error('[Manychat] Falha ao enviar notificação de confirmação.');
-      // Fallback para e-mail original se desejar, mas o usuário pediu "toda a lógica para Manychat".
-      // Vamos manter o log de erro mas não bloquear
     }
 
-    // 2. Não enviamos notificação para o hotel via Manychat (normalmente Admin usa email ou sistema), 
-    // mas se o admin tiver cadastro no Manychat poderia. 
-    // Vamos manter o e-mail APENAS para o ADM (Hotel) como backup de segurança ou remover se o user quiser 100% whats.
-    // O pedido foi "toda a lógica de envios de email para enviar via whatsapp". 
-    // Assumiremos que o cliente quer receber no whats DELE. O hotel continua recebendo por onde der (email).
+    // 2. Enviar E-mails
+    if (!BREVO_API_KEY) {
+      console.warn('[Email] ⚠️ ABORTANDO: Chave da API não encontrada.');
+    }
 
     const hotelEmailResponse = await fetch(BREVO_API_URL, {
       method: 'POST',
@@ -481,7 +479,13 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
         htmlContent: generateHotelEmailHTML(reservation),
       }),
     });
-    // Ignoramos erro do email do admin para não falhar o processo do usuário
+
+    if (!hotelEmailResponse.ok) {
+      const errText = await hotelEmailResponse.text();
+      console.error('[Email] ❌ Erro ao enviar para Hotel:', hotelEmailResponse.status, errText);
+    } else {
+      console.log('[Email] ✅ Email para Hotel enviado com sucesso.');
+    }
 
     const clientEmailResponse = await fetch(BREVO_API_URL, {
       method: 'POST',
@@ -507,9 +511,10 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
     });
 
     if (clientEmailResponse.ok) {
-      console.log('[Email] E-mail de confirmação enviado para cliente:', reservation.mainGuest.email);
+      console.log('[Email] ✅ E-mail de confirmação enviado para cliente:', reservation.mainGuest.email);
     } else {
-      console.warn('[Email] Falha ao enviar e-mail para cliente.');
+      const errText = await clientEmailResponse.text();
+      console.warn('[Email] ❌ Falha ao enviar e-mail para cliente:', clientEmailResponse.status, errText);
     }
 
 
