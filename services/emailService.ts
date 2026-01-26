@@ -584,7 +584,8 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
         {
           name: reservation.mainGuest.name,
           email: reservation.mainGuest.email,
-          phone: reservation.mainGuest.phone
+          phone: reservation.mainGuest.phone,
+          checkInDate: reservation.checkIn
         },
         ['HOSPEDE', 'ORIGEM_ONLINE', `STATUS_${reservation.status}`, `ANO_${new Date().getFullYear()}`]
       );
@@ -600,7 +601,7 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
 };
 
 // Sincronizar contato com Brevo (Marketing)
-export const syncContactToBrevo = async (guest: { name: string, email: string, phone: string }, tags: string[] = ['HOSPEDE']) => {
+export const syncContactToBrevo = async (guest: { name: string, email: string, phone: string, checkInDate?: string }, tags: string[] = ['HOSPEDE']) => {
   const BREVO_CONTACTS_URL = 'https://api.brevo.com/v3/contacts';
 
   if (!BREVO_API_KEY) return { success: false, error: 'API Key não configurada' };
@@ -624,7 +625,8 @@ export const syncContactToBrevo = async (guest: { name: string, email: string, p
         attributes: {
           NOME: guest.name,
           SMS: cleanPhone,
-          TELEFONE: cleanPhone
+          TELEFONE: cleanPhone,
+          CHECKIN: new Date(guest.checkInDate || Date.now()).toISOString().split('T')[0] // Formato YYYY-MM-DD
         },
         listIds: [2],
         updateEnabled: true,
