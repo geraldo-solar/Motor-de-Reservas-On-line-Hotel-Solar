@@ -155,7 +155,8 @@ const generateClientEmailHTML = (reservation: Reservation): string => {
     `;
   }
 
-  const preCheckInUrl = `${HOTEL_CONFIG.erpUrl}/pre-checkin/${reservation.id}`;
+  // O Link de Pré-Check-in agora aponta para o Próprio Motor de Reservas
+  const preCheckInUrl = `https://motor-de-reservas-on-line-hotel-sol.vercel.app/pre-checkin/${reservation.id}`;
 
   return `
 <!DOCTYPE html>
@@ -880,7 +881,8 @@ const generateReservationCanceledEmailHTML = (reservation: Reservation, customRe
 // Template de e-mail para pré-check-in (Copiado do ERP conforme pedido)
 const generatePreCheckInEmailHTML = (reservation: Reservation): string => {
   const shortId = getShortReservationId(reservation.id);
-  const preCheckInUrl = `${HOTEL_CONFIG.erpUrl}/pre-checkin/${reservation.id}`;
+  // URL corrigida para o Motor de Reservas (onde criamos a página nova)
+  const preCheckInUrl = `https://motor-de-reservas-on-line-hotel-sol.vercel.app/pre-checkin/${reservation.id}`;
 
   return `
 <!DOCTYPE html>
