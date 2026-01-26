@@ -21,6 +21,7 @@ import { CancellationPage } from './components/CancellationPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { DateSelectorBar } from './components/DateSelectorBar';
 import { RoomGallery } from './components/RoomGallery';
+import { PreCheckinPage } from './components/PreCheckinPage';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.HOME);
@@ -49,6 +50,7 @@ export default function App() {
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const [zoomData, setZoomData] = useState<{ images: string[], index: number } | null>(null);
   const [cancellationReservationId, setCancellationReservationId] = useState<string>('');
+  const [preCheckinReservationId, setPreCheckinReservationId] = useState<string>('');
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [offlineCount, setOfflineCount] = useState(offlineQueue.getPendingCount());
@@ -131,6 +133,15 @@ export default function App() {
           document.getElementById('pacotes-section')?.scrollIntoView({ behavior: 'smooth' });
         }
       }, 500);
+    }
+
+    // New Routing for Pre-Checkin
+    if (window.location.pathname.startsWith('/pre-checkin/')) {
+      const id = window.location.pathname.split('/pre-checkin/')[1];
+      if (id) {
+        setPreCheckinReservationId(id);
+        setCurrentView(ViewState.PRE_CHECKIN);
+      }
     }
   }, []);
 
@@ -805,6 +816,19 @@ export default function App() {
                 error={loginError}
               />
             )
+          )
+        }
+
+        {
+          currentView === ViewState.PRE_CHECKIN && (
+            <PreCheckinPage
+              reservationId={preCheckinReservationId}
+              reservations={reservations}
+              onBack={() => {
+                window.history.pushState({}, '', '/');
+                setCurrentView(ViewState.HOME);
+              }}
+            />
           )
         }
       </main >

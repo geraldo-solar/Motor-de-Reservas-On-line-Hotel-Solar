@@ -77,7 +77,8 @@ export enum ViewState {
   ADMIN = 'ADMIN',
   SUCCESS = 'SUCCESS',
   REGULAMENTO = 'REGULAMENTO',
-  CANCELAMENTO = 'CANCELAMENTO'
+  CANCELAMENTO = 'CANCELAMENTO',
+  PRE_CHECKIN = 'PRE_CHECKIN'
 }
 
 export interface EmailTemplate {

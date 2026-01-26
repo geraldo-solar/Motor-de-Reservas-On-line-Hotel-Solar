@@ -1252,3 +1252,85 @@ export const sendClientCancellationEmails = async (
 
 // Exportar a função getShortReservationId para uso externo
 export { getShortReservationId };
+
+// Enviar e-mail com dados do Pré-Check-in para a recepção
+export const sendPreCheckinAdminEmail = async (reservation: Reservation, formData: any): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const shortId = getShortReservationId(reservation.id);
+
+    // Gerar corpo do e-mail
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+</head>
+<body style="font-family: sans-serif; padding: 20px; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
+    <div style="background: #1a3c34; color: #fff; padding: 20px; text-align: center;">
+      <h2 style="margin: 0;">📋 Pré-Check-in Realizado</h2>
+      <p style="margin: 5px 0 0;">Reserva #${shortId}</p>
+    </div>
+    <div style="padding: 24px;">
+      <h3 style="color: #1a3c34; border-bottom: 2px solid #d4a853; padding-bottom: 8px;">Dados da Reserva</h3>
+      <p><strong>Hóspede Principal:</strong> ${reservation.mainGuest.name}</p>
+      <p><strong>Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
+      <p><strong>Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
+      
+      <h3 style="color: #1a3c34; border-bottom: 2px solid #d4a853; padding-bottom: 8px; margin-top: 24px;">Fichas FNRH (Dados)</h3>
+      
+      <div style="background: #f9f9f9; padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+        <p><strong>Nome Completo:</strong> ${formData.nomeCompleto}</p>
+        <p><strong>Email:</strong> ${formData.email}</p>
+        <p><strong>Telefone:</strong> ${formData.telefone}</p>
+        <p><strong>CPF:</strong> ${formData.cpf}</p>
+        <p><strong>RG:</strong> ${formData.rg} (${formData.orgaoEmissor})</p>
+        <p><strong>Data de Nascimento:</strong> ${formatDate(formData.dataNascimento)}</p>
+        <p><strong>Gênero:</strong> ${formData.genero}</p>
+        <p><strong>Profissão:</strong> ${formData.profissao}</p>
+        <p><strong>Nacionalidade:</strong> ${formData.nacionalidade}</p>
+      </div>
+      
+      <h4 style="margin-bottom: 8px;">Endereço</h4>
+      <p style="margin: 4px 0;">${formData.endereco.logradouro}, ${formData.endereco.numero} ${formData.endereco.complemento || ''}</p>
+      <p style="margin: 4px 0;">${formData.endereco.bairro} - ${formData.endereco.cidade}/${formData.endereco.estado}</p>
+      <p style="margin: 4px 0;">CEP: ${formData.endereco.cep}</p>
+      <p style="margin: 4px 0;">País: ${formData.endereco.pais}</p>
+
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #888; font-size: 12px;">
+        <p>Hotel Solar - Sistema de Reservas</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+    `;
+
+    const response = await fetch(BREVO_API_URL, {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': BREVO_API_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: 'Sistema de Reservas', email: HOTEL_CONFIG.email },
+        to: [{ email: HOTEL_CONFIG.adminEmail, name: 'Recepção Hotel Solar' }],
+        subject: `📋 Pré-Check-in: ${formData.nomeCompleto} - Ref #${shortId}`,
+        htmlContent: htmlContent,
+      }),
+    });
+
+    if (!response.ok) {
+      const errData = await response.json();
+      console.error('[Email] Erro ao enviar pré-check-in:', errData);
+      return { success: false, error: 'Falha ao enviar e-mail administrativo.' };
+    }
+
+    return { success: true };
+
+  } catch (error: any) {
+    console.error('Erro ao processar pré-check-in:', error);
+    return { success: false, error: error.message };
+  }
+};
