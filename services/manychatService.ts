@@ -130,11 +130,11 @@ export const sendManychatNotification = async (reservation: Reservation, type: '
         return false;
     }
 
-    // Obter IDs dos Flows das variáveis de ambiente
-    const FLOW_CONFIRMATION = import.meta.env.VITE_MANYCHAT_FLOW_CONFIRMATION;
-    const FLOW_CANCELLATION = import.meta.env.VITE_MANYCHAT_FLOW_CANCELLATION;
-    const FLOW_PAYMENT = import.meta.env.VITE_MANYCHAT_FLOW_PAYMENT;
-    const FLOW_PRE_CHECKIN = import.meta.env.VITE_MANYCHAT_FLOW_PRE_CHECKIN;
+    // Obter IDs dos Flows das variáveis de ambiente ou usar Fallback Hardcoded (Solicitado pelo usuário)
+    const FLOW_CONFIRMATION = import.meta.env.VITE_MANYCHAT_FLOW_CONFIRMATION || 'content20260125143022_701932';
+    const FLOW_CANCELLATION = import.meta.env.VITE_MANYCHAT_FLOW_CANCELLATION || 'content20260125144913_999301';
+    const FLOW_PAYMENT = import.meta.env.VITE_MANYCHAT_FLOW_PAYMENT || 'content20260125182711_860549';
+    const FLOW_PRE_CHECKIN = import.meta.env.VITE_MANYCHAT_FLOW_PRE_CHECKIN || 'content20260126181459_262252';
 
     const subscriber = await findOsCreateSubscriber({
         name: reservation.mainGuest.name,
