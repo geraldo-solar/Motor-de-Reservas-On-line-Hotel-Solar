@@ -35,7 +35,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
             provider: 'Manychat',
             configured: !!rawKey,
             keyDebug: masked,
-            starts with 'Bearer' ?: rawKey.startsWith('Bearer'), // Debug para saber se duplicou
+            "startsWithBearer": rawKey.startsWith('Bearer'), // Debug para saber se duplicou
             details: 'Envie POST com { endpoint, method, body }'
         });
     }
