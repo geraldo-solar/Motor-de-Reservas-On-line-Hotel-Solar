@@ -1399,6 +1399,13 @@ export const sendPreCheckinAdminEmail = async (reservation: Reservation, formDat
       <p style="margin: 4px 0;">CEP: ${formData.endereco.cep}</p>
       <p style="margin: 4px 0;">País: ${formData.endereco.pais}</p>
 
+      ${formData.acompanhantes && formData.acompanhantes.length > 0 ? `
+      <h4 style="margin-bottom: 8px; margin-top: 16px; border-top: 1px solid #eee; padding-top: 16px;">Hóspedes Acompanhantes</h4>
+      <ul style="padding-left: 20px; list-style-type: circle;">
+        ${formData.acompanhantes.filter((name: string) => name && name.trim() !== '').map((name: string) => `<li>${name}</li>`).join('')}
+      </ul>
+      ` : ''}
+
       <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #888; font-size: 12px;">
         <p>Hotel Solar - Sistema de Reservas</p>
       </div>
