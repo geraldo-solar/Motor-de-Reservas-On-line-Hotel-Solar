@@ -8,12 +8,17 @@ interface ManychatUser {
 }
 
 export const formatPhoneForManychat = (phone: string): string => {
-    const clean = phone.replace(/\D/g, '');
-    // Assume Brasil se não tiver DDI
-    if (clean.length <= 11) {
-        return `55${clean}`;
+    let clean = phone.replace(/\D/g, '');
+
+    // Se não começar com 55 (DDI Brasil), adiciona. (Assumindo maioria PT-BR)
+    // Mas cuidado com números que já começam com 55 (ex: (55) 999...) - raro, mas possível.
+    // Melhor heurística: se tiver 10 ou 11 dígitos, é Brasil sem DDI.
+    if (clean.length >= 10 && clean.length <= 11) {
+        clean = `55${clean}`;
     }
-    return clean;
+
+    // Adicionar o '+' obrigatório do E.164
+    return `+${clean}`;
 };
 
 // Encontra ou cria um assinante no Manychat
