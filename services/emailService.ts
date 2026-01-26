@@ -437,147 +437,64 @@ const generateHotelEmailHTML = (reservation: Reservation): string => {
 export const sendReservationEmails = async (reservation: Reservation): Promise<{ success: boolean; error?: string }> => {
   const shortId = getShortReservationId(reservation.id);
 
-  // Verificar se a API key está configurada
-  /*
-  if (!BREVO_API_KEY) {
-    console.warn('[Email] API Key do Brevo não configurada. E-mails não serão enviados.');
-    return { success: false, error: 'API Key do Brevo não configurada' };
-  }
-  */
+  console.log('[Notification] 🚀 INICIANDO PROCESSO DE NOTIFICAÇÃO (PARALELO)...');
 
   try {
-    // --- MUDANÇA: PRIORIDADE PARA WHATSAPP (MANYCHAT) ---
-    console.log('[Notification] Iniciando envio de notificações (via Serverless)...');
+    // Executar Manychat e Emails em paralelo para que um não bloqueie o outro
+    const results = await Promise.allSettled([
+      // TAREFA 1: Manychat (WhatsApp)
+      (async () => {
+        console.log('[Manychat] Tentando enviar WhatsApp...');
+        const success = await sendManychatNotification(reservation, 'CONFIRMATION');
+        if (success) console.log('[Manychat] ✅ Sucesso!');
+        else console.warn('[Manychat] ❌ Falha (mas não deve impedir email)');
+        return success;
+      })(),
 
-    // 1. Enviar Notificação para o Cliente
-    const clientSuccess = await sendManychatNotification(reservation, 'CONFIRMATION');
+      // TAREFA 2: Email Hotel (Proxy)
+      (async () => {
+        console.log('[Email-Hotel] Tentando enviar...');
+        const res = await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            sender: { name: 'Sistema de Reservas', email: HOTEL_CONFIG.email },
+            to: [{ email: HOTEL_CONFIG.adminEmail, name: 'Administração Hotel Solar' }],
+            subject: `🔔 Nova Reserva #${shortId} - ${reservation.mainGuest.name}`,
+            htmlContent: generateHotelEmailHTML(reservation),
+          }),
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          console.error('[Email-Hotel] ❌ ERRO:', res.status, txt);
+          throw new Error(`Hotel Email Failed: ${txt}`);
+        }
+        console.log('[Email-Hotel] ✅ Sucesso!');
+      })(),
 
-    if (clientSuccess) {
-      console.log('[Manychat] Notificação de confirmação enviada com sucesso para:', reservation.mainGuest.phone);
-    } else {
-      console.error('[Manychat] Falha ao enviar notificação de confirmação.');
-    }
+      // TAREFA 3: Email Cliente (Proxy)
+      (async () => {
+        console.log('[Email-Cliente] Tentando enviar...');
+        const res = await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
+            to: [{ email: reservation.mainGuest.email, name: reservation.mainGuest.name }],
+            subject: `Confirmação de Reserva #${shortId} - Hotel Solar`,
+            htmlContent: generateClientEmailHTML(reservation),
+          }),
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          console.error('[Email-Cliente] ❌ ERRO:', res.status, txt);
+          throw new Error(`Client Email Failed: ${txt}`);
+        }
+        console.log('[Email-Cliente] ✅ Sucesso!');
+      })(),
 
-    // 2. Enviar E-mails (Proxy)
-    // if (!BREVO_API_KEY) { console.warn('[Email] ⚠️ ABORTANDO: Chave da API não encontrada.'); }
-
-    const hotelEmailResponse = await fetch('/api/send-email', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        sender: { name: 'Sistema de Reservas', email: HOTEL_CONFIG.email },
-        to: [{ email: HOTEL_CONFIG.adminEmail, name: 'Administração Hotel Solar' }],
-        subject: `🔔 Nova Reserva #${shortId} - ${reservation.mainGuest.name}`,
-        htmlContent: generateHotelEmailHTML(reservation),
-      }),
-    });
-
-    if (!hotelEmailResponse.ok) {
-      const errText = await hotelEmailResponse.text();
-      console.error('[Email] ❌ Erro ao enviar para Hotel:', hotelEmailResponse.status, errText);
-    } else {
-      console.log('[Email] ✅ Email para Hotel enviado com sucesso.');
-    }
-
-    const clientEmailResponse = await fetch('/api/send-email', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        sender: {
-          name: HOTEL_CONFIG.name,
-          email: HOTEL_CONFIG.email,
-        },
-        to: [
-          {
-            email: reservation.mainGuest.email,
-            name: reservation.mainGuest.name,
-          },
-        ],
-        subject: `Confirmação de Reserva #${shortId} - Hotel Solar`,
-        htmlContent: generateClientEmailHTML(reservation),
-      }),
-    });
-
-    if (clientEmailResponse.ok) {
-      console.log('[Email] ✅ E-mail de confirmação enviado para cliente:', reservation.mainGuest.email);
-    } else {
-      const errText = await clientEmailResponse.text();
-      console.warn('[Email] ❌ Falha ao enviar e-mail para cliente:', clientEmailResponse.status, errText);
-    }
-
-
-
-    /* CÓDIGO ORIGINAL ABAIXO MANTIDO APENAS COMO REFERÊNCIA DE FLUXO ANTERIOR */
-    /*
-    const clientEmailResponse = await fetch(BREVO_API_URL, {
-     
-      method: 'POST',
-      headers: {
-        'accept': 'application/json',
-        'api-key': BREVO_API_KEY,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        sender: {
-          name: HOTEL_CONFIG.name,
-          email: HOTEL_CONFIG.email,
-        },
-        to: [
-          {
-            email: reservation.mainGuest.email,
-            name: reservation.mainGuest.name,
-          },
-        ],
-        subject: `Confirmação de Reserva #${shortId} - Hotel Solar`,
-        htmlContent: generateClientEmailHTML(reservation),
-      }),
-    });
-     
-    if (!clientEmailResponse.ok) {
-      const errorData = await clientEmailResponse.json();
-      console.error('[Email] Erro ao enviar e-mail para cliente:', errorData);
-      return { success: false, error: `Erro ao enviar e-mail para cliente: ${errorData.message || 'Erro desconhecido'}` };
-    }
-     
-    console.log('[Email] E-mail enviado para cliente:', reservation.mainGuest.email);
-    */
-
-
-
-    // 3. SE RESERVA < 26H PARA CHECKIN, ENVIAR PRÉ-CHECKIN (IGUAL AO ERP)
-    try {
-      const checkInDay = reservation.checkIn.split('T')[0];
-      const checkInDate = new Date(`${checkInDay}T14:00:00`);
-      const now = new Date();
-      const diffInHours = (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-      console.log(`[Email] DEBUG PRÉ-CHECKIN:`, {
-        resId: shortId,
-        checkIn: reservation.checkIn,
-        checkInDate: checkInDate.toISOString(),
-        now: now.toISOString(),
-        diffInHours: diffInHours.toFixed(1)
-      });
-
-      // Se o check-in for HOJE ou AMANHÃ (ou se já passou do horário de check-in mas é hoje), envia o pré-check-in.
-      // Janela de -24h a 48h para garantir que quem reservou em cima da hora receba imediatamente.
-      if (diffInHours > -24 && diffInHours < 48) {
-        console.log(`[Email] Condição atendida (${diffInHours.toFixed(1)}h). Enviando e-mail de pré-check-in...`);
-        await sendPreCheckInEmail(reservation);
-      } else {
-        console.log(`[Email] Ignorado: fora da janela de 26h (dif: ${Math.round(diffInHours)}h)`);
-      }
-    } catch (e) {
-      console.error('[Email] Erro ao calcular tempo para pré-checkin:', e);
-    }
-
-    // 4. Sincronizar com Brevo (Marketing)
-    try {
-      await syncContactToBrevo(
+      // TAREFA 4: Brevo Sync
+      syncContactToBrevo(
         {
           name: reservation.mainGuest.name,
           email: reservation.mainGuest.email,
@@ -585,15 +502,40 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
           checkInDate: reservation.checkIn
         },
         ['HOSPEDE', 'ORIGEM_ONLINE', `STATUS_${reservation.status}`, `ANO_${new Date().getFullYear()}`]
-      );
-    } catch (e) {
-      console.error('[Email] Erro ao sincronizar Brevo:', e);
+      ),
+
+      // TAREFA 5: Pré-Checkin (Se aplicável)
+      (async () => {
+        const checkInDay = reservation.checkIn.split('T')[0];
+        const checkInDate = new Date(`${checkInDay}T14:00:00`);
+        const now = new Date();
+        const diffInHours = (checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+        if (diffInHours > -24 && diffInHours < 48) {
+          console.log('[PreCheckin] Enviando email automático...');
+          await sendPreCheckInEmail(reservation);
+        }
+      })()
+    ]);
+
+    // Verificar se houve falhas críticas (apenas para log)
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.error(`[Notification] Falha na Tarefa ${index + 1}:`, result.reason);
+      }
+    });
+
+    // Se quiser alertar o usuário sobre falhas REAIS de email:
+    const clientEmailResult = results[2]; // Index 2 é o Email Cliente
+    if (clientEmailResult.status === 'rejected') {
+      const msg = `⚠️ O sistema tentou enviar o e-mail, mas o provedor recusou. Verifique se o e-mail '${reservation.mainGuest.email}' está correto. Erro: ${clientEmailResult.reason}`;
+      alert(msg); // ALERTA VISUAL PARA O USUÁRIO DEBUGAR
     }
 
     return { success: true };
   } catch (error) {
-    console.error('[Email] Erro ao enviar e-mails:', error);
-    return { success: false, error: `Erro ao enviar e-mails: ${error}` };
+    console.error('[Email] Erro CRÍTICO no processo de e-mails:', error);
+    return { success: false, error: `Erro geral: ${error}` };
   }
 };
 
