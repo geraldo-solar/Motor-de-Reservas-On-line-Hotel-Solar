@@ -541,9 +541,9 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
         diffInHours: diffInHours.toFixed(1)
       });
 
-      // Se o check-in for HOJE ou AMANHÃ (até 26h antes), envia o pré-check-in.
-      // Aumentamos o limite inferior para -24h para garantir que quem reservou hoje à noite receba.
-      if (diffInHours > -24 && diffInHours < 26) {
+      // Se o check-in for HOJE ou AMANHÃ (ou se já passou do horário de check-in mas é hoje), envia o pré-check-in.
+      // Janela de -24h a 48h para garantir que quem reservou em cima da hora receba imediatamente.
+      if (diffInHours > -24 && diffInHours < 48) {
         console.log(`[Email] Condição atendida (${diffInHours.toFixed(1)}h). Enviando e-mail de pré-check-in...`);
         await sendPreCheckInEmail(reservation);
       } else {
