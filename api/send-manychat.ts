@@ -26,9 +26,21 @@ export default async function handler(request: VercelRequest, response: VercelRe
     }
 
     // Obter chave da API
-    const apiKey = process.env.VITE_MANYCHAT_API_KEY || process.env.MANYCHAT_API_KEY;
+    const rawKey = process.env.VITE_MANYCHAT_API_KEY || process.env.MANYCHAT_API_KEY || '';
 
-    if (!apiKey) {
+    if (request.method === 'GET') {
+        const masked = rawKey.length > 10 ? `${rawKey.substring(0, 5)}...` : 'INVALID';
+        return response.status(200).json({
+            status: 'online',
+            provider: 'Manychat',
+            configured: !!rawKey,
+            keyDebug: masked,
+            starts with 'Bearer' ?: rawKey.startsWith('Bearer'), // Debug para saber se duplicou
+            details: 'Envie POST com { endpoint, method, body }'
+        });
+    }
+
+    if (!rawKey) {
         console.error('MANYCHAT_API_KEY not configured');
         return response.status(500).json({ error: 'Server misconfiguration: Missing Manychat API key' });
     }
@@ -36,14 +48,12 @@ export default async function handler(request: VercelRequest, response: VercelRe
     try {
         const url = `https://api.manychat.com${endpoint}`;
 
-        // Manychat requer Token no Authorization header: "Bearer <token>"
-        // VITE_MANYCHAT_API_KEY geralmente é "Bearer ..." ou apenas o token? 
-        // O código original usava: headers: { 'Authorization': 'Bearer ' + API_KEY, ... }
-        // Vamos assumir que a env var NÃO tem o 'Bearer ' ainda, igual ao original.
+        // Limpar chave se usuário colou 'Bearer ' duplicado
+        const token = rawKey.replace(/^Bearer\s+/i, '').trim();
 
         const headers: Record<string, string> = {
             'accept': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
+            'Authorization': `Bearer ${token}`
         };
 
         if (method !== 'GET') {
