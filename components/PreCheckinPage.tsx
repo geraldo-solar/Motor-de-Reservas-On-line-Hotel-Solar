@@ -31,6 +31,7 @@ interface FNRHData {
         estado: string;
         pais: string;
     };
+    acompanhantes: string[];
 }
 
 const INITIAL_DATA: FNRHData = {
@@ -53,7 +54,8 @@ const INITIAL_DATA: FNRHData = {
         cidade: '',
         estado: '',
         pais: 'Brasil'
-    }
+    },
+    acompanhantes: []
 };
 
 export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, onBack, reservations }) => {
@@ -82,6 +84,36 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
         }
         setLoading(false);
     }, [reservationId, reservations]);
+
+    // Calcular capacidade total e acompanhantes
+    const totalCapacity = reservation
+        ? reservation.rooms.reduce((acc, room) => acc + (room.capacity || 2), 0) // Assume 2 se não tiver cap
+        : 1;
+
+    // -1 pois o titular já preenche a ficha principal
+    const accompanyingGuestCount = Math.max(0, totalCapacity - 1);
+
+    // Ajustar array de acompanhantes quando a capacidade mudar (ou ao carregar)
+    useEffect(() => {
+        if (accompanyingGuestCount > 0 && formData.acompanhantes.length !== accompanyingGuestCount) {
+            setFormData(prev => {
+                // Preservar nomes já digitados, completar com vazio ou cortar excedente
+                const current = [...prev.acompanhantes];
+                if (current.length < accompanyingGuestCount) {
+                    return { ...prev, acompanhantes: [...current, ...Array(accompanyingGuestCount - current.length).fill('')] };
+                } else if (current.length > accompanyingGuestCount) {
+                    return { ...prev, acompanhantes: current.slice(0, accompanyingGuestCount) };
+                }
+                return prev;
+            });
+        }
+    }, [accompanyingGuestCount]);
+
+    const handleAcompanhanteChange = (index: number, value: string) => {
+        const newAcompanhantes = [...formData.acompanhantes];
+        newAcompanhantes[index] = value;
+        setFormData(prev => ({ ...prev, acompanhantes: newAcompanhantes }));
+    };
 
     const handleChange = (field: string, value: string) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -305,6 +337,31 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                             </div>
                         </div>
 
+                        {/* Acompanhantes (Se houver capacidade extra) */}
+                        {accompanyingGuestCount > 0 && (
+                            <div>
+                                <h3 className="flex items-center gap-2 font-bold text-solar-green border-b border-slate-100 pb-2 mb-6">
+                                    <span className="w-1.5 h-6 bg-solar-gold rounded-full"></span>
+                                    Acompanhantes ({accompanyingGuestCount})
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {Array.from({ length: accompanyingGuestCount }).map((_, idx) => (
+                                        <div key={idx}>
+                                            <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
+                                                Nome Completo (Hóspede {idx + 2})
+                                            </label>
+                                            <input
+                                                value={formData.acompanhantes[idx] || ''}
+                                                onChange={e => handleAcompanhanteChange(idx, e.target.value)}
+                                                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
+                                                placeholder={`Nome do acompanhante ${idx + 1}`}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Endereço */}
                         <div>
                             <h3 className="flex items-center gap-2 font-bold text-solar-green border-b border-slate-100 pb-2 mb-6">
@@ -408,7 +465,7 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                         </p>
                     </form>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 };
