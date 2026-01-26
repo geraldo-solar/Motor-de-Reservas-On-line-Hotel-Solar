@@ -613,6 +613,21 @@ export const syncContactToBrevo = async (guest: { name: string, email: string, p
       cleanPhone = '55' + cleanPhone;
     }
 
+    // Adicionar Tag de Mês de Nascimento
+    const newTags = [...tags];
+    if (guest.birthDate) {
+      try {
+        // guest.birthDate vem como YYYY-MM-DD
+        const monthIndex = parseInt(guest.birthDate.split('-')[1]) - 1; // 0-11
+        const months = ['JANEIRO', 'FEVEREIRO', 'MARCO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
+        if (!isNaN(monthIndex) && months[monthIndex]) {
+          newTags.push(`NASC_${months[monthIndex]}`);
+        }
+      } catch (e) {
+        console.error('[Brevo] Erro ao gerar tag de mês:', e);
+      }
+    }
+
     const response = await fetch(BREVO_CONTACTS_URL, {
       method: 'POST',
       headers: {
@@ -632,7 +647,7 @@ export const syncContactToBrevo = async (guest: { name: string, email: string, p
         listIds: [2],
         updateEnabled: true,
         ext_id: guest.email,
-        tags: tags
+        tags: newTags
       })
     });
 
