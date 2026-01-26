@@ -588,8 +588,9 @@ export const useSupabaseData = () => {
 
       if (insertError) {
         // Se for erro de rede, enfileira e finge sucesso (otimismo)
-        if (insertError.message?.includes('failed to fetch') || insertError.message?.includes('NetworkError') || !navigator.onLine) {
-          console.warn('[Offline] Rede indisponível. Enfileirando reserva...');
+        // Adicionado 'Load failed' (Safari/iOS) catch
+        if (insertError.message?.includes('failed to fetch') || insertError.message?.includes('NetworkError') || insertError.message?.includes('Load failed') || !navigator.onLine) {
+          console.warn('[Offline] Rede indisponível (ou erro de Load failed). Enfileirando reserva...');
           await offlineQueue.enqueue({
             table: 'reservations',
             action: 'INSERT',
@@ -682,7 +683,8 @@ export const useSupabaseData = () => {
 
       // Se for erro de rede/conexão no catch (ex: TypeError: Failed to fetch), 
       // tentamos enfileirar offline para não perder a reserva e permitir que o usuário continue.
-      const isNetworkError = err.name === 'TypeError' || err.message?.includes('failed to fetch') || err.message?.includes('NetworkError');
+      // Adicionado 'Load failed' para iPhone
+      const isNetworkError = err.name === 'TypeError' || err.message?.includes('failed to fetch') || err.message?.includes('NetworkError') || err.message?.includes('Load failed');
 
       if (isNetworkError) {
         console.warn('[Offline] Erro detectado no catch. Enfileirando reserva de segurança...');
