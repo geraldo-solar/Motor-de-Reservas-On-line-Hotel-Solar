@@ -163,7 +163,8 @@ export const sendManychatNotification = async (reservation: Reservation, type: '
         reservation_checkin: new Date(reservation.checkIn).toLocaleDateString('pt-BR'),
         reservation_checkout: new Date(reservation.checkOut).toLocaleDateString('pt-BR'),
         reservation_total: reservation.totalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-        reservation_link: `https://motor-de-reservas-on-line-hotel-sol.vercel.app/pre-checkin/${reservation.id}`
+        reservation_link: `https://motor-de-reservas-on-line-hotel-sol.vercel.app/pre-checkin/${reservation.id}`,
+        reservation_uuid: reservation.id
     };
 
     await setCustomFields(subscriber.id, reservationFields);

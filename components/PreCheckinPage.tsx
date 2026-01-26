@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Check, AlertCircle } from 'lucide-react';
 import { Reservation } from '../types';
 import { formatDisplayDate, toLocalISO } from '../utils/dateUtils';
-import { sendPreCheckinAdminEmail } from '../services/emailService';
+import { sendPreCheckinAdminEmail, getShortReservationId } from '../services/emailService';
 
 interface PreCheckinPageProps {
     reservationId: string;
@@ -65,8 +65,12 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        // Find reservation
-        const found = reservations.find(r => r.id === reservationId);
+        // Find reservation (Supports Full ID or Short ID)
+        const found = reservations.find(r =>
+            r.id === reservationId ||
+            getShortReservationId(r.id) === reservationId.toUpperCase()
+        );
+
         if (found) {
             setReservation(found);
             setFormData(prev => ({
