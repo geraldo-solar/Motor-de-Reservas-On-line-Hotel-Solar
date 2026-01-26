@@ -601,7 +601,7 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
 };
 
 // Sincronizar contato com Brevo (Marketing)
-export const syncContactToBrevo = async (guest: { name: string, email: string, phone: string, checkInDate?: string }, tags: string[] = ['HOSPEDE']) => {
+export const syncContactToBrevo = async (guest: { name: string, email: string, phone: string, checkInDate?: string, birthDate?: string }, tags: string[] = ['HOSPEDE']) => {
   const BREVO_CONTACTS_URL = 'https://api.brevo.com/v3/contacts';
 
   if (!BREVO_API_KEY) return { success: false, error: 'API Key não configurada' };
@@ -626,7 +626,8 @@ export const syncContactToBrevo = async (guest: { name: string, email: string, p
           NOME: guest.name,
           SMS: cleanPhone,
           TELEFONE: cleanPhone,
-          CHECKIN: new Date(guest.checkInDate || Date.now()).toISOString().split('T')[0] // Formato YYYY-MM-DD
+          CHECKIN: new Date(guest.checkInDate || Date.now()).toISOString().split('T')[0], // Formato YYYY-MM-DD
+          NASCIMENTO: guest.birthDate ? guest.birthDate : undefined
         },
         listIds: [2],
         updateEnabled: true,
@@ -1411,6 +1412,19 @@ export const sendPreCheckinAdminEmail = async (reservation: Reservation, formDat
       const errData = await response.json();
       console.error('[Email] Erro ao enviar pré-check-in:', errData);
       return { success: false, error: 'Falha ao enviar e-mail administrativo.' };
+    }
+
+    // Sincronizar dados atualizados (Nome Completo e Nascimento) com o Brevo
+    try {
+      await syncContactToBrevo({
+        name: formData.nomeCompleto,
+        email: formData.email,
+        phone: formData.telefone,
+        birthDate: formData.dataNascimento
+      }, ['HOSPEDE', 'PRE_CHECKIN_OK']);
+      console.log('[Brevo] Dados do pré-check-in sincronizados com sucesso.');
+    } catch (err) {
+      console.error('[Brevo] Erro ao sincronizar dados do pré-check-in:', err);
     }
 
     return { success: true };
