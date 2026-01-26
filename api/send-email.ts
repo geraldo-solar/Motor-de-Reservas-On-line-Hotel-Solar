@@ -15,6 +15,16 @@ export default async function handler(request: VercelRequest, response: VercelRe
         return;
     }
 
+    if (request.method === 'GET') {
+        const hasKey = !!(process.env.VITE_BREVO_API_KEY || process.env.BREVO_API_KEY);
+        return response.status(200).json({
+            status: 'online',
+            provider: 'Brevo',
+            configured: hasKey,
+            message: hasKey ? 'Ready to send' : 'MISSING_API_KEY'
+        });
+    }
+
     if (request.method !== 'POST') {
         return response.status(405).json({ error: 'Method not allowed' });
     }
