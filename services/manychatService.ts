@@ -1,12 +1,6 @@
 import { Reservation } from '../types';
 
-const MANYCHAT_API_URL = 'https://api.manychat.com/fb/subscriber';
-const MANYCHAT_TOKEN = import.meta.env.VITE_MANYCHAT_API_KEY || '';
-
-// IDs de Custom Fields no Manychat (O usuário precisará mapear isso ou usar nomes se a API suportar)
-// Por enquanto, vamos assumir que enviamos dados via 'setCustomFieldByName' se possível, 
-// ou o usuário terá que configurar os IDs reais aqui.
-// Estratégia: Identificar o usuário pelo telefone e disparar um Flow específico ou atualizar campos.
+const MANYCHAT_TOKEN = import.meta.env.MANYCHAT_API_KEY || 'managed-on-server'; // Apenas para verificação não-nula, a chave real está no servidor
 
 interface ManychatUser {
     id: string;
@@ -24,34 +18,25 @@ export const formatPhoneForManychat = (phone: string): string => {
 
 // Encontra ou cria um assinante no Manychat
 export const findOsCreateSubscriber = async (user: { name: string, phone: string, email?: string }): Promise<ManychatUser | null> => {
-    if (!MANYCHAT_TOKEN) return null;
-
+    // Usamos proxy, não precisamos do token aqui, mas mantemos check rapido se desejado
     const phone = formatPhoneForManychat(user.phone);
 
     try {
-        // 1. Tentar encontrar/criar via telefone
-        // Manychat não tem um 'upsert' direto simples público documentado igual para todos os canais sem complexidade,
-        // mas o endpoint 'createSubscriber' muitas vezes retorna o existente.
-        // Melhor abordagem segura: 'findByCustomField' ou apenas tentar enviar o flow pelo telefone se a API permitir (WhatsApp normalmente exige opt-in).
-
-        // Para WhatsApp, usamos geralmente o createSubscriber na versão v2 ou específica.
-        // Vamos usar a abordagem genérica: Criar subscriber.
-
-        // Nota: A API do Manychat pode mudar. Esta é uma implementação padrão.
-        // Se falhar, verifique a documentação atual do Manychat.
-
-        const response = await fetch(`${MANYCHAT_API_URL}/createSubscriber`, {
+        const response = await fetch('/api/send-manychat', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${MANYCHAT_TOKEN}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                first_name: user.name.split(' ')[0],
-                last_name: user.name.split(' ').slice(1).join(' '),
-                phone: phone,
-                email: user.email,
-                consent_phrase: "Reserva Hotel Solar" // Necessário para alguns canais
+                endpoint: '/fb/subscriber/createSubscriber',
+                method: 'POST',
+                body: {
+                    first_name: user.name.split(' ')[0],
+                    last_name: user.name.split(' ').slice(1).join(' '),
+                    phone: phone,
+                    email: user.email,
+                    consent_phrase: "Reserva Hotel Solar"
+                }
             })
         });
 
@@ -63,29 +48,32 @@ export const findOsCreateSubscriber = async (user: { name: string, phone: string
                 name: data.data.name
             };
         } else {
-            console.warn('[Manychat] Erro ao criar/buscar subscriber:', data);
+            console.warn('[Manychat] Erro ao criar/buscar subscriber via Proxy:', data);
             return null;
         }
     } catch (error) {
-        console.error('[Manychat] Erro de conexão:', error);
+        console.error('[Manychat] Erro de conexão Proxy:', error);
         return null;
     }
 };
 
 // Dispara um Flow Específico
 export const sendFlow = async (subscriberId: string, flowId: string): Promise<boolean> => {
-    if (!MANYCHAT_TOKEN || !flowId) return false;
+    if (!flowId) return false;
 
     try {
-        const response = await fetch(`${MANYCHAT_API_URL}/sendFlow`, {
+        const response = await fetch('/api/send-manychat', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${MANYCHAT_TOKEN}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                subscriber_id: subscriberId,
-                flow_ns: flowId // flow_ns é muitas vezes usado no lugar de id numérico
+                endpoint: '/fb/sending/sendFlow',
+                method: 'POST',
+                body: {
+                    subscriber_id: subscriberId,
+                    flow_ns: flowId
+                }
             })
         });
 
@@ -93,42 +81,42 @@ export const sendFlow = async (subscriberId: string, flowId: string): Promise<bo
         return data.status === 'success';
 
     } catch (error) {
-        console.error('[Manychat] Erro ao enviar Flow:', error);
+        console.error('[Manychat] Erro ao enviar Flow via Proxy:', error);
         return false;
     }
 }
 
-// Atualiza campos do usuário (útil para gatilhos de automação)
+// Atualiza campos do usuário
 export const setCustomFields = async (subscriberId: string, fields: Record<string, any>): Promise<boolean> => {
-    if (!MANYCHAT_TOKEN) return false;
-
     try {
-        const response = await fetch(`${MANYCHAT_API_URL}/setCustomFields`, {
+        const response = await fetch('/api/send-manychat', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${MANYCHAT_TOKEN}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                subscriber_id: subscriberId,
-                fields: fields
+                endpoint: '/fb/subscriber/setCustomFields',
+                method: 'POST',
+                body: {
+                    subscriber_id: subscriberId,
+                    fields: fields
+                }
             })
         });
 
         const data = await response.json();
         return data.status === 'success';
     } catch (error) {
-        console.error('[Manychat] Erro ao setar campos:', error);
+        console.error('[Manychat] Erro ao setar campos via Proxy:', error);
         return false;
     }
 }
 
 // Função principal de notificação
 export const sendManychatNotification = async (reservation: Reservation, type: 'CONFIRMATION' | 'CANCELLATION' | 'PAYMENT_CONFIRMED' | 'PRE_CHECKIN'): Promise<boolean> => {
-    if (!MANYCHAT_TOKEN) {
-        console.warn('[Manychat] Token não configurado.');
-        return false;
-    }
+    // Check local removido pois a chave está no servidor.
+    // Mas se quiser checar ENV VAR publica:
+    // if (!import.meta.env.VITE_MANYCHAT_FLOW_CONFIRMATION) ...
 
     // Obter IDs dos Flows das variáveis de ambiente ou usar Fallback Hardcoded (Solicitado pelo usuário)
     const FLOW_CONFIRMATION = import.meta.env.VITE_MANYCHAT_FLOW_CONFIRMATION || 'content20260125143022_701932';

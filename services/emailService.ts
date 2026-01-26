@@ -3,9 +3,8 @@
 import { Reservation } from '../types';
 import { sendManychatNotification } from './manychatService';
 
-// API Key deve ser configurada como variável de ambiente na Vercel
-const BREVO_API_KEY = import.meta.env.VITE_BREVO_API_KEY || '';
-const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
+// API Key agora é gerenciada no Serverless Function (/api/send-email)
+// Não expomos mais a chave no cliente.
 
 // Configurações do Hotel
 const HOTEL_CONFIG = {
@@ -448,8 +447,7 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
 
   try {
     // --- MUDANÇA: PRIORIDADE PARA WHATSAPP (MANYCHAT) ---
-    console.log('[Notification] Iniciando envio de notificações...');
-    console.log('[Email] Verificando API Key:', BREVO_API_KEY ? '✅ Configurada' : '❌ AUSENTE (Check Vercel Env Vars)');
+    console.log('[Notification] Iniciando envio de notificações (via Serverless)...');
 
     // 1. Enviar Notificação para o Cliente
     const clientSuccess = await sendManychatNotification(reservation, 'CONFIRMATION');
@@ -460,16 +458,12 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
       console.error('[Manychat] Falha ao enviar notificação de confirmação.');
     }
 
-    // 2. Enviar E-mails
-    if (!BREVO_API_KEY) {
-      console.warn('[Email] ⚠️ ABORTANDO: Chave da API não encontrada.');
-    }
+    // 2. Enviar E-mails (Proxy)
+    // if (!BREVO_API_KEY) { console.warn('[Email] ⚠️ ABORTANDO: Chave da API não encontrada.'); }
 
-    const hotelEmailResponse = await fetch(BREVO_API_URL, {
+    const hotelEmailResponse = await fetch('/api/send-email', {
       method: 'POST',
       headers: {
-        'accept': 'application/json',
-        'api-key': BREVO_API_KEY,
         'content-type': 'application/json',
       },
       body: JSON.stringify({
@@ -487,11 +481,9 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
       console.log('[Email] ✅ Email para Hotel enviado com sucesso.');
     }
 
-    const clientEmailResponse = await fetch(BREVO_API_URL, {
+    const clientEmailResponse = await fetch('/api/send-email', {
       method: 'POST',
       headers: {
-        'accept': 'application/json',
-        'api-key': BREVO_API_KEY,
         'content-type': 'application/json',
       },
       body: JSON.stringify({
@@ -607,9 +599,8 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
 
 // Sincronizar contato com Brevo (Marketing)
 export const syncContactToBrevo = async (guest: { name: string, email: string, phone: string, checkInDate?: string, birthDate?: string }, tags: string[] = ['HOSPEDE']) => {
-  const BREVO_CONTACTS_URL = 'https://api.brevo.com/v3/contacts';
+  // Agora usando Proxy Serverless para evitar CORS e ocultar API Key
 
-  if (!BREVO_API_KEY) return { success: false, error: 'API Key não configurada' };
   if (!guest.email) return { success: false, error: 'E-mail obrigatório' };
 
   try {
@@ -633,12 +624,10 @@ export const syncContactToBrevo = async (guest: { name: string, email: string, p
       }
     }
 
-    const response = await fetch(BREVO_CONTACTS_URL, {
+    const response = await fetch('/api/sync-brevo-contact', {
       method: 'POST',
       headers: {
-        'api-key': BREVO_API_KEY,
-        'content-type': 'application/json',
-        'accept': 'application/json'
+        'content-type': 'application/json'
       },
       body: JSON.stringify({
         email: guest.email,
@@ -968,11 +957,10 @@ export const sendPreCheckInEmail = async (reservation: Reservation): Promise<{ s
     }
 
     // Enviar E-mail também
-    const emailResponse = await fetch(BREVO_API_URL, {
+    // Enviar E-mail também
+    const emailResponse = await fetch('/api/send-email', {
       method: 'POST',
       headers: {
-        'accept': 'application/json',
-        'api-key': BREVO_API_KEY,
         'content-type': 'application/json',
       },
       body: JSON.stringify({
@@ -1011,11 +999,9 @@ export const sendPaymentConfirmedEmail = async (reservation: Reservation): Promi
     }
 
     // Enviar E-mail também
-    const emailResponse = await fetch(BREVO_API_URL, {
+    const emailResponse = await fetch('/api/send-email', {
       method: 'POST',
       headers: {
-        'accept': 'application/json',
-        'api-key': BREVO_API_KEY,
         'content-type': 'application/json',
       },
       body: JSON.stringify({
@@ -1053,11 +1039,9 @@ export const sendReservationCanceledEmail = async (reservation: Reservation, rea
     }
 
     // Enviar E-mail também
-    const emailResponse = await fetch(BREVO_API_URL, {
+    const emailResponse = await fetch('/api/send-email', {
       method: 'POST',
       headers: {
-        'accept': 'application/json',
-        'api-key': BREVO_API_KEY,
         'content-type': 'application/json',
       },
       body: JSON.stringify({
@@ -1319,11 +1303,9 @@ export const sendClientCancellationEmails = async (
     // Mesmo mudando o cliente para whats, o hotel precisa saber do cancelamento.
     // Se quisermos remover também, comentaríamos aqui. Mas por segurança mantemos para o Admin.
 
-    const hotelEmailResponse = await fetch(BREVO_API_URL, {
+    const hotelEmailResponse = await fetch('/api/send-email', {
       method: 'POST',
       headers: {
-        'accept': 'application/json',
-        'api-key': BREVO_API_KEY,
         'content-type': 'application/json',
       },
       body: JSON.stringify({
@@ -1420,11 +1402,9 @@ export const sendPreCheckinAdminEmail = async (reservation: Reservation, formDat
 </html>
     `;
 
-    const response = await fetch(BREVO_API_URL, {
+    const response = await fetch('/api/send-email', {
       method: 'POST',
       headers: {
-        'accept': 'application/json',
-        'api-key': BREVO_API_KEY,
         'content-type': 'application/json',
       },
       body: JSON.stringify({
