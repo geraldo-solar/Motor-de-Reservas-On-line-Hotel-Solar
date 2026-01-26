@@ -482,10 +482,34 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
     });
     // Ignoramos erro do email do admin para não falhar o processo do usuário
 
-    /* 
-       --- CÓDIGO ANTIGO DE E-MAIL DO CLIENTE COMENTADO ---
-    const clientEmailResponse = await fetch(BREVO_API_URL, { ... });
-    */
+    const clientEmailResponse = await fetch(BREVO_API_URL, {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': BREVO_API_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: {
+          name: HOTEL_CONFIG.name,
+          email: HOTEL_CONFIG.email,
+        },
+        to: [
+          {
+            email: reservation.mainGuest.email,
+            name: reservation.mainGuest.name,
+          },
+        ],
+        subject: `Confirmação de Reserva #${shortId} - Hotel Solar`,
+        htmlContent: generateClientEmailHTML(reservation),
+      }),
+    });
+
+    if (clientEmailResponse.ok) {
+      console.log('[Email] E-mail de confirmação enviado para cliente:', reservation.mainGuest.email);
+    } else {
+      console.warn('[Email] Falha ao enviar e-mail para cliente.');
+    }
 
 
 
@@ -918,7 +942,25 @@ export const sendPreCheckInEmail = async (reservation: Reservation): Promise<{ s
       console.error('[Manychat] Falha no envio de pré-checkin via WhatsApp.');
     }
 
-    // Fallback de email removido/comentado para evitar erros de sintaxe e complexidade
+    // Enviar E-mail também
+    const emailResponse = await fetch(BREVO_API_URL, {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': BREVO_API_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
+        to: [{ email: reservation.mainGuest.email, name: reservation.mainGuest.name }],
+        subject: `📋 Pré-Check-in Digital - Reserva #${shortId}`,
+        htmlContent: generatePreCheckInEmailHTML(reservation),
+      }),
+    });
+
+    if (emailResponse.ok) {
+      console.log('[Email] Pré-checkin por e-mail enviado para', reservation.mainGuest.email);
+    }
 
     return { success: true };
   } catch (error) {
@@ -943,6 +985,26 @@ export const sendPaymentConfirmedEmail = async (reservation: Reservation): Promi
       console.error('[Manychat] Falha no envio de pagamento confirmado via WhatsApp.');
     }
 
+    // Enviar E-mail também
+    const emailResponse = await fetch(BREVO_API_URL, {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': BREVO_API_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
+        to: [{ email: reservation.mainGuest.email, name: reservation.mainGuest.name }],
+        subject: `✅ Pagamento Confirmado - Reserva #${shortId}`,
+        htmlContent: generatePaymentConfirmedEmailHTML(reservation),
+      }),
+    });
+
+    if (emailResponse.ok) {
+      console.log('[Email] Pagamento confirmado por e-mail enviado para', reservation.mainGuest.email);
+    }
+
     return { success: true };
   } catch (error) {
     console.error('[Email] Erro ao enviar e-mail de confirmação:', error);
@@ -963,6 +1025,26 @@ export const sendReservationCanceledEmail = async (reservation: Reservation, rea
       console.log('[Manychat] Cancelamento enviado para', reservation.mainGuest.phone);
     } else {
       console.error('[Manychat] Falha no envio de cancelamento via WhatsApp.');
+    }
+
+    // Enviar E-mail também
+    const emailResponse = await fetch(BREVO_API_URL, {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': BREVO_API_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
+        to: [{ email: reservation.mainGuest.email, name: reservation.mainGuest.name }],
+        subject: `❌ Reserva Cancelada - #${shortId}`,
+        htmlContent: generateReservationCanceledEmailHTML(reservation, reason),
+      }),
+    });
+
+    if (emailResponse.ok) {
+      console.log('[Email] Cancelamento por e-mail enviado para', reservation.mainGuest.email);
     }
 
     return { success: true };
