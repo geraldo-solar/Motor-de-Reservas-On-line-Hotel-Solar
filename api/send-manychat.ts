@@ -15,30 +15,32 @@ export default async function handler(request: VercelRequest, response: VercelRe
         return;
     }
 
-    if (request.method !== 'POST') {
-        return response.status(405).json({ error: 'Method not allowed' });
-    }
-
-    const { endpoint, method = 'GET', body } = request.body;
-
-    if (!endpoint) {
-        return response.status(400).json({ error: 'Missing endpoint' });
-    }
-
-    // Obter chave da API
-    const rawKey = process.env.VITE_MANYCHAT_API_KEY || process.env.MANYCHAT_API_KEY || '';
-
+    // HEALTH CHECK (GET)
     if (request.method === 'GET') {
+        const rawKey = process.env.VITE_MANYCHAT_API_KEY || process.env.MANYCHAT_API_KEY || '';
         const masked = rawKey.length > 10 ? `${rawKey.substring(0, 5)}...` : 'INVALID';
         return response.status(200).json({
             status: 'online',
             provider: 'Manychat',
             configured: !!rawKey,
             keyDebug: masked,
-            "startsWithBearer": rawKey.startsWith('Bearer'), // Debug para saber se duplicou
+            "startsWithBearer": rawKey.startsWith('Bearer'),
             details: 'Envie POST com { endpoint, method, body }'
         });
     }
+
+    if (request.method !== 'POST') {
+        return response.status(405).json({ error: 'Method not allowed' });
+    }
+
+    const { endpoint, method = 'GET', body } = request.body || {};
+
+    if (!endpoint) {
+        return response.status(400).json({ error: 'Missing endpoint' });
+    }
+
+    // Obter chave da API para POST
+    const rawKey = process.env.VITE_MANYCHAT_API_KEY || process.env.MANYCHAT_API_KEY || '';
 
     if (!rawKey) {
         console.error('MANYCHAT_API_KEY not configured');
