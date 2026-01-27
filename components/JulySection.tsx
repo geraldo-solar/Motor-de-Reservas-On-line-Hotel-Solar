@@ -78,57 +78,82 @@ export const JulySection: React.FC<JulySectionProps> = ({
                 <div className="mt-20 space-y-12 relative z-20">
                     {julyPackages.map((pkg) => (
                         <div
+
                             key={pkg.id}
-                            className={`group flex flex-col md:flex-row items-start gap-8 p-6 md:p-10 rounded-[2.5rem] shadow-2xl border transition-all hover:-translate-y-1 ${pkg.isPromotional ? 'bg-orange-50/50 border-orange-200 shadow-orange-900/10' : 'bg-white border-white/10 shadow-solar-gold/20'}`}
+                            className={`group rounded-[2.5rem] shadow-2xl border transition-all hover:-translate-y-1 p-6 md:p-10 space-y-8 ${pkg.isPromotional ? 'bg-orange-50/50 border-orange-200 shadow-orange-900/10' : 'bg-white border-white/10 shadow-solar-gold/20'}`}
                         >
-                            {/* Image Side - Square & Inset */}
-                            <div className="w-full md:w-[320px] aspect-square flex-shrink-0 relative overflow-hidden rounded-2xl shadow-lg">
-                                <img
-                                    src={getPublicImageUrl(pkg.imageUrl, 800)}
-                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
-                                    style={{ filter: 'none', mixBlendMode: 'normal' }}
-                                    alt={pkg.name}
-                                    loading="lazy"
-                                    decoding="async"
-                                />
-                                {pkg.fullPeriodDiscountPct > 0 && (
-                                    <div className={`absolute top-4 left-4 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg animate-pulse z-20 ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-red-600'}`}>
-                                        {pkg.fullPeriodDiscountPct}% OFF
-                                    </div>
-                                )}
+                            {/* Top Section: Image + Info */}
+                            <div className="flex flex-col md:flex-row items-start gap-8">
+                                {/* Image Side - Square & Inset */}
+                                <div className="w-full md:w-[320px] aspect-square flex-shrink-0 relative overflow-hidden rounded-2xl shadow-lg">
+                                    <img
+                                        src={getPublicImageUrl(pkg.imageUrl, 800)}
+                                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
+                                        style={{ filter: 'none', mixBlendMode: 'normal' }}
+                                        alt={pkg.name}
+                                        loading="lazy"
+                                        decoding="async"
+                                    />
+                                    {pkg.fullPeriodDiscountPct > 0 && (
+                                        <div className={`absolute top-4 left-4 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg animate-pulse z-20 ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-red-600'}`}>
+                                            {pkg.fullPeriodDiscountPct}% OFF
+                                        </div>
+                                    )}
 
-                                {pkg.isPromotional && (
-                                    <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md px-4 py-3 rounded-xl border border-solar-summer-orange/30 shadow-lg text-center z-20">
-                                        <p className="text-[10px] font-black text-solar-summer-orange uppercase tracking-widest leading-none mb-1">Oferta Mid-Week</p>
-                                        <p className="text-xs font-bold text-slate-700 leading-none">Jantar Cortesia</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Content Side */}
-                            <div className="flex-1 flex flex-col space-y-6 pt-2">
-                                <div className="space-y-4">
-                                    {/* Date Highlight */}
-                                    <div className={`inline-flex items-center gap-3 px-6 py-2.5 rounded-full shadow-lg transform -rotate-1 group-hover:rotate-0 transition-transform duration-500 ${pkg.isPromotional ? 'bg-solar-summer-orange text-white' : 'bg-solar-summer-sun text-solar-green'}`}>
-                                        <CalendarDays size={20} className="animate-pulse" />
-                                        <span className="text-xs md:text-sm font-black uppercase tracking-[0.15em]">
-                                            {pkg.id === 'jul-family' ? 'Escolha sua Semana' : `${formatDisplayDate(pkg.startIsoDate)} a ${formatDisplayDate(pkg.endIsoDate)}`}
-                                        </span>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        {pkg.isPromotional && <span className="text-[10px] font-black text-solar-summer-orange uppercase tracking-[0.3em]">Melhor Valor de Julho</span>}
-                                        <h3 className="text-3xl md:text-5xl font-serif text-solar-green leading-tight">{pkg.name}</h3>
-                                    </div>
+                                    {pkg.isPromotional && (
+                                        <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md px-4 py-3 rounded-xl border border-solar-summer-orange/30 shadow-lg text-center z-20">
+                                            <p className="text-[10px] font-black text-solar-summer-orange uppercase tracking-widest leading-none mb-1">Oferta Mid-Week</p>
+                                            <p className="text-xs font-bold text-slate-700 leading-none">Jantar Cortesia</p>
+                                        </div>
+                                    )}
                                 </div>
 
-                                <p className="text-slate-500 leading-relaxed text-lg italic">
-                                    "{pkg.description}"
-                                </p>
-
-                                {/* Week selection for family package */}
-                                {pkg.id === 'jul-family' && (
+                                {/* Content Side (Intro) */}
+                                <div className="flex-1 flex flex-col space-y-6 pt-2">
                                     <div className="space-y-4">
+                                        {/* Date Highlight */}
+                                        <div className={`inline-flex items-center gap-3 px-6 py-2.5 rounded-full shadow-lg transform -rotate-1 group-hover:rotate-0 transition-transform duration-500 ${pkg.isPromotional ? 'bg-solar-summer-orange text-white' : 'bg-solar-summer-sun text-solar-green'}`}>
+                                            <CalendarDays size={20} className="animate-pulse" />
+                                            <span className="text-xs md:text-sm font-black uppercase tracking-[0.15em]">
+                                                {pkg.id === 'jul-family' ? 'Escolha sua Semana' : `${formatDisplayDate(pkg.startIsoDate)} a ${formatDisplayDate(pkg.endIsoDate)}`}
+                                            </span>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            {pkg.isPromotional && <span className="text-[10px] font-black text-solar-summer-orange uppercase tracking-[0.3em]">Melhor Valor de Julho</span>}
+                                            <h3 className="text-3xl md:text-5xl font-serif text-solar-green leading-tight">{pkg.name}</h3>
+                                        </div>
+                                    </div>
+
+                                    <p className="text-slate-500 leading-relaxed text-lg italic">
+                                        "{pkg.description}"
+                                    </p>
+
+                                    {/* Action Button (only if not family package) */}
+                                    {pkg.id !== 'jul-family' && (
+                                        <div className="pt-2 flex flex-col md:flex-row items-center gap-6">
+                                            <button
+                                                onClick={() => onSelectPackage(parseISODate(pkg.startIsoDate), parseISODate(pkg.endIsoDate))}
+                                                className={`w-full md:w-auto px-8 py-4 text-white rounded-2xl font-bold uppercase text-xs tracking-[0.2em] transition-all shadow-xl active:scale-95 cursor-pointer ${pkg.isPromotional ? 'bg-solar-summer-orange hover:bg-solar-summer-orange/90 shadow-solar-summer-orange/20' : 'bg-solar-green hover:bg-solar-gold shadow-solar-green/20'}`}
+                                            >
+                                                Ver Disponibilidade
+                                            </button>
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                                {pkg.isPromotional ? '*Válido apenas dom a qui' : '*Vagas limitadas'}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Separator */}
+                            <div className="w-full h-px bg-slate-100"></div>
+
+                            {/* Bottom Section: Schedule / Features */}
+                            <div className="space-y-4">
+                                {/* Week selection for family package (moved here for distribution) */}
+                                {pkg.id === 'jul-family' && (
+                                    <div className="space-y-4 pb-6 border-b border-slate-100 mb-6">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-orange-600">Selecione o período desejado:</p>
                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 relative z-30">
                                             {JULY_WEEKS.map((week) => {
@@ -159,59 +184,41 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                     </div>
                                 )}
 
-                                {/* Features */}
-                                <div className="space-y-4">
-                                    {(pkg as any).daily_schedule ? (
-                                        <>
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Programação da Semana:</p>
-                                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                                                {(pkg as any).daily_schedule.map((item: any) => (
-                                                    <div key={item.day} className={`p-3 rounded-xl border flex flex-col gap-1.5 ${pkg.isPromotional ? 'bg-solar-summer-orange/5 border-solar-summer-orange/20' : 'bg-slate-50 border-slate-100'}`}>
-                                                        <div className="flex items-center justify-between">
-                                                            <span className={`text-[9px] font-black uppercase tracking-widest ${pkg.isPromotional ? 'text-solar-summer-orange' : 'text-slate-400'}`}>{item.day}</span>
-                                                            <div className={`w-1.5 h-1.5 rounded-full ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-solar-summer-sun'}`}></div>
-                                                        </div>
-                                                        <h4 className="font-serif font-bold text-solar-green leading-tight text-sm">{item.label}</h4>
-                                                        <p className="text-[10px] text-slate-500 leading-snug">{item.description}</p>
+                                {(pkg as any).daily_schedule ? (
+                                    <>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Programação da Semana:</p>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                            {(pkg as any).daily_schedule.map((item: any) => (
+                                                <div key={item.day} className={`p-4 rounded-2xl border flex flex-col gap-2 ${pkg.isPromotional ? 'bg-solar-summer-orange/5 border-solar-summer-orange/20' : 'bg-slate-50 border-slate-100'}`}>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className={`text-[10px] font-black uppercase tracking-widest ${pkg.isPromotional ? 'text-solar-summer-orange' : 'text-slate-400'}`}>{item.day}</span>
+                                                        <div className={`w-2 h-2 rounded-full ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-solar-summer-sun'}`}></div>
                                                     </div>
-                                                ))}
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Destaques da Experiência:</p>
-                                            <div className="flex flex-col gap-3">
-                                                {pkg.includes.map((prog) => (
-                                                    <div key={prog} className={`flex items-start gap-3 p-3 rounded-xl border ${pkg.isPromotional ? 'bg-solar-summer-orange/5 border-solar-summer-orange/20' : 'bg-slate-50 border-slate-100'}`}>
-                                                        <div className={`mt-1 min-w-[6px] h-1.5 rounded-full ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-solar-summer-sun'}`}></div>
-                                                        <span className={`text-sm font-medium leading-relaxed ${pkg.isPromotional ? 'text-solar-summer-orange' : 'text-slate-700'}`}>
-                                                            {prog}
-                                                        </span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </>
-                                    )}
-                                    <p className="text-[10px] md:text-xs font-medium text-slate-500 mt-2 flex items-center gap-1.5 opacity-90 pl-1">
-                                        <span className="w-1 h-1 rounded-full bg-slate-400"></span>
-                                        *Programação sujeita a alterações sem aviso prévio.
-                                    </p>
-                                </div>
-
-                                {/* Action Button (only if not family package) */}
-                                {pkg.id !== 'jul-family' && (
-                                    <div className="pt-6 flex flex-col md:flex-row items-center gap-6">
-                                        <button
-                                            onClick={() => onSelectPackage(parseISODate(pkg.startIsoDate), parseISODate(pkg.endIsoDate))}
-                                            className={`w-full md:w-auto px-10 py-5 text-white rounded-2xl font-bold uppercase text-xs tracking-[0.2em] transition-all shadow-xl active:scale-95 cursor-pointer ${pkg.isPromotional ? 'bg-solar-summer-orange hover:bg-solar-summer-orange/90 shadow-solar-summer-orange/20' : 'bg-solar-green hover:bg-solar-gold shadow-solar-green/20'}`}
-                                        >
-                                            Ver Disponibilidade
-                                        </button>
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                            {pkg.isPromotional ? '*Válido apenas dom a qui' : '*Vagas limitadas'}
-                                        </span>
-                                    </div>
+                                                    <h4 className="font-serif font-bold text-solar-green leading-tight text-base">{item.label}</h4>
+                                                    <p className="text-xs text-slate-500 leading-relaxed">{item.description}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Destaques da Experiência:</p>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            {pkg.includes.map((prog) => (
+                                                <div key={prog} className={`flex items-start gap-3 p-4 rounded-xl border ${pkg.isPromotional ? 'bg-solar-summer-orange/5 border-solar-summer-orange/20' : 'bg-slate-50 border-slate-100'}`}>
+                                                    <div className={`mt-1.5 min-w-[6px] h-1.5 rounded-full ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-solar-summer-sun'}`}></div>
+                                                    <span className={`text-sm font-medium leading-relaxed ${pkg.isPromotional ? 'text-solar-summer-orange' : 'text-slate-700'}`}>
+                                                        {prog}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
                                 )}
+                                <p className="text-[10px] md:text-xs font-medium text-slate-500 mt-4 flex items-center gap-1.5 opacity-90 pl-1">
+                                    <span className="w-1 h-1 rounded-full bg-slate-400"></span>
+                                    *Programação sujeita a alterações sem aviso prévio.
+                                </p>
                             </div>
                         </div>
                     ))}
