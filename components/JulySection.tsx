@@ -218,7 +218,7 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                 )}
                                 <p className="text-[10px] md:text-xs font-medium text-slate-500 mt-4 flex items-center gap-1.5 opacity-90 pl-1">
                                     <span className="w-1 h-1 rounded-full bg-slate-400"></span>
-                                    *Programação sujeita a alterações sem aviso prévio.
+                                    *Programação sujeita a alterações.
                                 </p>
                             </div>
                         </div>
