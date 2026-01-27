@@ -134,9 +134,10 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                         <div className="pt-2 flex flex-col md:flex-row items-center gap-6">
                                             <button
                                                 onClick={() => onSelectPackage(parseISODate(pkg.startIsoDate), parseISODate(pkg.endIsoDate))}
-                                                className={`w-full md:w-auto px-8 py-4 text-white rounded-2xl font-bold uppercase text-xs tracking-[0.2em] transition-all shadow-xl active:scale-95 cursor-pointer ${pkg.isPromotional ? 'bg-solar-summer-orange hover:bg-solar-summer-orange/90 shadow-solar-summer-orange/20' : 'bg-solar-green hover:bg-solar-gold shadow-solar-green/20'}`}
+                                                className={`flex items-center justify-center gap-2 w-full md:w-auto px-8 py-4 text-white rounded-2xl font-bold uppercase text-xs tracking-[0.2em] transition-all shadow-xl active:scale-95 cursor-pointer ${pkg.isPromotional ? 'bg-solar-summer-orange hover:bg-solar-summer-orange/90 shadow-solar-summer-orange/20' : 'bg-solar-green hover:bg-solar-gold shadow-solar-green/20'}`}
                                             >
-                                                Ver Disponibilidade
+                                                <Check size={16} />
+                                                Garantir Minha Vaga
                                             </button>
                                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                                                 {pkg.isPromotional ? '*Válido apenas dom a qui' : '*Vagas limitadas'}

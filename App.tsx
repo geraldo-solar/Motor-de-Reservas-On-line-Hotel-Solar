@@ -475,7 +475,10 @@ export default function App() {
                         </div>
                       )}
 
-                      <button onClick={() => handleSelectPackage(pkg)} className="w-full bg-solar-green text-white py-5 rounded-2xl font-bold uppercase text-[11px] tracking-[0.2em] hover:bg-solar-gold transition-all shadow-lg active:scale-95">Ver Disponibilidade</button>
+                      <button onClick={() => handleSelectPackage(pkg)} className="w-full bg-solar-green text-white py-5 rounded-2xl font-bold uppercase text-[11px] tracking-[0.2em] hover:bg-solar-gold transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 group">
+                        Garantir Minha Vaga
+                        <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                      </button>
                     </div>
                   </div>
                 ))}
