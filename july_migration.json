@@ -12,6 +12,28 @@
       "Quinta-feira Welcome drink festivo",
       "Sexta-feira Inauguração do novo cardápio de drinks com degustação e DJ.",
       "Sábado comemoração de aniversário do Solar com show."
+    ],
+    "daily_schedule": [
+      {
+        "day": "Quinta",
+        "label": "Welcome Drink",
+        "description": "Recepção festiva e check-in animado"
+      },
+      {
+        "day": "Sexta",
+        "label": "Novo Cardápio & DJ",
+        "description": "Inauguração de drinks com degustação e DJ na piscina"
+      },
+      {
+        "day": "Sábado",
+        "label": "Aniversário Solar",
+        "description": "Grande festa de comemoração com show ao vivo"
+      },
+      {
+        "day": "Domingo",
+        "label": "Manhã Solar",
+        "description": "Café da manhã especial e despedida"
+      }
     ]
   },
   {

@@ -33,6 +33,7 @@ export const JulySection: React.FC<JulySectionProps> = ({
         active: p.active,
         isPromotional: p.is_promotional,
         includes: p.includes,
+        daily_schedule: (p as any).daily_schedule,
         fullPeriodDiscountPct: (p as any).full_period_discount_pct || 0
     }));
 
@@ -159,25 +160,43 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                 )}
 
                                 {/* Features */}
-                                {pkg.includes && pkg.includes.length > 0 && (
-                                    <div className="space-y-4">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Destaques da Experiência:</p>
-                                        <div className="flex flex-col gap-3">
-                                            {pkg.includes.map((prog) => (
-                                                <div key={prog} className={`flex items-start gap-3 p-3 rounded-xl border ${pkg.isPromotional ? 'bg-solar-summer-orange/5 border-solar-summer-orange/20' : 'bg-slate-50 border-slate-100'}`}>
-                                                    <div className={`mt-1 min-w-[6px] h-1.5 rounded-full ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-solar-summer-sun'}`}></div>
-                                                    <span className={`text-sm font-medium leading-relaxed ${pkg.isPromotional ? 'text-solar-summer-orange' : 'text-slate-700'}`}>
-                                                        {prog}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <p className="text-[10px] md:text-xs font-medium text-slate-500 mt-2 flex items-center gap-1.5 opacity-90 pl-1">
-                                            <span className="w-1 h-1 rounded-full bg-slate-400"></span>
-                                            *Programação sujeita a alterações sem aviso prévio.
-                                        </p>
-                                    </div>
-                                )}
+                                <div className="space-y-4">
+                                    {(pkg as any).daily_schedule ? (
+                                        <>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Programação da Semana:</p>
+                                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                                                {(pkg as any).daily_schedule.map((item: any) => (
+                                                    <div key={item.day} className={`p-3 rounded-xl border flex flex-col gap-1.5 ${pkg.isPromotional ? 'bg-solar-summer-orange/5 border-solar-summer-orange/20' : 'bg-slate-50 border-slate-100'}`}>
+                                                        <div className="flex items-center justify-between">
+                                                            <span className={`text-[9px] font-black uppercase tracking-widest ${pkg.isPromotional ? 'text-solar-summer-orange' : 'text-slate-400'}`}>{item.day}</span>
+                                                            <div className={`w-1.5 h-1.5 rounded-full ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-solar-summer-sun'}`}></div>
+                                                        </div>
+                                                        <h4 className="font-serif font-bold text-solar-green leading-tight text-sm">{item.label}</h4>
+                                                        <p className="text-[10px] text-slate-500 leading-snug">{item.description}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Destaques da Experiência:</p>
+                                            <div className="flex flex-col gap-3">
+                                                {pkg.includes.map((prog) => (
+                                                    <div key={prog} className={`flex items-start gap-3 p-3 rounded-xl border ${pkg.isPromotional ? 'bg-solar-summer-orange/5 border-solar-summer-orange/20' : 'bg-slate-50 border-slate-100'}`}>
+                                                        <div className={`mt-1 min-w-[6px] h-1.5 rounded-full ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-solar-summer-sun'}`}></div>
+                                                        <span className={`text-sm font-medium leading-relaxed ${pkg.isPromotional ? 'text-solar-summer-orange' : 'text-slate-700'}`}>
+                                                            {prog}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )}
+                                    <p className="text-[10px] md:text-xs font-medium text-slate-500 mt-2 flex items-center gap-1.5 opacity-90 pl-1">
+                                        <span className="w-1 h-1 rounded-full bg-slate-400"></span>
+                                        *Programação sujeita a alterações sem aviso prévio.
+                                    </p>
+                                </div>
 
                                 {/* Action Button (only if not family package) */}
                                 {pkg.id !== 'jul-family' && (
