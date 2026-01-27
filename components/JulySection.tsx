@@ -170,7 +170,10 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                                 </span>
                                             ))}
                                         </div>
-                                        <p className="text-[10px] text-slate-400 italic mt-2 opacity-80">*Programação pode ser alterada sem aviso prévio.</p>
+                                        <p className="text-[10px] md:text-xs font-medium text-slate-500 mt-3 flex items-center gap-1.5 opacity-90">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                            *Programação sujeita a alterações sem aviso prévio.
+                                        </p>
                                     </div>
                                 )}
 
