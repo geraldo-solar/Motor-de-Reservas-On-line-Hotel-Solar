@@ -80,7 +80,7 @@ export const JulySection: React.FC<JulySectionProps> = ({
                         <div
 
                             key={pkg.id}
-                            className={`group rounded-[2.5rem] shadow-2xl border transition-all hover:-translate-y-1 p-6 md:p-10 space-y-8 ${pkg.isPromotional ? 'bg-orange-50/50 border-orange-200 shadow-orange-900/10' : 'bg-white border-white/10 shadow-solar-gold/20'}`}
+                            className={`group rounded-[2.5rem] shadow-2xl border transition-all hover:-translate-y-1 p-6 md:p-10 space-y-8 ${pkg.isPromotional ? 'bg-white border-orange-100 shadow-orange-900/5 ring-1 ring-orange-50' : 'bg-white border-white/10 shadow-solar-gold/20'}`}
                         >
                             {/* Top Section: Image + Info */}
                             <div className="flex flex-col md:flex-row items-start gap-8">
@@ -167,10 +167,10 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                                         onClick={() => onSelectPackage(weekCheckIn, weekCheckOut)}
                                                         className={`group/week p-4 rounded-2xl border-2 transition-all duration-300 flex flex-col items-center gap-1 cursor-pointer active:scale-95 ${isActive
                                                             ? 'bg-solar-summer-orange border-solar-summer-orange text-white shadow-xl scale-105 ring-4 ring-solar-summer-orange/20'
-                                                            : 'bg-white border-slate-100 text-slate-400 hover:border-solar-summer-orange hover:text-solar-summer-orange hover:shadow-xl hover:-translate-y-1'
+                                                            : 'bg-white border-slate-200 text-slate-500 hover:border-solar-summer-orange hover:text-solar-summer-orange hover:shadow-xl hover:-translate-y-1'
                                                             }`}
                                                     >
-                                                        <span className={`text-[8px] font-black uppercase tracking-[0.2em] mb-1 ${isActive ? 'text-white/80' : 'text-slate-300 group-hover/week:text-solar-summer-orange/60'}`}>Semana</span>
+                                                        <span className={`text-[8px] font-black uppercase tracking-[0.2em] mb-1 ${isActive ? 'text-white/90' : 'text-slate-400 group-hover/week:text-solar-summer-orange/60'}`}>Semana</span>
                                                         <span className="text-sm font-black whitespace-nowrap font-sans tracking-tight">{week.label}</span>
                                                         {isActive ? (
                                                             <Check size={12} className="mt-1 animate-bounce" />
