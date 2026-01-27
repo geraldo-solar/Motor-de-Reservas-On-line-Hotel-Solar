@@ -162,16 +162,18 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                 {pkg.includes && pkg.includes.length > 0 && (
                                     <div className="space-y-4">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Destaques da Experiência:</p>
-                                        <div className="flex flex-wrap gap-2">
+                                        <div className="flex flex-col gap-3">
                                             {pkg.includes.map((prog) => (
-                                                <span key={prog} className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 border ${pkg.isPromotional ? 'bg-solar-summer-orange/10 border-solar-summer-orange/20 text-solar-summer-orange' : 'bg-slate-50 border-slate-100 text-slate-600'}`}>
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-solar-summer-sun'}`}></div>
-                                                    {prog}
-                                                </span>
+                                                <div key={prog} className={`flex items-start gap-3 p-3 rounded-xl border ${pkg.isPromotional ? 'bg-solar-summer-orange/5 border-solar-summer-orange/20' : 'bg-slate-50 border-slate-100'}`}>
+                                                    <div className={`mt-1 min-w-[6px] h-1.5 rounded-full ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-solar-summer-sun'}`}></div>
+                                                    <span className={`text-sm font-medium leading-relaxed ${pkg.isPromotional ? 'text-solar-summer-orange' : 'text-slate-700'}`}>
+                                                        {prog}
+                                                    </span>
+                                                </div>
                                             ))}
                                         </div>
-                                        <p className="text-[10px] md:text-xs font-medium text-slate-500 mt-3 flex items-center gap-1.5 opacity-90">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                        <p className="text-[10px] md:text-xs font-medium text-slate-500 mt-2 flex items-center gap-1.5 opacity-90 pl-1">
+                                            <span className="w-1 h-1 rounded-full bg-slate-400"></span>
                                             *Programação sujeita a alterações sem aviso prévio.
                                         </p>
                                     </div>
