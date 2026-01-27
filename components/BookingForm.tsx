@@ -260,7 +260,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
             {selectedRooms.map((room, index) => (
               <div key={index} className="flex justify-between items-center bg-slate-50 p-4 rounded border border-slate-100 shadow-sm">
                 <div className="flex items-center gap-4">
-                  <img src={getPublicImageUrl(room.imageUrls[0])} className="w-16 h-16 rounded-lg object-cover border border-slate-200" alt={room.name} loading="lazy" decoding="async" />
+                  <img src={getPublicImageUrl(room.imageUrls[0], 200)} className="w-16 h-16 rounded-lg object-cover border border-slate-200" alt={room.name} loading="lazy" decoding="async" />
                   <div>
                     <h4 className="font-bold text-solar-green text-sm">{room.name}</h4>
                     <p className="text-[10px] text-slate-400 uppercase font-bold">{nights} noites • {room.capacity} hóspedes</p>
@@ -286,7 +286,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
               {extras.filter(e => e.active).map(extra => (
                 <div key={extra.id} className="bg-white rounded-xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-md transition-all group flex h-32 md:h-40 relative">
                   <div className="w-1/3 md:w-2/5 relative overflow-hidden shrink-0">
-                    <img src={getPublicImageUrl(extra.imageUrl)} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={extra.name} loading="lazy" decoding="async" />
+                    <img src={getPublicImageUrl(extra.imageUrl, 300)} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={extra.name} loading="lazy" decoding="async" />
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent to-white/10"></div>
                   </div>
                   <div className="flex-1 p-3 md:p-5 flex flex-col justify-between">

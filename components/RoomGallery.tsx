@@ -38,13 +38,14 @@ export const RoomGallery: React.FC<{ room: Room, onZoom: (index: number) => void
                 </div>
             )}
             <img
-                src={getPublicImageUrl(images[currentIndex])}
+                src={getPublicImageUrl(images[currentIndex], 800)}
                 alt={`${room.name} - ${currentIndex + 1}`}
                 className={`w-full h-full object-cover transition-all duration-700 hover:scale-105 cursor-zoom-in ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
                 onClick={() => onZoom(currentIndex)}
                 onLoad={() => setImageLoaded(true)}
                 onError={() => setImageLoaded(true)}
                 loading="lazy"
+                decoding="async"
             />
             {images.length > 1 && (
                 <>

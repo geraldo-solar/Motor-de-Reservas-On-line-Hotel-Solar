@@ -38,7 +38,7 @@ export const PackagesManagement: React.FC<PackagesManagementProps> = ({ packages
                         )}
                         <div className="aspect-[16/9] relative overflow-hidden bg-slate-100">
                             {pkg.imageUrl ? (
-                                <img src={getPublicImageUrl(pkg.imageUrl)} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" alt={pkg.name} />
+                                <img src={getPublicImageUrl(pkg.imageUrl, 400)} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" alt={pkg.name} loading="lazy" />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center text-slate-300"><Ticket size={48} /></div>
                             )}

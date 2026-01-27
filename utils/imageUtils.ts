@@ -1,7 +1,7 @@
 /**
  * Converte links do Google Drive e outros formatos em links diretos de imagem
  */
-export const getPublicImageUrl = (url: string): string => {
+export const getPublicImageUrl = (url: string, width: number = 1024): string => {
     if (!url) return '';
 
     const trimmedUrl = url.trim();
@@ -28,8 +28,8 @@ export const getPublicImageUrl = (url: string): string => {
             }
 
             // O formato thumbnail é mais robusto e menos propenso a bloqueios de hotlinking/CORS do que o lh3 direto.
-            // sz=w2000 garante uma boa resolu  o (até 2000px de largura).
-            return `https://drive.google.com/thumbnail?id=${fileId}&sz=w2000`;
+            // sz=w{width} define a largura solicitada.
+            return `https://drive.google.com/thumbnail?id=${fileId}&sz=w${width}`;
         }
     }
 

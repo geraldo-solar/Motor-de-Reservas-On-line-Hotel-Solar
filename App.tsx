@@ -419,7 +419,7 @@ export default function App() {
                   <div key={pkg.id} id={`pacote-${pkg.id}`} className="bg-white rounded-[2rem] overflow-hidden shadow-xl border border-slate-50 flex flex-col group hover:shadow-2xl transition-all duration-500 relative scroll-mt-24">
                     <div className="aspect-[16/10] relative overflow-hidden">
                       {pkg.imageUrl ? (
-                        <img src={getPublicImageUrl(pkg.imageUrl)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={pkg.name} loading="lazy" decoding="async" />
+                        <img src={getPublicImageUrl(pkg.imageUrl, 800)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={pkg.name} loading="lazy" decoding="async" />
                       ) : (
                         <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300"><Ticket size={48} /></div>
                       )}

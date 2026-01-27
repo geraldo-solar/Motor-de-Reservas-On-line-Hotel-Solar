@@ -83,10 +83,12 @@ export const JulySection: React.FC<JulySectionProps> = ({
                             {/* Image Side */}
                             <div className="md:w-2/5 h-[300px] md:h-auto relative overflow-hidden bg-white">
                                 <img
-                                    src={getPublicImageUrl(pkg.imageUrl)}
+                                    src={getPublicImageUrl(pkg.imageUrl, 800)}
                                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
                                     style={{ filter: 'none', mixBlendMode: 'normal' }}
                                     alt={pkg.name}
+                                    loading="lazy"
+                                    decoding="async"
                                 />
                                 {pkg.fullPeriodDiscountPct > 0 && (
                                     <div className={`absolute top-6 left-6 text-white text-[10px] font-black px-4 py-2 rounded-full shadow-2xl animate-pulse z-20 ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-red-600'}`}>
@@ -168,6 +170,7 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                                 </span>
                                             ))}
                                         </div>
+                                        <p className="text-[10px] text-slate-400 italic mt-2 opacity-80">*Programação pode ser alterada sem aviso prévio.</p>
                                     </div>
                                 )}
 

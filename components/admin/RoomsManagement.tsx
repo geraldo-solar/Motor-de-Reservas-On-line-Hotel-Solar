@@ -41,7 +41,7 @@ export const RoomsManagement: React.FC<RoomsManagementProps> = ({ rooms, onEditR
                         )}
                         <div className="aspect-[16/10] relative overflow-hidden bg-slate-100">
                             {room.imageUrls?.[0] ? (
-                                <img src={getPublicImageUrl(room.imageUrls[0])} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={room.name} />
+                                <img src={getPublicImageUrl(room.imageUrls[0], 400)} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" alt={room.name} loading="lazy" />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center text-slate-300"><BedDouble size={48} /></div>
                             )}
