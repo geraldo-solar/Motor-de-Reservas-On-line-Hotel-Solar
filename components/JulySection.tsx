@@ -179,7 +179,7 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                                             }`}
                                                     >
                                                         <span className={`text-[9px] font-black uppercase tracking-widest ${isActive ? 'text-white/90' : 'text-slate-400'}`}>Semana</span>
-                                                        <span className="text-sm font-black whitespace-nowrap font-serif">{week.label}</span>
+                                                        <span className="text-xl font-black whitespace-nowrap font-serif">{week.label}</span>
 
                                                         {/* Explicit CTA */}
                                                         <div className={`mt-1 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest transition-all ${isActive ? 'bg-white text-solar-summer-orange' : 'bg-slate-100 text-slate-400 group-hover/week:bg-solar-summer-orange group-hover/week:text-white'}`}>
