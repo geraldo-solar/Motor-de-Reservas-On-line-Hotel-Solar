@@ -196,7 +196,7 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                     <>
                                         <div className="flex items-center gap-3 mb-4">
                                             <div className="w-8 h-px bg-slate-300"></div>
-                                            <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">Programação da Semana</p>
+                                            <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">Programação do Pacote</p>
                                             <div className="w-full h-px bg-slate-100"></div>
                                         </div>
                                         <div className="relative mt-8 mb-4">
