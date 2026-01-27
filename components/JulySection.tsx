@@ -181,9 +181,9 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                                         <span className={`text-[9px] font-black uppercase tracking-widest ${isActive ? 'text-white/90' : 'text-slate-400'}`}>Semana</span>
                                                         <span className="text-sm font-black whitespace-nowrap font-serif">{week.label}</span>
 
-                                                        {/* Radio Indicator */}
-                                                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isActive ? 'bg-white border-white text-solar-summer-orange' : 'border-slate-200 group-hover/week:border-solar-summer-orange group-hover/week:scale-110'}`}>
-                                                            {isActive && <Check size={14} strokeWidth={4} />}
+                                                        {/* Explicit CTA */}
+                                                        <div className={`mt-1 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest transition-all ${isActive ? 'bg-white text-solar-summer-orange' : 'bg-slate-100 text-slate-400 group-hover/week:bg-solar-summer-orange group-hover/week:text-white'}`}>
+                                                            {isActive ? 'Selecionado' : 'Selecionar'}
                                                         </div>
                                                     </button>
                                                 );
