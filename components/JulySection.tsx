@@ -192,7 +192,7 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                     </div>
                                 )}
 
-                                {(pkg as any).daily_schedule ? (
+                                {(pkg as any).daily_schedule && Array.isArray((pkg as any).daily_schedule) ? (
                                     <>
                                         <div className="flex items-center gap-3 mb-4">
                                             <div className="w-8 h-px bg-slate-300"></div>
@@ -205,7 +205,7 @@ export const JulySection: React.FC<JulySectionProps> = ({
 
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-10">
                                                 {(pkg as any).daily_schedule.map((item: any, idx: number) => (
-                                                    <div key={item.day} className="group/day relative flex flex-col items-center text-center">
+                                                    <div key={idx} className="group/day relative flex flex-col items-center text-center">
                                                         {/* Timeline Node */}
                                                         <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-lg transition-all duration-500 group-hover/day:scale-110 ${pkg.isPromotional ? 'bg-orange-500' : 'bg-solar-green'}`}>
                                                             <span className="text-[10px] font-black text-white">{idx + 1}º</span>
