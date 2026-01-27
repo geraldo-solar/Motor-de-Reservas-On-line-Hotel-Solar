@@ -82,7 +82,7 @@ export const JulySection: React.FC<JulySectionProps> = ({
                             className={`group flex flex-col md:flex-row rounded-[2.5rem] overflow-hidden shadow-2xl border transition-all hover:-translate-y-1 ${pkg.isPromotional ? 'bg-orange-50/50 border-orange-200 shadow-orange-900/10' : 'bg-white border-white/10 shadow-solar-gold/20'}`}
                         >
                             {/* Image Side */}
-                            <div className="md:w-2/5 h-[300px] md:h-auto relative overflow-hidden bg-white">
+                            <div className="md:w-1/2 h-[300px] md:h-auto relative overflow-hidden bg-white">
                                 <img
                                     src={getPublicImageUrl(pkg.imageUrl, 800)}
                                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
@@ -106,7 +106,7 @@ export const JulySection: React.FC<JulySectionProps> = ({
                             </div>
 
                             {/* Content Side */}
-                            <div className="md:w-3/5 p-8 md:p-12 flex flex-col justify-center space-y-8">
+                            <div className="md:w-1/2 p-8 md:p-12 flex flex-col justify-center space-y-8">
                                 <div className="space-y-4">
                                     {/* Date Highlight */}
                                     <div className={`inline-flex items-center gap-3 px-6 py-2.5 rounded-full shadow-lg transform -rotate-1 group-hover:rotate-0 transition-transform duration-500 ${pkg.isPromotional ? 'bg-solar-summer-orange text-white' : 'bg-solar-summer-sun text-solar-green'}`}>
