@@ -199,17 +199,33 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                             <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">Programação da Semana</p>
                                             <div className="w-full h-px bg-slate-100"></div>
                                         </div>
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                            {(pkg as any).daily_schedule.map((item: any) => (
-                                                <div key={item.day} className={`group/day relative p-5 rounded-2xl border transition-all hover:shadow-lg ${pkg.isPromotional ? 'bg-orange-50/30 border-orange-100 hover:border-orange-200' : 'bg-slate-50/50 border-slate-100 hover:border-slate-200'} hover:-translate-y-1`}>
-                                                    <div className="flex items-center justify-between mb-3">
-                                                        <span className={`text-[10px] font-black uppercase tracking-widest ${pkg.isPromotional ? 'text-orange-400' : 'text-slate-400'}`}>{item.day}</span>
-                                                        <div className={`w-1.5 h-1.5 rounded-full ${pkg.isPromotional ? 'bg-orange-400' : 'bg-emerald-400'}`}></div>
+                                        <div className="relative mt-8 mb-4">
+                                            {/* Connecting Line (Desktop) */}
+                                            <div className="hidden md:block absolute top-[18px] left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-slate-300 to-transparent opacity-50"></div>
+
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-10">
+                                                {(pkg as any).daily_schedule.map((item: any, idx: number) => (
+                                                    <div key={item.day} className="group/day relative flex flex-col items-center text-center">
+                                                        {/* Timeline Node */}
+                                                        <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-lg transition-all duration-500 group-hover/day:scale-110 ${pkg.isPromotional ? 'bg-orange-500' : 'bg-solar-green'}`}>
+                                                            <span className="text-[10px] font-black text-white">{idx + 1}º</span>
+                                                        </div>
+
+                                                        {/* Content */}
+                                                        <div className="mt-4 flex flex-col items-center gap-2">
+                                                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${pkg.isPromotional ? 'bg-orange-50 text-orange-500' : 'bg-emerald-50 text-emerald-600'}`}>
+                                                                {item.day}
+                                                            </span>
+                                                            <h4 className="font-serif font-bold text-slate-800 leading-tight text-lg group-hover/day:text-emerald-700 transition-colors">
+                                                                {item.label}
+                                                            </h4>
+                                                            <p className="text-xs text-slate-500 leading-relaxed font-medium max-w-[200px]">
+                                                                {item.description}
+                                                            </p>
+                                                        </div>
                                                     </div>
-                                                    <h4 className="font-serif font-bold text-slate-800 leading-tight text-lg mb-2 group-hover/day:text-emerald-700 transition-colors">{item.label}</h4>
-                                                    <p className="text-xs text-slate-500 leading-relaxed font-medium">{item.description}</p>
-                                                </div>
-                                            ))}
+                                                ))}
+                                            </div>
                                         </div>
                                     </>
                                 ) : (
