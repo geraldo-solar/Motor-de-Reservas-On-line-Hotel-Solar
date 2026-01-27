@@ -163,7 +163,7 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                             <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">Selecione sua Data</p>
                                             <div className="w-full h-px bg-slate-100"></div>
                                         </div>
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 relative z-30">
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 relative z-30">
                                             {JULY_WEEKS.map((week) => {
                                                 const weekCheckIn = new Date(week.checkIn[0], week.checkIn[1], week.checkIn[2]);
                                                 const weekCheckOut = new Date(week.checkOut[0], week.checkOut[1], week.checkOut[2]);
@@ -173,18 +173,18 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                                     <button
                                                         key={week.label}
                                                         onClick={() => onSelectPackage(weekCheckIn, weekCheckOut)}
-                                                        className={`group/week relative p-6 rounded-2xl border transition-all duration-300 flex flex-col items-center gap-2 cursor-pointer active:scale-95 ${isActive
-                                                            ? 'bg-slate-900 border-slate-900 text-white shadow-2xl scale-105 ring-4 ring-slate-900/10'
-                                                            : 'bg-white border-slate-200 text-slate-500 hover:border-slate-400 hover:text-slate-800 hover:shadow-xl hover:-translate-y-1'
+                                                        className={`group/week relative p-4 rounded-xl border-2 transition-all duration-300 flex flex-col items-center justify-between gap-3 cursor-pointer active:scale-95 ${isActive
+                                                            ? 'bg-solar-summer-orange border-solar-summer-orange text-white shadow-xl scale-105 ring-4 ring-solar-summer-orange/20'
+                                                            : 'bg-white border-slate-100 text-slate-500 hover:border-solar-summer-orange hover:shadow-lg hover:-translate-y-1'
                                                             }`}
                                                     >
-                                                        <span className={`text-[9px] font-black uppercase tracking-[0.25em] ${isActive ? 'text-white/60' : 'text-slate-400'}`}>Semana</span>
-                                                        <span className="text-lg font-serif font-bold whitespace-nowrap">{week.label}</span>
-                                                        {isActive && (
-                                                            <div className="absolute top-3 right-3 text-emerald-400">
-                                                                <Check size={14} strokeWidth={4} />
-                                                            </div>
-                                                        )}
+                                                        <span className={`text-[9px] font-black uppercase tracking-widest ${isActive ? 'text-white/90' : 'text-slate-400'}`}>Semana</span>
+                                                        <span className="text-sm font-black whitespace-nowrap font-serif">{week.label}</span>
+
+                                                        {/* Radio Indicator */}
+                                                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isActive ? 'bg-white border-white text-solar-summer-orange' : 'border-slate-200 group-hover/week:border-solar-summer-orange group-hover/week:scale-110'}`}>
+                                                            {isActive && <Check size={14} strokeWidth={4} />}
+                                                        </div>
                                                     </button>
                                                 );
                                             })}
