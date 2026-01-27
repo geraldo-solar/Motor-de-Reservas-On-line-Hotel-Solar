@@ -79,10 +79,10 @@ export const JulySection: React.FC<JulySectionProps> = ({
                     {julyPackages.map((pkg) => (
                         <div
                             key={pkg.id}
-                            className={`group flex flex-col md:flex-row rounded-[2.5rem] overflow-hidden shadow-2xl border transition-all hover:-translate-y-1 ${pkg.isPromotional ? 'bg-orange-50/50 border-orange-200 shadow-orange-900/10' : 'bg-white border-white/10 shadow-solar-gold/20'}`}
+                            className={`group flex flex-col md:flex-row items-start gap-8 p-6 md:p-10 rounded-[2.5rem] shadow-2xl border transition-all hover:-translate-y-1 ${pkg.isPromotional ? 'bg-orange-50/50 border-orange-200 shadow-orange-900/10' : 'bg-white border-white/10 shadow-solar-gold/20'}`}
                         >
-                            {/* Image Side */}
-                            <div className="md:w-1/2 h-[300px] md:h-auto relative overflow-hidden bg-white">
+                            {/* Image Side - Square & Inset */}
+                            <div className="w-full md:w-[320px] aspect-square flex-shrink-0 relative overflow-hidden rounded-2xl shadow-lg">
                                 <img
                                     src={getPublicImageUrl(pkg.imageUrl, 800)}
                                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
@@ -92,21 +92,21 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                     decoding="async"
                                 />
                                 {pkg.fullPeriodDiscountPct > 0 && (
-                                    <div className={`absolute top-6 left-6 text-white text-[10px] font-black px-4 py-2 rounded-full shadow-2xl animate-pulse z-20 ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-red-600'}`}>
+                                    <div className={`absolute top-4 left-4 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg animate-pulse z-20 ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-red-600'}`}>
                                         {pkg.fullPeriodDiscountPct}% OFF
                                     </div>
                                 )}
 
                                 {pkg.isPromotional && (
-                                    <div className="absolute bottom-6 left-6 bg-white/95 backdrop-blur-md px-4 py-2 rounded-xl border border-solar-summer-orange/30 shadow-xl hidden md:block z-20">
-                                        <p className="text-[10px] font-black text-solar-summer-orange uppercase tracking-widest">Oferta Mid-Week</p>
-                                        <p className="text-xs font-bold text-slate-700">Jantar Cortesia</p>
+                                    <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md px-4 py-3 rounded-xl border border-solar-summer-orange/30 shadow-lg text-center z-20">
+                                        <p className="text-[10px] font-black text-solar-summer-orange uppercase tracking-widest leading-none mb-1">Oferta Mid-Week</p>
+                                        <p className="text-xs font-bold text-slate-700 leading-none">Jantar Cortesia</p>
                                     </div>
                                 )}
                             </div>
 
                             {/* Content Side */}
-                            <div className="md:w-1/2 p-8 md:p-12 flex flex-col justify-center space-y-8">
+                            <div className="flex-1 flex flex-col space-y-6 pt-2">
                                 <div className="space-y-4">
                                     {/* Date Highlight */}
                                     <div className={`inline-flex items-center gap-3 px-6 py-2.5 rounded-full shadow-lg transform -rotate-1 group-hover:rotate-0 transition-transform duration-500 ${pkg.isPromotional ? 'bg-solar-summer-orange text-white' : 'bg-solar-summer-sun text-solar-green'}`}>
