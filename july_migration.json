@@ -21,12 +21,13 @@
       },
       {
         "day": "Sexta",
-        "description": "Clubinho Solar (13h) • Inauguração de drinks com degustação e DJ na piscina"
+        "label": "Praia & Drinks",
+        "description": "Praia do Solar (10h às 13h) • Inauguração do novo cardápio de drinks (19h)"
       },
       {
         "day": "Sábado",
         "label": "Aniversário Solar",
-        "description": "Grande festa de comemoração com show ao vivo"
+        "description": "Clubinho Solar (10h) • Praia do Solar (10h às 14h) • Brinde e Show Festivo na Pérgola (19h)"
       },
       {
         "day": "Domingo",
