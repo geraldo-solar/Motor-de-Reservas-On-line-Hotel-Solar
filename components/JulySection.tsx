@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalendarDays, Check, Zap } from 'lucide-react';
+import { CalendarDays, Check, Zap, Info, ArrowRight } from 'lucide-react';
 import { formatDisplayDate, parseISODate, toLocalISO } from '../utils/dateUtils';
 import { getPublicImageUrl } from '../utils/imageUtils';
 import JULY_PACKAGES_DATA from '../july_migration.json';
@@ -78,69 +78,72 @@ export const JulySection: React.FC<JulySectionProps> = ({
                 <div className="mt-20 space-y-12 relative z-20">
                     {julyPackages.map((pkg) => (
                         <div
-
                             key={pkg.id}
-                            className={`group rounded-[2.5rem] shadow-2xl border transition-all hover:-translate-y-1 p-6 md:p-10 space-y-8 ${pkg.isPromotional ? 'bg-white border-orange-100 shadow-orange-900/5 ring-1 ring-orange-50' : 'bg-white border-white/10 shadow-solar-gold/20'}`}
+                            className={`group rounded-[3rem] shadow-2xl border transition-all duration-500 hover:-translate-y-2 p-8 md:p-12 space-y-10 ${pkg.isPromotional ? 'bg-white border-orange-100 shadow-orange-900/10 ring-1 ring-orange-100' : 'bg-white border-white/20 shadow-solar-gold/20'}`}
                         >
                             {/* Top Section: Image + Info */}
-                            <div className="flex flex-col md:flex-row items-start gap-8">
+                            <div className="flex flex-col md:flex-row items-start gap-10 md:gap-14">
                                 {/* Image Side - Square & Inset */}
-                                <div className="w-full md:w-[320px] aspect-square flex-shrink-0 relative overflow-hidden rounded-2xl shadow-lg">
+                                <div className="w-full md:w-[360px] aspect-square flex-shrink-0 relative overflow-hidden rounded-[2rem] shadow-2xl group-hover:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.25)] transition-all duration-500">
                                     <img
                                         src={getPublicImageUrl(pkg.imageUrl, 800)}
-                                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000 ease-out"
                                         style={{ filter: 'none', mixBlendMode: 'normal' }}
                                         alt={pkg.name}
                                         loading="lazy"
                                         decoding="async"
                                     />
                                     {pkg.fullPeriodDiscountPct > 0 && (
-                                        <div className={`absolute top-4 left-4 text-white text-[10px] font-black px-3 py-1.5 rounded-full shadow-lg animate-pulse z-20 ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-red-600'}`}>
+                                        <div className={`absolute top-5 left-5 text-white text-[11px] font-black px-4 py-2 rounded-full shadow-lg backdrop-blur-sm z-20 ${pkg.isPromotional ? 'bg-solar-summer-orange/90' : 'bg-red-600/90'}`}>
                                             {pkg.fullPeriodDiscountPct}% OFF
                                         </div>
                                     )}
 
                                     {pkg.isPromotional && (
-                                        <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md px-4 py-3 rounded-xl border border-solar-summer-orange/30 shadow-lg text-center z-20">
-                                            <p className="text-[10px] font-black text-solar-summer-orange uppercase tracking-widest leading-none mb-1">Oferta Mid-Week</p>
-                                            <p className="text-xs font-bold text-slate-700 leading-none">Jantar Cortesia</p>
+                                        <div className="absolute bottom-5 left-5 right-5 bg-white/90 backdrop-blur-xl px-5 py-4 rounded-2xl border border-white/40 shadow-xl text-center z-20">
+                                            <p className="text-[10px] font-black text-solar-summer-orange uppercase tracking-[0.25em] leading-none mb-1.5">Oferta Mid-Week</p>
+                                            <p className="text-sm font-bold text-slate-800 leading-none font-serif">Jantar Cortesia</p>
                                         </div>
                                     )}
                                 </div>
 
                                 {/* Content Side (Intro) */}
-                                <div className="flex-1 flex flex-col space-y-6 pt-2">
-                                    <div className="space-y-4">
+                                <div className="flex-1 flex flex-col space-y-8 pt-4">
+                                    <div className="space-y-5">
                                         {/* Date Highlight */}
-                                        <div className={`inline-flex items-center gap-3 px-6 py-2.5 rounded-full shadow-lg transform -rotate-1 group-hover:rotate-0 transition-transform duration-500 ${pkg.isPromotional ? 'bg-solar-summer-orange text-white' : 'bg-solar-summer-sun text-solar-green'}`}>
-                                            <CalendarDays size={20} className="animate-pulse" />
-                                            <span className="text-xs md:text-sm font-black uppercase tracking-[0.15em]">
+                                        <div className={`inline-flex items-center gap-3 px-6 py-2.5 rounded-full shadow-sm transform -rotate-1 group-hover:rotate-0 transition-transform duration-500 ${pkg.isPromotional ? 'bg-orange-50 text-solar-summer-orange border border-orange-100' : 'bg-solar-green/5 text-solar-green border border-solar-green/10'}`}>
+                                            <CalendarDays size={18} className="opacity-80" />
+                                            <span className="text-xs md:text-sm font-black uppercase tracking-[0.2em]">
                                                 {pkg.id === 'jul-family' ? 'Escolha sua Semana' : `${formatDisplayDate(pkg.startIsoDate)} a ${formatDisplayDate(pkg.endIsoDate)}`}
                                             </span>
                                         </div>
 
-                                        <div className="space-y-2">
-                                            {pkg.isPromotional && <span className="text-[10px] font-black text-solar-summer-orange uppercase tracking-[0.3em]">Melhor Valor de Julho</span>}
-                                            <h3 className="text-3xl md:text-5xl font-serif text-solar-green leading-tight">{pkg.name}</h3>
+                                        <div className="space-y-3">
+                                            {pkg.isPromotional && <span className="inline-block text-[10px] font-black text-white bg-solar-summer-orange px-3 py-1 rounded-md uppercase tracking-[0.25em] shadow-sm">Melhor Valor</span>}
+                                            <h3 className="text-4xl md:text-6xl font-serif text-slate-800 leading-[1.1] tracking-tight">{pkg.name}</h3>
                                         </div>
                                     </div>
 
-                                    <p className="text-slate-500 leading-relaxed text-lg italic">
+                                    <p className="text-slate-500 leading-relaxed text-lg md:text-xl font-light border-l-4 border-slate-200 pl-6 italic">
                                         "{pkg.description}"
                                     </p>
 
                                     {/* Action Button (only if not family package) */}
                                     {pkg.id !== 'jul-family' && (
-                                        <div className="pt-2 flex flex-col md:flex-row items-center gap-6">
+                                        <div className="pt-4 flex flex-col items-start gap-4">
                                             <button
                                                 onClick={() => onSelectPackage(parseISODate(pkg.startIsoDate), parseISODate(pkg.endIsoDate))}
-                                                className={`flex items-center justify-center gap-2 w-full md:w-auto px-8 py-4 text-white rounded-2xl font-bold uppercase text-xs tracking-[0.2em] transition-all shadow-xl active:scale-95 cursor-pointer ${pkg.isPromotional ? 'bg-solar-summer-orange hover:bg-solar-summer-orange/90 shadow-solar-summer-orange/20' : 'bg-solar-green hover:bg-solar-gold shadow-solar-green/20'}`}
+                                                className={`group/btn relative overflow-hidden flex items-center justify-center gap-4 w-full md:w-auto px-10 py-5 text-white rounded-2xl font-bold uppercase text-xs tracking-[0.25em] transition-all shadow-xl active:scale-95 cursor-pointer ${pkg.isPromotional ? 'bg-gradient-to-r from-solar-summer-orange to-orange-500 hover:shadow-orange-500/30' : 'bg-gradient-to-r from-solar-green to-emerald-600 hover:shadow-emerald-600/30'}`}
                                             >
-                                                <Check size={16} />
-                                                Garantir Minha Vaga
+                                                <span className="relative z-10 flex items-center gap-3">
+                                                    Garantir Minha Vaga
+                                                    <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
+                                                </span>
+                                                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-300"></div>
                                             </button>
-                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                                {pkg.isPromotional ? '*Válido apenas dom a qui' : '*Vagas limitadas'}
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1 flex items-center gap-1.5">
+                                                <div className={`w-1.5 h-1.5 rounded-full ${pkg.isPromotional ? 'bg-orange-400' : 'bg-emerald-400'}`}></div>
+                                                {pkg.isPromotional ? 'Desconto especial aplicado' : 'Últimas vagas disponíveis'}
                                             </span>
                                         </div>
                                     )}
@@ -148,15 +151,19 @@ export const JulySection: React.FC<JulySectionProps> = ({
                             </div>
 
                             {/* Separator */}
-                            <div className="w-full h-px bg-slate-100"></div>
+                            <div className="w-full h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent"></div>
 
                             {/* Bottom Section: Schedule / Features */}
-                            <div className="space-y-4">
+                            <div className="space-y-6">
                                 {/* Week selection for family package (moved here for distribution) */}
                                 {pkg.id === 'jul-family' && (
-                                    <div className="space-y-4 pb-6 border-b border-slate-100 mb-6">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-orange-600">Selecione o período desejado:</p>
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 relative z-30">
+                                    <div className="space-y-6 pb-8 border-b border-slate-100 mb-8">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="w-8 h-px bg-slate-300"></div>
+                                            <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">Selecione sua Data</p>
+                                            <div className="w-full h-px bg-slate-100"></div>
+                                        </div>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 relative z-30">
                                             {JULY_WEEKS.map((week) => {
                                                 const weekCheckIn = new Date(week.checkIn[0], week.checkIn[1], week.checkIn[2]);
                                                 const weekCheckOut = new Date(week.checkOut[0], week.checkOut[1], week.checkOut[2]);
@@ -166,17 +173,17 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                                     <button
                                                         key={week.label}
                                                         onClick={() => onSelectPackage(weekCheckIn, weekCheckOut)}
-                                                        className={`group/week p-4 rounded-2xl border-2 transition-all duration-300 flex flex-col items-center gap-1 cursor-pointer active:scale-95 ${isActive
-                                                            ? 'bg-solar-summer-orange border-solar-summer-orange text-white shadow-xl scale-105 ring-4 ring-solar-summer-orange/20'
-                                                            : 'bg-white border-slate-200 text-slate-500 hover:border-solar-summer-orange hover:text-solar-summer-orange hover:shadow-xl hover:-translate-y-1'
+                                                        className={`group/week relative p-6 rounded-2xl border transition-all duration-300 flex flex-col items-center gap-2 cursor-pointer active:scale-95 ${isActive
+                                                            ? 'bg-slate-900 border-slate-900 text-white shadow-2xl scale-105 ring-4 ring-slate-900/10'
+                                                            : 'bg-white border-slate-200 text-slate-500 hover:border-slate-400 hover:text-slate-800 hover:shadow-xl hover:-translate-y-1'
                                                             }`}
                                                     >
-                                                        <span className={`text-[8px] font-black uppercase tracking-[0.2em] mb-1 ${isActive ? 'text-white/90' : 'text-slate-400 group-hover/week:text-solar-summer-orange/60'}`}>Semana</span>
-                                                        <span className="text-sm font-black whitespace-nowrap font-sans tracking-tight">{week.label}</span>
-                                                        {isActive ? (
-                                                            <Check size={12} className="mt-1 animate-bounce" />
-                                                        ) : (
-                                                            <span className="text-[7px] font-black uppercase opacity-0 group-hover/week:opacity-100 transition-all mt-1 tracking-widest bg-solar-summer-orange/10 px-2 py-0.5 rounded-full">Escolher</span>
+                                                        <span className={`text-[9px] font-black uppercase tracking-[0.25em] ${isActive ? 'text-white/60' : 'text-slate-400'}`}>Semana</span>
+                                                        <span className="text-lg font-serif font-bold whitespace-nowrap">{week.label}</span>
+                                                        {isActive && (
+                                                            <div className="absolute top-3 right-3 text-emerald-400">
+                                                                <Check size={14} strokeWidth={4} />
+                                                            </div>
                                                         )}
                                                     </button>
                                                 );
@@ -187,28 +194,36 @@ export const JulySection: React.FC<JulySectionProps> = ({
 
                                 {(pkg as any).daily_schedule ? (
                                     <>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Programação da Semana:</p>
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="w-8 h-px bg-slate-300"></div>
+                                            <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">Programação da Semana</p>
+                                            <div className="w-full h-px bg-slate-100"></div>
+                                        </div>
                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                             {(pkg as any).daily_schedule.map((item: any) => (
-                                                <div key={item.day} className={`p-4 rounded-2xl border flex flex-col gap-2 ${pkg.isPromotional ? 'bg-solar-summer-orange/5 border-solar-summer-orange/20' : 'bg-slate-50 border-slate-100'}`}>
-                                                    <div className="flex items-center justify-between">
-                                                        <span className={`text-[10px] font-black uppercase tracking-widest ${pkg.isPromotional ? 'text-solar-summer-orange' : 'text-slate-400'}`}>{item.day}</span>
-                                                        <div className={`w-2 h-2 rounded-full ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-solar-summer-sun'}`}></div>
+                                                <div key={item.day} className={`group/day relative p-5 rounded-2xl border transition-all hover:shadow-lg ${pkg.isPromotional ? 'bg-orange-50/30 border-orange-100 hover:border-orange-200' : 'bg-slate-50/50 border-slate-100 hover:border-slate-200'} hover:-translate-y-1`}>
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <span className={`text-[10px] font-black uppercase tracking-widest ${pkg.isPromotional ? 'text-orange-400' : 'text-slate-400'}`}>{item.day}</span>
+                                                        <div className={`w-1.5 h-1.5 rounded-full ${pkg.isPromotional ? 'bg-orange-400' : 'bg-emerald-400'}`}></div>
                                                     </div>
-                                                    <h4 className="font-serif font-bold text-solar-green leading-tight text-base">{item.label}</h4>
-                                                    <p className="text-xs text-slate-500 leading-relaxed">{item.description}</p>
+                                                    <h4 className="font-serif font-bold text-slate-800 leading-tight text-lg mb-2 group-hover/day:text-emerald-700 transition-colors">{item.label}</h4>
+                                                    <p className="text-xs text-slate-500 leading-relaxed font-medium">{item.description}</p>
                                                 </div>
                                             ))}
                                         </div>
                                     </>
                                 ) : (
                                     <>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Destaques da Experiência:</p>
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="w-8 h-px bg-slate-300"></div>
+                                            <p className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-400">Destaques da Experiência</p>
+                                            <div className="w-full h-px bg-slate-100"></div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             {pkg.includes.map((prog) => (
-                                                <div key={prog} className={`flex items-start gap-3 p-4 rounded-xl border ${pkg.isPromotional ? 'bg-solar-summer-orange/5 border-solar-summer-orange/20' : 'bg-slate-50 border-slate-100'}`}>
-                                                    <div className={`mt-1.5 min-w-[6px] h-1.5 rounded-full ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-solar-summer-sun'}`}></div>
-                                                    <span className={`text-sm font-medium leading-relaxed ${pkg.isPromotional ? 'text-solar-summer-orange' : 'text-slate-700'}`}>
+                                                <div key={prog} className="flex items-start gap-4 p-5 rounded-2xl bg-slate-50 border border-slate-100 hover:shadow-md transition-shadow">
+                                                    <div className={`mt-1.5 min-w-[8px] h-2 rounded-full ${pkg.isPromotional ? 'bg-solar-summer-orange' : 'bg-solar-summer-sun'}`}></div>
+                                                    <span className="text-sm font-medium leading-relaxed text-slate-600">
                                                         {prog}
                                                     </span>
                                                 </div>
@@ -216,8 +231,8 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                         </div>
                                     </>
                                 )}
-                                <p className="text-[10px] md:text-xs font-medium text-slate-500 mt-4 flex items-center gap-1.5 opacity-90 pl-1">
-                                    <span className="w-1 h-1 rounded-full bg-slate-400"></span>
+                                <p className="text-[10px] md:text-xs font-medium text-slate-400 mt-6 flex items-center gap-2 opacity-80 pl-1 tracking-wide">
+                                    <Info size={14} className="text-slate-300" />
                                     *Programação sujeita a alterações.
                                 </p>
                             </div>
