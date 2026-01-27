@@ -14,7 +14,7 @@ import { sendReservationEmails } from './services/emailService';
 
 import { JulySection } from './components/JulySection';
 import { Lightbox } from './components/Lightbox';
-import { Share2, Zap, CalendarDays, Ticket, Plus, Minus, Check, Users, AlertCircle, ShoppingCart } from 'lucide-react';
+import { Share2, Zap, ArrowRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Info, Luggage, MapPin, Search, Star, User, X } from 'lucide-react';
 import { SuccessPage } from './components/SuccessPage';
 import { RegulationPage } from './components/RegulationPage';
 import { CancellationPage } from './components/CancellationPage';
