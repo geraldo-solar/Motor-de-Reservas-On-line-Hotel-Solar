@@ -537,8 +537,9 @@ export const useSupabaseData = () => {
         return updated;
       });
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao salvar cupom:', err);
+      alert('Erro ao salvar cupom: ' + (err.message || 'Erro desconhecido. Verifique o console.'));
       return false;
     } finally {
       setIsSaving(false);
@@ -556,8 +557,9 @@ export const useSupabaseData = () => {
         return updated;
       });
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao deletar cupom:', err);
+      alert('Erro ao deletar cupom: ' + (err.message || 'Erro desconhecido.'));
       return false;
     } finally {
       setIsSaving(false);
