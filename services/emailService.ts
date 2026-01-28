@@ -1,7 +1,9 @@
 // Serviço de envio de e-mails via Brevo (Sendinblue)
 
 import { Reservation } from '../types';
-import { sendManychatNotification } from './manychatService';
+// --- MUDANÇA: WHATSAPP REMOVIDO TEMPORARIAMENTE ---
+
+// --- NOTIFICAÇÃO PARA O HOTEL (MANTIDA via EMAIL) ---
 
 // API Key agora é gerenciada no Serverless Function (/api/send-email)
 // Não expomos mais a chave no cliente.
@@ -442,14 +444,8 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
   try {
     // Executar Manychat e Emails em paralelo para que um não bloqueie o outro
     const results = await Promise.allSettled([
-      // TAREFA 1: Manychat (WhatsApp)
-      (async () => {
-        console.log('[Manychat] Tentando enviar WhatsApp...');
-        const success = await sendManychatNotification(reservation, 'CONFIRMATION');
-        if (success) console.log('[Manychat] ✅ Sucesso!');
-        else console.warn('[Manychat] ❌ Falha (mas não deve impedir email)');
-        return success;
-      })(),
+      // TAREFA 1: Manychat (REMOVIDO)
+      // (async () => { return true; })(),
 
       // TAREFA 2: Email Hotel (Proxy)
       (async () => {
@@ -888,15 +884,8 @@ export const sendPreCheckInEmail = async (reservation: Reservation): Promise<{ s
   const shortId = getShortReservationId(reservation.id);
 
   try {
-    // --- MUDANÇA: WHATSAPP PRIMEIRO ---
-    console.log('[Notification] Iniciando envio de pré-checkin via Manychat...');
-    const whatsSuccess = await sendManychatNotification(reservation, 'PRE_CHECKIN');
-
-    if (whatsSuccess) {
-      console.log('[Manychat] Pré-checkin enviado para', reservation.mainGuest.phone);
-    } else {
-      console.error('[Manychat] Falha no envio de pré-checkin via WhatsApp.');
-    }
+    // WhatsApp removido temporariamente
+    // const whatsSuccess = await sendManychatNotification(reservation, 'PRE_CHECKIN');
 
     // Enviar E-mail também
     // Enviar E-mail também
@@ -930,15 +919,8 @@ export const sendPaymentConfirmedEmail = async (reservation: Reservation): Promi
   const shortId = getShortReservationId(reservation.id);
 
   try {
-    // --- MUDANÇA: WHATSAPP PRIMEIRO ---
-    console.log('[Notification] Iniciando envio de confirmação de pagamento via Manychat...');
-    const whatsSuccess = await sendManychatNotification(reservation, 'PAYMENT_CONFIRMED');
-
-    if (whatsSuccess) {
-      console.log('[Manychat] Pagamento confirmado enviado para', reservation.mainGuest.phone);
-    } else {
-      console.error('[Manychat] Falha no envio de pagamento confirmado via WhatsApp.');
-    }
+    // WhatsApp removido temporariamente
+    // const whatsSuccess = await sendManychatNotification(reservation, 'PAYMENT_CONFIRMED');
 
     // Enviar E-mail também
     const emailResponse = await fetch('/api/send-email', {
@@ -970,15 +952,8 @@ export const sendReservationCanceledEmail = async (reservation: Reservation, rea
   const shortId = getShortReservationId(reservation.id);
 
   try {
-    // --- MUDANÇA: WHATSAPP PRIMEIRO ---
-    console.log('[Notification] Iniciando envio de cancelamento via Manychat...');
-    const whatsSuccess = await sendManychatNotification(reservation, 'CANCELLATION');
-
-    if (whatsSuccess) {
-      console.log('[Manychat] Cancelamento enviado para', reservation.mainGuest.phone);
-    } else {
-      console.error('[Manychat] Falha no envio de cancelamento via WhatsApp.');
-    }
+    // WhatsApp removido temporariamente
+    // const whatsSuccess = await sendManychatNotification(reservation, 'CANCELLATION');
 
     // Enviar E-mail também
     const emailResponse = await fetch('/api/send-email', {
@@ -1233,13 +1208,9 @@ export const sendClientCancellationEmails = async (
   const isPartialCancellation = cancelledItems && (cancelledItems.rooms?.length || cancelledItems.extras?.length);
 
   try {
-    // --- MUDANÇA: WHATSAPP PRIMEIRO ---
-    console.log('[Notification] Iniciando envio de cancelamento (pelo cliente) via Manychat...');
-    const whatsSuccess = await sendManychatNotification(reservation, 'CANCELLATION');
-
-    if (whatsSuccess) {
-      console.log('[Manychat] Cancelamento pelo cliente enviado para', reservation.mainGuest.phone);
-    }
+    // WhatsApp removido temporariamente
+    // const whatsSuccess = await sendManychatNotification(reservation, 'CANCELLATION');
+    const whatsSuccess = false;
 
     // --- MUDANÇA: EMAIL PARA O CLIENTE ---
     // O cliente DEVE receber um e-mail confirmando o cancelamento que ele acabou de fazer.
