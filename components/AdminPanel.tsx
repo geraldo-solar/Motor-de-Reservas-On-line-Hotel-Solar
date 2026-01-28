@@ -298,6 +298,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
         isOpen={isDiscountModalOpen} onClose={() => setIsDiscountModalOpen(false)} discount={selectedDiscount}
         rooms={rooms}
         onSave={async (d) => {
+          if (selectedDiscount && selectedDiscount.code !== d.code) {
+            // Rename detected: delete old code first to avoid duplicates
+            await onDeleteDiscount(selectedDiscount.code);
+          }
           const success = await onUpsertDiscount(d);
           if (success) setIsDiscountModalOpen(false);
         }}

@@ -65,9 +65,9 @@ export const DiscountEditorModal: React.FC<DiscountEditorModalProps> = ({ isOpen
                                 onChange={e => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
                                 className="w-full border-2 border-gray-100 p-4 rounded-xl text-lg bg-slate-50 focus:border-solar-gold outline-none font-black transition-all tracking-widest uppercase"
                                 placeholder="EX: SOLAR10"
-                                disabled={!!discount}
+                                disabled={false}
                             />
-                            {discount && <p className="text-[8px] text-slate-400 italic">O código não pode ser alterado após criado.</p>}
+                            {discount && <p className="text-[8px] text-solar-gold italic">Alterar o código renomeará o cupom.</p>}
                         </div>
 
                         <div className="space-y-4 bg-slate-50 p-5 rounded-2xl border border-slate-100 shadow-inner">
