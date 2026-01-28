@@ -32,8 +32,8 @@ interface FNRHData {
         pais: string;
     };
     acompanhantes: string[];
-    motivoViagem: string;
     meioTransporte: string;
+    placaVeiculo?: string;
     ultimaProcedencia: string;
     proximoDestino: string;
 }
@@ -62,6 +62,7 @@ const INITIAL_DATA: FNRHData = {
     acompanhantes: [],
     motivoViagem: '',
     meioTransporte: '',
+    placaVeiculo: '',
     ultimaProcedencia: '',
     proximoDestino: ''
 };
@@ -498,6 +499,21 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                                         <option value="Outros">Outros</option>
                                     </select>
                                 </div>
+
+                                {(formData.meioTransporte === 'Carro Próprio' || formData.meioTransporte === 'Moto') && (
+                                    <div className="col-span-1 md:col-span-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Placa do Veículo</label>
+                                        <input
+                                            required
+                                            value={formData.placaVeiculo || ''}
+                                            onChange={e => handleChange('placaVeiculo', e.target.value.toUpperCase())}
+                                            className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors uppercase placeholder:normal-case"
+                                            placeholder="XXX-0000"
+                                            maxLength={8}
+                                        />
+                                    </div>
+                                )}
+
                                 <div>
                                     <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Última Procedência (Cidade/UF)</label>
                                     <input

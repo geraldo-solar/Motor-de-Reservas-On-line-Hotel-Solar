@@ -1331,6 +1331,7 @@ export const sendPreCheckinAdminEmail = async (reservation: Reservation, formDat
       <h4 style="margin-bottom: 8px;">Dados da Viagem</h4>
       <p style="margin: 4px 0;"><strong>Motivo:</strong> ${formData.motivoViagem}</p>
       <p style="margin: 4px 0;"><strong>Transporte:</strong> ${formData.meioTransporte}</p>
+      ${formData.placaVeiculo ? `<p style="margin: 4px 0;"><strong>Placa:</strong> <span style="background:#eab308; color:#fff; padding:2px 6px; border-radius:4px; font-weight:bold;">${formData.placaVeiculo}</span></p>` : ''}
       <p style="margin: 4px 0;"><strong>Procedência:</strong> ${formData.ultimaProcedencia}</p>
       <p style="margin: 4px 0;"><strong>Destino:</strong> ${formData.proximoDestino}</p>
 
