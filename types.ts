@@ -60,6 +60,13 @@ export interface DiscountCode {
   endDate?: string;
   minNights?: number;
   fullPeriodRequired?: boolean;
+  maxUses?: number;          // 0 or undefined = Unlimited
+  usedCount?: number;
+  discountType?: 'percentage' | 'fixed'; // Defaults to 'percentage'
+  fixedValue?: number;
+  stackable?: boolean;
+  validDays?: string[];      // ['mon', 'tue', etc.]
+  validRoomTypes?: string[]; // list of room IDs
 }
 
 export interface ChatMessage {

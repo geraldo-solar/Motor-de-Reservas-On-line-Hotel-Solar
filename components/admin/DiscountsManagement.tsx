@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Trash2, Tag, Percent, Calendar, Check, XCircle } from 'lucide-react';
+import { Plus, Trash2, Tag, Percent, Calendar, Check, XCircle, Layers } from 'lucide-react';
 import { DiscountCode } from '../../types';
 
 interface DiscountsManagementProps {
@@ -44,22 +44,46 @@ export const DiscountsManagement: React.FC<DiscountsManagementProps> = ({ discou
 
                         <div className="space-y-4 flex-1">
                             <div className="flex items-end gap-1">
-                                <span className="text-5xl font-serif font-black text-solar-gold">{discount.percentage}</span>
-                                <span className="text-xl font-serif font-bold text-solar-gold mb-1">% OFF</span>
+                                {discount.discountType === 'fixed' ? (
+                                    <>
+                                        <span className="text-xl font-serif font-bold text-solar-gold mb-1">R$</span>
+                                        <span className="text-5xl font-serif font-black text-solar-gold">{discount.fixedValue}</span>
+                                        <span className="text-xl font-serif font-bold text-solar-gold mb-1">OFF</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="text-5xl font-serif font-black text-solar-gold">{discount.percentage}</span>
+                                        <span className="text-xl font-serif font-bold text-solar-gold mb-1">% OFF</span>
+                                    </>
+                                )}
                             </div>
 
-                            {(discount.startDate || discount.endDate) ? (
-                                <div className="flex items-center gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                    <Calendar size={14} className="text-slate-400" />
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">
-                                        {discount.startDate ? new Date(discount.startDate + 'T12:00:00').toLocaleDateString() : '∞'} — {discount.endDate ? new Date(discount.endDate + 'T12:00:00').toLocaleDateString() : '∞'}
-                                    </span>
-                                </div>
-                            ) : (
-                                <div className="flex items-center gap-2 text-[10px] font-bold text-green-500 uppercase tracking-widest pl-1">
-                                    <Check size={14} /> Validade Permanente
-                                </div>
-                            )}
+                            <div className="flex flex-wrap gap-2">
+                                {(discount.startDate || discount.endDate) ? (
+                                    <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                        <Calendar size={12} className="text-slate-400" />
+                                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tight">
+                                            {discount.startDate ? new Date(discount.startDate + 'T12:00:00').toLocaleDateString() : '∞'} — {discount.endDate ? new Date(discount.endDate + 'T12:00:00').toLocaleDateString() : '∞'}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2 px-2 py-1 bg-green-50 rounded-lg border border-green-100 text-[9px] font-bold text-green-600 uppercase tracking-widest">
+                                        <Check size={12} /> Validade Permanente
+                                    </div>
+                                )}
+
+                                {discount.maxUses && (
+                                    <div className="flex items-center gap-2 px-2 py-1 bg-amber-50 rounded-lg border border-amber-100 text-[9px] font-bold text-amber-600 uppercase tracking-widest">
+                                        <Tag size={12} /> {discount.usedCount || 0}/{discount.maxUses} Usos
+                                    </div>
+                                )}
+
+                                {discount.stackable && (
+                                    <div className="flex items-center gap-2 px-2 py-1 bg-blue-50 rounded-lg border border-blue-100 text-[9px] font-bold text-blue-600 uppercase tracking-widest">
+                                        <Layers size={12} /> Acumulativo
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <div className="pt-8 flex items-center gap-3">

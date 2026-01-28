@@ -522,6 +522,12 @@ export const useSupabaseData = () => {
         end_date: discount.endDate,
         min_nights: discount.minNights,
         full_period_required: discount.fullPeriodRequired,
+        max_uses: discount.maxUses,
+        discount_type: discount.discountType || 'percentage',
+        fixed_value: discount.fixedValue,
+        stackable: discount.stackable,
+        valid_days: discount.validDays,
+        valid_room_types: discount.validRoomTypes,
       });
       if (error) throw error;
       setDiscountsState(prev => {

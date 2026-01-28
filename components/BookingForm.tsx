@@ -3,6 +3,7 @@ import { Calendar, Users, ArrowRight, CheckCircle, Tag, Lock, ShoppingBag, Credi
 import { Room, DiscountCode, ExtraService, Reservation, HolidayPackage } from '../types';
 import { toLocalISO } from '../utils/dateUtils';
 import { getPublicImageUrl } from '../utils/imageUtils';
+import { validateDiscount } from '../utils/pricingRules';
 
 interface BookingFormProps {
   selectedRooms: Room[];
@@ -161,8 +162,22 @@ const BookingForm: React.FC<BookingFormProps> = ({
       setAppliedDiscount(null);
       return;
     }
-    const discountAmount = (accommodationTotal * discount.percentage) / 100;
-    setAppliedDiscount({ code: discount.code, amount: discountAmount });
+
+    const validation = validateDiscount(
+      discount,
+      accommodationTotal, // Subtotal checks against room total usually
+      initialCheckIn || null,
+      initialCheckOut || null,
+      selectedRooms
+    );
+
+    if (!validation.isValid) {
+      alert(validation.error || 'Cupom inválido para esta reserva.');
+      setAppliedDiscount(null);
+      return;
+    }
+
+    setAppliedDiscount({ code: discount.code, amount: validation.discountAmount });
   };
 
   const isSubmittingRef = useRef(false);
