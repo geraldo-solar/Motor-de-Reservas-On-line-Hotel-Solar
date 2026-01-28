@@ -32,6 +32,10 @@ interface FNRHData {
         pais: string;
     };
     acompanhantes: string[];
+    motivoViagem: string;
+    meioTransporte: string;
+    ultimaProcedencia: string;
+    proximoDestino: string;
 }
 
 const INITIAL_DATA: FNRHData = {
@@ -55,7 +59,11 @@ const INITIAL_DATA: FNRHData = {
         estado: '',
         pais: 'Brasil'
     },
-    acompanhantes: []
+    acompanhantes: [],
+    motivoViagem: '',
+    meioTransporte: '',
+    ultimaProcedencia: '',
+    proximoDestino: ''
 };
 
 export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, onBack, reservations }) => {
@@ -442,6 +450,73 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                                     />
                                 </div>
 
+                            </div>
+                        </div>
+
+                        {/* Dados da Viagem (FNRH) */}
+                        <div>
+                            <h3 className="flex items-center gap-2 font-bold text-solar-green border-b border-slate-100 pb-2 mb-6">
+                                <span className="w-1.5 h-6 bg-solar-gold rounded-full"></span>
+                                Dados da Viagem (FNRH)
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Motivo da Viagem</label>
+                                    <select
+                                        required
+                                        value={formData.motivoViagem}
+                                        onChange={e => handleChange('motivoViagem', e.target.value)}
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors appearance-none"
+                                    >
+                                        <option value="">Selecione...</option>
+                                        <option value="Lazer / Férias">Lazer / Férias</option>
+                                        <option value="Negócios">Negócios</option>
+                                        <option value="Congresso / Feira">Congresso / Feira</option>
+                                        <option value="Parentes / Amigos">Parentes / Amigos</option>
+                                        <option value="Estudos">Estudos</option>
+                                        <option value="Religião">Religião</option>
+                                        <option value="Saúde">Saúde</option>
+                                        <option value="Outros">Outros</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Meio de Transporte</label>
+                                    <select
+                                        required
+                                        value={formData.meioTransporte}
+                                        onChange={e => handleChange('meioTransporte', e.target.value)}
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors appearance-none"
+                                    >
+                                        <option value="">Selecione...</option>
+                                        <option value="Carro Próprio">Carro Próprio</option>
+                                        <option value="Avião">Avião</option>
+                                        <option value="Ônibus">Ônibus</option>
+                                        <option value="Moto">Moto</option>
+                                        <option value="Navio / Barco">Navio / Barco</option>
+                                        <option value="Trem">Trem</option>
+                                        <option value="Outros">Outros</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Última Procedência (Cidade/UF)</label>
+                                    <input
+                                        required
+                                        value={formData.ultimaProcedencia}
+                                        onChange={e => handleChange('ultimaProcedencia', e.target.value)}
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
+                                        placeholder="De onde você veio?"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Próximo Destino (Cidade/UF)</label>
+                                    <input
+                                        required
+                                        value={formData.proximoDestino}
+                                        onChange={e => handleChange('proximoDestino', e.target.value)}
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
+                                        placeholder="Para onde você vai?"
+                                    />
+                                </div>
                             </div>
                         </div>
 

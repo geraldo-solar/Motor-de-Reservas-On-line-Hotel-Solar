@@ -1328,6 +1328,12 @@ export const sendPreCheckinAdminEmail = async (reservation: Reservation, formDat
       <p style="margin: 4px 0;">CEP: ${formData.endereco.cep}</p>
       <p style="margin: 4px 0;">País: ${formData.endereco.pais}</p>
 
+      <h4 style="margin-bottom: 8px;">Dados da Viagem</h4>
+      <p style="margin: 4px 0;"><strong>Motivo:</strong> ${formData.motivoViagem}</p>
+      <p style="margin: 4px 0;"><strong>Transporte:</strong> ${formData.meioTransporte}</p>
+      <p style="margin: 4px 0;"><strong>Procedência:</strong> ${formData.ultimaProcedencia}</p>
+      <p style="margin: 4px 0;"><strong>Destino:</strong> ${formData.proximoDestino}</p>
+
       ${formData.acompanhantes && formData.acompanhantes.length > 0 ? `
       <h4 style="margin-bottom: 8px; margin-top: 16px; border-top: 1px solid #eee; padding-top: 16px;">Hóspedes Acompanhantes</h4>
       <ul style="padding-left: 20px; list-style-type: circle;">
