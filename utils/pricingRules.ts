@@ -20,15 +20,16 @@ export const validateDiscount = (
     // 1. Check Date Range Validity
     const now = new Date();
     const todayIso = now.toISOString().split('T')[0];
+    const checkInIso = checkIn ? checkIn.toISOString().split('T')[0] : todayIso;
 
     // Start Date
-    if (discount.startDate && todayIso < discount.startDate) {
-        return { isValid: false, error: 'Cupom ainda não é válido.', discountAmount: 0 };
+    if (discount.startDate && checkInIso < discount.startDate) {
+        return { isValid: false, error: 'Cupom não válido para esta data de check-in (inicia em ' + discount.startDate.split('-').reverse().join('/') + ').', discountAmount: 0 };
     }
 
     // End Date
-    if (discount.endDate && todayIso > discount.endDate) {
-        return { isValid: false, error: 'Cupom expirado.', discountAmount: 0 };
+    if (discount.endDate && checkInIso > discount.endDate) {
+        return { isValid: false, error: 'Cupom expirado para esta data de check-in (encerrou em ' + discount.endDate.split('-').reverse().join('/') + ').', discountAmount: 0 };
     }
 
     // 2. Check Usage Limits
