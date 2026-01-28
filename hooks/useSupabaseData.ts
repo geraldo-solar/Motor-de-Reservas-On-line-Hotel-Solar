@@ -150,6 +150,7 @@ export const useSupabaseData = () => {
           percentage: Number((r.package_discount_applied || r.packageDiscountApplied).percentage || 0),
           amount: Number((r.package_discount_applied || r.packageDiscountApplied).amount || 0)
         } : undefined,
+        amountPaid: r.amount_paid !== undefined ? Number(r.amount_paid) : (r.amountPaid !== undefined ? Number(r.amountPaid) : undefined),
       };
     } catch (e) {
       console.error('[Mapper] Erro ao mapear reserva individual:', e, r);
@@ -756,6 +757,7 @@ export const useSupabaseData = () => {
       if (updates.checkIn) dataToUpdate.check_in = updates.checkIn;
       if (updates.checkOut) dataToUpdate.check_out = updates.checkOut;
       if (updates.nights) dataToUpdate.nights = updates.nights;
+      if (updates.amountPaid !== undefined) dataToUpdate.amount_paid = updates.amountPaid;
       // Add other fields as needed
 
       const { error } = await supabase.from('reservations').update(dataToUpdate).eq('id', id);

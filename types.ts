@@ -140,4 +140,5 @@ export interface Reservation {
   };
   status: ReservationStatus;
   cancellationReason?: string;
+  amountPaid?: number;
 }
