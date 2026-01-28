@@ -1399,6 +1399,26 @@ export const sendPreCheckinAdminEmail = async (reservation: Reservation, formDat
       console.error('[Brevo] Erro ao sincronizar dados do pré-check-in:', err);
     }
 
+    // Sincronizar acompanhantes com o Brevo
+    if (formData.acompanhantes && formData.acompanhantes.length > 0) {
+      console.log('[Brevo] Iniciando sincronização de acompanhantes...');
+      for (const companion of formData.acompanhantes) {
+        if (companion.email && companion.nome) {
+          try {
+            await syncContactToBrevo({
+              name: companion.nome,
+              email: companion.email,
+              phone: companion.telefone || '',
+              birthDate: companion.dataNascimento
+            }, ['HOSPEDE', 'PRE_CHECKIN_OK']);
+            console.log(`[Brevo] Acompanhante ${companion.nome} sincronizado.`);
+          } catch (err) {
+            console.error(`[Brevo] Erro ao sincronizar acompanhante ${companion.nome}:`, err);
+          }
+        }
+      }
+    }
+
     return { success: true };
 
   } catch (error: any) {
