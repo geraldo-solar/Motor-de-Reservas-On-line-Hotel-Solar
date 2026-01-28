@@ -1345,6 +1345,8 @@ export const sendPreCheckinAdminEmail = async (reservation: Reservation, formDat
                 <strong>Nome:</strong> ${guest.nome}<br>
                 <strong>CPF:</strong> ${guest.cpf || '-'}<br>
                 <strong>Nascimento:</strong> ${guest.dataNascimento ? formatDate(guest.dataNascimento) : '-'}<br>
+                <strong>Email:</strong> ${guest.email || '-'}<br>
+                <strong>Telefone:</strong> ${guest.telefone || '-'}<br>
                 ${!guest.mesmoEndereco && guest.endereco ? `
                     <div style="margin-top:4px; font-size:12px; color:#555;">
                         <strong>Endereço Diferente:</strong><br>

@@ -33,6 +33,8 @@ interface FNRHData {
     };
     acompanhantes: {
         nome: string;
+        email?: string;
+        telefone?: string;
         cpf?: string;
         dataNascimento?: string;
         mesmoEndereco?: boolean;
@@ -132,6 +134,8 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                             ...current,
                             ...Array(accompanyingGuestCount - current.length).fill({
                                 nome: '',
+                                email: '',
+                                telefone: '',
                                 cpf: '',
                                 dataNascimento: '',
                                 mesmoEndereco: true,
@@ -391,103 +395,6 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                             </div>
                         </div>
 
-                        {/* Acompanhantes (Se houver capacidade extra) */}
-                        {accompanyingGuestCount > 0 && (
-                            <div>
-                                <h3 className="flex items-center gap-2 font-bold text-solar-green border-b border-slate-100 pb-2 mb-6">
-                                    <span className="w-1.5 h-6 bg-solar-gold rounded-full"></span>
-                                    Acompanhantes ({accompanyingGuestCount})
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {Array.from({ length: accompanyingGuestCount }).map((_, idx) => (
-                                        <div key={idx} className="col-span-1 md:col-span-2 bg-slate-50 p-6 rounded-xl border border-slate-100 mb-4">
-                                            <h4 className="font-bold text-solar-green text-sm mb-4 border-b border-slate-200 pb-2">
-                                                Hóspede Acompanhante {idx + 1}
-                                            </h4>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div className="md:col-span-2">
-                                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
-                                                        Nome Completo
-                                                    </label>
-                                                    <input
-                                                        value={formData.acompanhantes[idx]?.nome || ''}
-                                                        onChange={e => handleAcompanhanteChange(idx, 'nome', e.target.value)}
-                                                        className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:border-solar-gold focus:outline-none transition-colors"
-                                                        placeholder="Nome completo do acompanhante"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
-                                                        CPF
-                                                    </label>
-                                                    <input
-                                                        value={formData.acompanhantes[idx]?.cpf || ''}
-                                                        onChange={e => handleAcompanhanteChange(idx, 'cpf', e.target.value)}
-                                                        className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:border-solar-gold focus:outline-none transition-colors"
-                                                        placeholder="000.000.000-00"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
-                                                        Data de Nascimento
-                                                    </label>
-                                                    <input
-                                                        type="date"
-                                                        value={formData.acompanhantes[idx]?.dataNascimento || ''}
-                                                        onChange={e => handleAcompanhanteChange(idx, 'dataNascimento', e.target.value)}
-                                                        className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:border-solar-gold focus:outline-none transition-colors"
-                                                    />
-                                                </div>
-
-                                                <div className="md:col-span-2 mt-2">
-                                                    <label className="flex items-center gap-3 p-3 border border-slate-100 rounded-lg bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors">
-                                                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${formData.acompanhantes[idx]?.mesmoEndereco ? 'bg-solar-gold border-solar-gold' : 'border-slate-300 bg-white'}`}>
-                                                            {formData.acompanhantes[idx]?.mesmoEndereco && <Check size={14} className="text-white" />}
-                                                        </div>
-                                                        <input
-                                                            type="checkbox"
-                                                            className="hidden"
-                                                            checked={formData.acompanhantes[idx]?.mesmoEndereco}
-                                                            onChange={e => handleAcompanhanteChange(idx, 'mesmoEndereco', e.target.checked)}
-                                                        />
-                                                        <span className="text-sm text-slate-600 font-medium">Reside no mesmo endereço do titular</span>
-                                                    </label>
-                                                </div>
-
-                                                {!formData.acompanhantes[idx]?.mesmoEndereco && (
-                                                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 pt-2 border-t border-slate-100 mt-2">
-                                                        <div>
-                                                            <input
-                                                                placeholder="CEP"
-                                                                value={formData.acompanhantes[idx]?.endereco?.cep || ''}
-                                                                onChange={e => handleAcompanhanteChange(idx, 'endereco', e.target.value, 'cep')}
-                                                                className="w-full p-3 bg-white border border-slate-200 rounded-lg text-sm"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <input
-                                                                placeholder="Cidade"
-                                                                value={formData.acompanhantes[idx]?.endereco?.cidade || ''}
-                                                                onChange={e => handleAcompanhanteChange(idx, 'endereco', e.target.value, 'cidade')}
-                                                                className="w-full p-3 bg-white border border-slate-200 rounded-lg text-sm"
-                                                            />
-                                                        </div>
-                                                        <div className="md:col-span-2">
-                                                            <input
-                                                                placeholder="Logradouro, Número, Bairro..."
-                                                                value={formData.acompanhantes[idx]?.endereco?.logradouro || ''}
-                                                                onChange={e => handleAcompanhanteChange(idx, 'endereco', e.target.value, 'logradouro')}
-                                                                className="w-full p-3 bg-white border border-slate-200 rounded-lg text-sm"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
 
                         {/* Endereço */}
                         <div>
@@ -571,6 +478,212 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
 
                             </div>
                         </div>
+
+                        {/* Endereço */}
+                        <div>
+                            <h3 className="flex items-center gap-2 font-bold text-solar-green border-b border-slate-100 pb-2 mb-6">
+                                <span className="w-1.5 h-6 bg-solar-gold rounded-full"></span>
+                                Endereço
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">CEP</label>
+                                    <input
+                                        required
+                                        value={formData.endereco.cep}
+                                        onChange={e => handleAddressChange('cep', e.target.value)}
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Logradouro (Rua, Av...)</label>
+                                    <input
+                                        required
+                                        value={formData.endereco.logradouro}
+                                        onChange={e => handleAddressChange('logradouro', e.target.value)}
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Número</label>
+                                    <input
+                                        required
+                                        value={formData.endereco.numero}
+                                        onChange={e => handleAddressChange('numero', e.target.value)}
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Complemento</label>
+                                    <input
+                                        value={formData.endereco.complemento}
+                                        onChange={e => handleAddressChange('complemento', e.target.value)}
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Bairro</label>
+                                    <input
+                                        required
+                                        value={formData.endereco.bairro}
+                                        onChange={e => handleAddressChange('bairro', e.target.value)}
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Cidade</label>
+                                    <input
+                                        required
+                                        value={formData.endereco.cidade}
+                                        onChange={e => handleAddressChange('cidade', e.target.value)}
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Estado (UF)</label>
+                                    <input
+                                        required
+                                        value={formData.endereco.estado}
+                                        onChange={e => handleAddressChange('estado', e.target.value)}
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
+                                        maxLength={2}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">País</label>
+                                    <input
+                                        required
+                                        value={formData.endereco.pais}
+                                        onChange={e => handleAddressChange('pais', e.target.value)}
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
+                                    />
+                                </div>
+
+                            </div>
+                        </div>
+
+                        {/* Acompanhantes (Se houver capacidade extra) */}
+                        {accompanyingGuestCount > 0 && (
+                            <div>
+                                <h3 className="flex items-center gap-2 font-bold text-solar-green border-b border-slate-100 pb-2 mb-6">
+                                    <span className="w-1.5 h-6 bg-solar-gold rounded-full"></span>
+                                    Acompanhantes ({accompanyingGuestCount})
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {Array.from({ length: accompanyingGuestCount }).map((_, idx) => (
+                                        <div key={idx} className="col-span-1 md:col-span-2 bg-slate-50 p-6 rounded-xl border border-slate-100 mb-4">
+                                            <h4 className="font-bold text-solar-green text-sm mb-4 border-b border-slate-200 pb-2">
+                                                Hóspede Acompanhante {idx + 1}
+                                            </h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
+                                                        Nome Completo
+                                                    </label>
+                                                    <input
+                                                        value={formData.acompanhantes[idx]?.nome || ''}
+                                                        onChange={e => handleAcompanhanteChange(idx, 'nome', e.target.value)}
+                                                        className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:border-solar-gold focus:outline-none transition-colors"
+                                                        placeholder="Nome completo do acompanhante"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
+                                                        CPF
+                                                    </label>
+                                                    <input
+                                                        value={formData.acompanhantes[idx]?.cpf || ''}
+                                                        onChange={e => handleAcompanhanteChange(idx, 'cpf', e.target.value)}
+                                                        className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:border-solar-gold focus:outline-none transition-colors"
+                                                        placeholder="000.000.000-00"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
+                                                        Data de Nascimento
+                                                    </label>
+                                                    <input
+                                                        type="date"
+                                                        value={formData.acompanhantes[idx]?.dataNascimento || ''}
+                                                        onChange={e => handleAcompanhanteChange(idx, 'dataNascimento', e.target.value)}
+                                                        className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:border-solar-gold focus:outline-none transition-colors"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
+                                                        Email
+                                                    </label>
+                                                    <input
+                                                        type="email"
+                                                        value={formData.acompanhantes[idx]?.email || ''}
+                                                        onChange={e => handleAcompanhanteChange(idx, 'email', e.target.value)}
+                                                        className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:border-solar-gold focus:outline-none transition-colors"
+                                                        placeholder="email@exemplo.com"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
+                                                        Telefone
+                                                    </label>
+                                                    <input
+                                                        value={formData.acompanhantes[idx]?.telefone || ''}
+                                                        onChange={e => handleAcompanhanteChange(idx, 'telefone', e.target.value)}
+                                                        className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:border-solar-gold focus:outline-none transition-colors"
+                                                        placeholder="(00) 00000-0000"
+                                                    />
+                                                </div>
+
+                                                <div className="md:col-span-2 mt-2">
+                                                    <label className="flex items-center gap-3 p-3 border border-slate-100 rounded-lg bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors">
+                                                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${formData.acompanhantes[idx]?.mesmoEndereco ? 'bg-solar-gold border-solar-gold' : 'border-slate-300 bg-white'}`}>
+                                                            {formData.acompanhantes[idx]?.mesmoEndereco && <Check size={14} className="text-white" />}
+                                                        </div>
+                                                        <input
+                                                            type="checkbox"
+                                                            className="hidden"
+                                                            checked={formData.acompanhantes[idx]?.mesmoEndereco}
+                                                            onChange={e => handleAcompanhanteChange(idx, 'mesmoEndereco', e.target.checked)}
+                                                        />
+                                                        <span className="text-sm text-slate-600 font-medium">Reside no mesmo endereço do titular</span>
+                                                    </label>
+                                                </div>
+
+                                                {!formData.acompanhantes[idx]?.mesmoEndereco && (
+                                                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 pt-2 border-t border-slate-100 mt-2">
+                                                        <div>
+                                                            <input
+                                                                placeholder="CEP"
+                                                                value={formData.acompanhantes[idx]?.endereco?.cep || ''}
+                                                                onChange={e => handleAcompanhanteChange(idx, 'endereco', e.target.value, 'cep')}
+                                                                className="w-full p-3 bg-white border border-slate-200 rounded-lg text-sm"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <input
+                                                                placeholder="Cidade"
+                                                                value={formData.acompanhantes[idx]?.endereco?.cidade || ''}
+                                                                onChange={e => handleAcompanhanteChange(idx, 'endereco', e.target.value, 'cidade')}
+                                                                className="w-full p-3 bg-white border border-slate-200 rounded-lg text-sm"
+                                                            />
+                                                        </div>
+                                                        <div className="md:col-span-2">
+                                                            <input
+                                                                placeholder="Logradouro, Número, Bairro..."
+                                                                value={formData.acompanhantes[idx]?.endereco?.logradouro || ''}
+                                                                onChange={e => handleAcompanhanteChange(idx, 'endereco', e.target.value, 'logradouro')}
+                                                                className="w-full p-3 bg-white border border-slate-200 rounded-lg text-sm"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+
 
                         {/* Dados da Viagem (FNRH) */}
                         <div>
