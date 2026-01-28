@@ -54,7 +54,7 @@ export const DiscountEditorModal: React.FC<DiscountEditorModalProps> = ({ isOpen
                     </div>
                     <button onClick={onClose} className="hover:rotate-90 transition-transform"><X size={24} /></button>
                 </div>
-                <div className="p-8 space-y-6">
+                <div className="p-8 space-y-6 max-h-[60vh] overflow-y-auto custom-scrollbar">
                     <div className="space-y-4">
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Código do Cupom</label>
@@ -144,128 +144,113 @@ export const DiscountEditorModal: React.FC<DiscountEditorModalProps> = ({ isOpen
                                         {formData.stackable ? 'Sim' : 'Não'}
                                     </button>
                                 </div>
-                            </div>
-                        </div>
-
-                        <div className="space-y-4 bg-slate-50 p-5 rounded-2xl border border-slate-100 shadow-inner">
-                            <div className="flex items-center gap-2 text-[#0F2820] border-b border-slate-200 pb-2 mb-2">
-                                <Calendar size={14} className="text-solar-gold" />
-                                <h4 className="text-[10px] font-bold uppercase tracking-widest">Validade do Código</h4>
-                            </div>
-
-                            <button
-                                onClick={() => setIsPickerOpen(true)}
-                                className="w-full flex items-center justify-between bg-white border-2 border-white p-4 rounded-xl hover:border-solar-gold transition-all text-left shadow-sm group"
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className="flex flex-col">
-                                        <span className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Início</span>
-                                        <span className="font-bold text-xs text-solar-green">
-                                            {formatDisplayDate(formData.startDate)}
-                                        </span>
-                                    </div>
-                                    <ArrowRight size={14} className="text-slate-100" />
-                                    <div className="flex flex-col">
-                                        <span className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Fim</span>
-                                        <span className="font-bold text-xs text-solar-green">
-                                            {formatDisplayDate(formData.endDate)}
-                                        </span>
+                                <div className="space-y-1.5 pt-4 border-t border-slate-100 mt-4">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Dias Válidos (Check-in)</label>
+                                    <div className="flex gap-1 overflow-x-auto pb-1">
+                                        {[
+                                            { id: 'sun', label: 'D' }, { id: 'mon', label: 'S' }, { id: 'tue', label: 'T' },
+                                            { id: 'wed', label: 'Q' }, { id: 'thu', label: 'Q' }, { id: 'fri', label: 'S' }, { id: 'sat', label: 'S' }
+                                        ].map(day => {
+                                            const isSelected = !formData.validDays || formData.validDays.includes(day.id);
+                                            return (
+                                                <button
+                                                    key={day.id}
+                                                    onClick={() => {
+                                                        const current = formData.validDays || ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+                                                        const newDays = current.includes(day.id)
+                                                            ? current.filter(d => d !== day.id)
+                                                            : [...current, day.id];
+                                                        setFormData({ ...formData, validDays: newDays });
+                                                    }}
+                                                    className={`w-8 h-8 rounded-lg text-[10px] font-bold flex items-center justify-center transition-all ${isSelected ? 'bg-solar-gold text-[#0F2820]' : 'bg-slate-100 text-slate-300'}`}
+                                                >
+                                                    {day.label}
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
-                                <Calendar className="text-solar-gold opacity-50 group-hover:opacity-100 transition-opacity" size={20} />
-                            </button>
-                            <p className="text-[9px] text-slate-400 italic text-center">Vazio = Válido permanentemente</p>
-                        </div>
 
-                        <div className="pt-4 space-y-3">
-                            <button onClick={() => onSave(formData)} className="w-full bg-[#0F2820] text-[#D4AF37] py-5 rounded-2xl font-bold uppercase tracking-[0.3em] hover:bg-[#1a3c30] transition-all shadow-2xl active:scale-95">Salvar Cupom</button>
-                            {discount && onDelete && (
+                                <div className="space-y-1.5 pt-4 border-t border-slate-100">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Acomodações Válidas</label>
+                                    <div className="max-h-32 overflow-y-auto space-y-1 custom-scrollbar pr-1">
+                                        {rooms.map(room => {
+                                            const isSelected = !formData.validRoomTypes || formData.validRoomTypes.length === 0 || formData.validRoomTypes.includes(room.id);
+                                            return (
+                                                <button
+                                                    key={room.id}
+                                                    onClick={() => {
+                                                        let current = formData.validRoomTypes || [];
+                                                        if (current.length === 0) {
+                                                            current = [room.id];
+                                                        } else {
+                                                            if (current.includes(room.id)) {
+                                                                current = current.filter(id => id !== room.id);
+                                                            } else {
+                                                                current = [...current, room.id];
+                                                            }
+                                                        }
+                                                        if (current.length === rooms.length) current = [];
+
+                                                        setFormData({ ...formData, validRoomTypes: current });
+                                                    }}
+                                                    className={`w-full text-left px-3 py-2 rounded-lg text-[10px] font-bold border transition-all flex items-center justify-between ${isSelected ? 'bg-solar-gold/10 border-solar-gold text-[#0F2820]' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
+                                                >
+                                                    <span>{room.name}</span>
+                                                    {isSelected && <Check size={12} className="text-solar-gold" />}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="text-[8px] text-slate-400 italic ml-1">Selecione para restringir (todas selecionadas = válido para todas)</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4 bg-slate-50 p-5 rounded-2xl border border-slate-100 shadow-inner">
+                                <div className="flex items-center gap-2 text-[#0F2820] border-b border-slate-200 pb-2 mb-2">
+                                    <Calendar size={14} className="text-solar-gold" />
+                                    <h4 className="text-[10px] font-bold uppercase tracking-widest">Validade do Código</h4>
+                                </div>
+
                                 <button
-                                    onClick={() => { if (window.confirm(`Excluir cupom ${discount.code} permanentemente?`)) { onDelete(discount.code); } }}
-                                    className="w-full text-red-300 py-2 text-[9px] font-bold uppercase tracking-[0.2em] hover:text-red-500 hover:underline transition-all flex items-center justify-center gap-2"
+                                    onClick={() => setIsPickerOpen(true)}
+                                    className="w-full flex items-center justify-between bg-white border-2 border-white p-4 rounded-xl hover:border-solar-gold transition-all text-left shadow-sm group"
                                 >
-                                    <Trash2 size={12} /> Excluir Registro
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex flex-col">
+                                            <span className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Início</span>
+                                            <span className="font-bold text-xs text-solar-green">
+                                                {formatDisplayDate(formData.startDate)}
+                                            </span>
+                                        </div>
+                                        <ArrowRight size={14} className="text-slate-100" />
+                                        <div className="flex flex-col">
+                                            <span className="text-[8px] font-bold text-slate-300 uppercase tracking-widest">Fim</span>
+                                            <span className="font-bold text-xs text-solar-green">
+                                                {formatDisplayDate(formData.endDate)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <Calendar className="text-solar-gold opacity-50 group-hover:opacity-100 transition-opacity" size={20} />
                                 </button>
-                            )}
-                            {!discount && (
-                                <button onClick={onClose} className="w-full text-slate-400 py-2 text-[10px] font-bold uppercase tracking-widest hover:text-slate-600 font-bold">Descartar</button>
-                            )}
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Dias Válidos (Check-in)</label>
-                            <div className="flex gap-1 overflow-x-auto pb-1">
-                                {[
-                                    { id: 'sun', label: 'D' }, { id: 'mon', label: 'S' }, { id: 'tue', label: 'T' },
-                                    { id: 'wed', label: 'Q' }, { id: 'thu', label: 'Q' }, { id: 'fri', label: 'S' }, { id: 'sat', label: 'S' }
-                                ].map(day => {
-                                    const isSelected = !formData.validDays || formData.validDays.includes(day.id);
-                                    return (
-                                        <button
-                                            key={day.id}
-                                            onClick={() => {
-                                                const current = formData.validDays || ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-                                                const newDays = current.includes(day.id)
-                                                    ? current.filter(d => d !== day.id)
-                                                    : [...current, day.id];
-                                                setFormData({ ...formData, validDays: newDays });
-                                            }}
-                                            className={`w-8 h-8 rounded-lg text-[10px] font-bold flex items-center justify-center transition-all ${isSelected ? 'bg-solar-gold text-[#0F2820]' : 'bg-slate-100 text-slate-300'}`}
-                                        >
-                                            {day.label}
-                                        </button>
-                                    );
-                                })}
+                                <p className="text-[9px] text-slate-400 italic text-center">Vazio = Válido permanentemente</p>
                             </div>
                         </div>
+                    </div>
 
-                        <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Acomodações Válidas</label>
-                            <div className="max-h-32 overflow-y-auto space-y-1 custom-scrollbar pr-1">
-                                {rooms.map(room => {
-                                    const isSelected = !formData.validRoomTypes || formData.validRoomTypes.length === 0 || formData.validRoomTypes.includes(room.id);
-                                    return (
-                                        <button
-                                            key={room.id}
-                                            onClick={() => {
-                                                // Logic: If empty, it means ALL. Looking to restrict?
-                                                // If currently empty (ALL), and we click one, we select ONLY that one? Or we deselect that one?
-                                                // Better UX: Initialize with ALL selected if empty?
-                                                // Let's implement: Empty list = ALL.
-                                                // If user clicks one, we toggle it. But if list is empty, we must populate it first with all OTHERS?
-                                                // Simpler: Start with empty list = ALL.
-                                                // If user clicks a room, we switch to specific selection mode.
-                                                // If validRoomTypes has entries, we toggle.
-                                                // If validRoomTypes is empty, we set it to [clicked_room]. (And user must select others).
-                                                // OR: If validRoomTypes is empty, we assume they want to deselect others.
-
-                                                let current = formData.validRoomTypes || [];
-                                                if (current.length === 0) {
-                                                    // Currently ALL valid. Switching to restrictive mode?
-                                                    // Only selecting THIS room?
-                                                    current = [room.id];
-                                                } else {
-                                                    if (current.includes(room.id)) {
-                                                        current = current.filter(id => id !== room.id);
-                                                    } else {
-                                                        current = [...current, room.id];
-                                                    }
-                                                }
-                                                // If after action we selected ALL rooms, reset to empty?
-                                                if (current.length === rooms.length) current = [];
-
-                                                setFormData({ ...formData, validRoomTypes: current });
-                                            }}
-                                            className={`w-full text-left px-3 py-2 rounded-lg text-[10px] font-bold border transition-all flex items-center justify-between ${isSelected ? 'bg-solar-gold/10 border-solar-gold text-[#0F2820]' : 'bg-slate-50 border-slate-100 text-slate-400'}`}
-                                        >
-                                            <span>{room.name}</span>
-                                            {isSelected && <Check size={12} className="text-solar-gold" />}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            <p className="text-[8px] text-slate-400 italic ml-1">Selecione para restringir (todas selecionadas = válido para todas)</p>
-                        </div>
+                    <div className="p-6 border-t border-slate-100 bg-white">
+                        <button onClick={() => onSave(formData)} className="w-full bg-[#0F2820] text-[#D4AF37] py-5 rounded-2xl font-bold uppercase tracking-[0.3em] hover:bg-[#1a3c30] transition-all shadow-2xl active:scale-95">Salvar Cupom</button>
+                        {discount && onDelete && (
+                            <button
+                                onClick={() => { if (window.confirm(`Excluir cupom ${discount.code} permanentemente?`)) { onDelete(discount.code); } }}
+                                className="w-full text-red-300 py-4 mt-2 text-[9px] font-bold uppercase tracking-[0.2em] hover:text-red-500 hover:underline transition-all flex items-center justify-center gap-2"
+                            >
+                                <Trash2 size={12} /> Excluir Registro
+                            </button>
+                        )}
+                        {!discount && (
+                            <button onClick={onClose} className="w-full text-slate-400 py-4 text-[10px] font-bold uppercase tracking-widest hover:text-slate-600 font-bold">Descartar</button>
+                        )}
                     </div>
                 </div>
             </div>
