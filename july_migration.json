@@ -92,6 +92,23 @@
       "Noite Paraense",
       "Gincana na Piscina",
       "Sunset com DJ"
+    ],
+    "daily_schedule": [
+      {
+        "day": "Quinta",
+        "label": "Welcome Drink",
+        "description": "Welcome Drink festivo"
+      },
+      {
+        "day": "Sexta",
+        "label": "Praia & Sunset",
+        "description": "Clubinho (10h) • Praia do Solar (10h às 13h) • DJ Sunset no Reserva Solar (15h às 20h)"
+      },
+      {
+        "day": "Sábado",
+        "label": "Vibe Reserva Solar",
+        "description": "Clubinho (10h) • Praia do Solar (10h às 14h) • DJ (12h às 17h) • Show ao vivo (17h)"
+      }
     ]
   },
   {
@@ -107,6 +124,23 @@
       "Luau de Verão",
       "Show de Talentos",
       "Beach Tennis"
+    ],
+    "daily_schedule": [
+      {
+        "day": "Quinta",
+        "label": "Welcome Drink",
+        "description": "Welcome Drink festivo"
+      },
+      {
+        "day": "Sexta",
+        "label": "Praia & Sunset",
+        "description": "Clubinho (10h) • Praia do Solar (10h às 13h) • DJ Sunset no Reserva Solar (15h às 20h)"
+      },
+      {
+        "day": "Sábado",
+        "label": "Vibe Reserva Solar",
+        "description": "Clubinho (10h) • Praia do Solar (10h às 14h) • DJ (12h às 17h) • Show ao vivo (17h)"
+      }
     ]
   },
   {
