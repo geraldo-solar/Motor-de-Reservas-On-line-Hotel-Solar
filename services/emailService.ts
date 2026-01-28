@@ -1241,6 +1241,26 @@ export const sendClientCancellationEmails = async (
       console.log('[Manychat] Cancelamento pelo cliente enviado para', reservation.mainGuest.phone);
     }
 
+    // --- MUDANÇA: EMAIL PARA O CLIENTE ---
+    // O cliente DEVE receber um e-mail confirmando o cancelamento que ele acabou de fazer.
+    console.log('[Email-Cliente] Enviando confirmação de cancelamento...');
+    const clientEmailResponse = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
+        to: [{ email: reservation.mainGuest.email, name: reservation.mainGuest.name }],
+        subject: `❌ Reserva Cancelada - #${shortId}`,
+        htmlContent: generateReservationCanceledEmailHTML(reservation, 'Cancelamento realizado com sucesso através do nosso portal de autoatendimento.'),
+      }),
+    });
+
+    if (clientEmailResponse.ok) {
+      console.log('[Email-Cliente] ✅ Confirmação enviada para', reservation.mainGuest.email);
+    } else {
+      console.warn('[Email-Cliente] ❌ Falha ao enviar confirmação.');
+    }
+
     // --- NOTIFICAÇÃO PARA O HOTEL (MANTIDA via EMAIL) ---
     // Mesmo mudando o cliente para whats, o hotel precisa saber do cancelamento.
     // Se quisermos remover também, comentaríamos aqui. Mas por segurança mantemos para o Admin.
