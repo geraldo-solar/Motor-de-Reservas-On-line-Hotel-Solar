@@ -328,16 +328,17 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                             <button
                                                 type="button"
                                                 onClick={() => setConfirmType('CONFIRM')}
-                                                className={`w-full py-3.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${reservation.status === 'CONFIRMED' ? 'bg-green-100 text-green-600 cursor-default' : 'bg-green-600 text-white hover:bg-green-700 active:scale-95'}`}
-                                                disabled={reservation.status === 'CONFIRMED' || !!successMessage}
+                                                className={`w-full py-3.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${reservation.status === 'CONFIRMED' || isEditingPrice ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:scale-95'}`}
+                                                disabled={reservation.status === 'CONFIRMED' || !!successMessage || isEditingPrice}
+                                                title={isEditingPrice ? "Termine de editar o valor antes de confirmar" : ""}
                                             >
-                                                Confirmar Pagamento
+                                                {isEditingPrice ? 'Salve o Valor Primeiro' : 'Confirmar Pagamento'}
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={() => setConfirmType('CANCEL')}
-                                                className={`w-full py-3.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${reservation.status === 'CANCELED' ? 'bg-red-100 text-red-600 cursor-default' : 'bg-red-600 text-white hover:bg-red-700 active:scale-95'}`}
-                                                disabled={reservation.status === 'CANCELED' || !!successMessage}
+                                                className={`w-full py-3.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${reservation.status === 'CANCELED' || isEditingPrice ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-700 active:scale-95'}`}
+                                                disabled={reservation.status === 'CANCELED' || !!successMessage || isEditingPrice}
                                             >
                                                 Cancelar Reserva
                                             </button>
