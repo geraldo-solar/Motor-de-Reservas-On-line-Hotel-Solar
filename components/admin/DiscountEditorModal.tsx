@@ -46,15 +46,16 @@ export const DiscountEditorModal: React.FC<DiscountEditorModalProps> = ({ isOpen
                 initialStart={formData.startDate}
                 initialEnd={formData.endDate}
             />
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-[#D4AF37] animate-in zoom-in">
-                <div className="bg-[#0F2820] p-6 text-[#D4AF37] flex justify-between items-center border-b border-[#D4AF37]/20">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md border border-[#D4AF37] animate-in zoom-in flex flex-col max-h-[90vh] relative">
+                <div className="bg-[#0F2820] p-6 text-[#D4AF37] flex justify-between items-center border-b border-[#D4AF37]/20 shrink-0 rounded-t-3xl z-20 relative">
                     <div className="flex items-center gap-4">
                         <div className="p-2 bg-solar-gold/10 rounded-xl"><Tag size={20} /></div>
                         <h3 className="font-serif font-bold tracking-widest uppercase text-lg">{discount ? 'Editar Cupom' : 'Novo Cupom'}</h3>
                     </div>
                     <button onClick={onClose} className="hover:rotate-90 transition-transform"><X size={24} /></button>
                 </div>
-                <div className="p-8 space-y-6 max-h-[60vh] overflow-y-auto custom-scrollbar">
+
+                <div className="p-8 space-y-6 flex-1 overflow-y-auto custom-scrollbar relative z-0">
                     <div className="space-y-4">
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Código do Cupom</label>
@@ -239,7 +240,7 @@ export const DiscountEditorModal: React.FC<DiscountEditorModalProps> = ({ isOpen
                     </div>
                 </div>
 
-                <div className="p-6 border-t border-slate-100 bg-white z-10 relative">
+                <div className="p-6 border-t border-slate-100 bg-white shrink-0 rounded-b-3xl z-30 relative">
                     <button
                         onClick={() => {
                             if (!formData.code) {
@@ -256,20 +257,20 @@ export const DiscountEditorModal: React.FC<DiscountEditorModalProps> = ({ isOpen
                             }
                             onSave(formData);
                         }}
-                        className="w-full bg-[#0F2820] text-[#D4AF37] py-5 rounded-2xl font-bold uppercase tracking-[0.3em] hover:bg-[#1a3c30] transition-all shadow-2xl active:scale-95"
+                        className="w-full bg-[#0F2820] text-[#D4AF37] py-5 rounded-2xl font-bold uppercase tracking-[0.3em] hover:bg-[#1a3c30] transition-all shadow-2xl active:scale-95 cursor-pointer relative z-50"
                     >
                         Salvar Cupom
                     </button>
                     {discount && onDelete && (
                         <button
                             onClick={() => { if (window.confirm(`Excluir cupom ${discount.code} permanentemente?`)) { onDelete(discount.code); } }}
-                            className="w-full text-red-300 py-4 mt-2 text-[9px] font-bold uppercase tracking-[0.2em] hover:text-red-500 hover:underline transition-all flex items-center justify-center gap-2"
+                            className="w-full text-red-300 py-4 mt-2 text-[9px] font-bold uppercase tracking-[0.2em] hover:text-red-500 hover:underline transition-all flex items-center justify-center gap-2 cursor-pointer"
                         >
                             <Trash2 size={12} /> Excluir Registro
                         </button>
                     )}
                     {!discount && (
-                        <button onClick={onClose} className="w-full text-slate-400 py-4 text-[10px] font-bold uppercase tracking-widest hover:text-slate-600 font-bold">Descartar</button>
+                        <button onClick={onClose} className="w-full text-slate-400 py-4 text-[10px] font-bold uppercase tracking-widest hover:text-slate-600 font-bold cursor-pointer">Descartar</button>
                     )}
                 </div>
             </div>
