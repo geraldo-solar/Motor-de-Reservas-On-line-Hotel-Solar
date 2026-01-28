@@ -203,9 +203,9 @@ export const JulySection: React.FC<JulySectionProps> = ({
                                             {/* Connecting Line (Desktop) */}
                                             <div className="hidden md:block absolute top-[18px] left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-slate-300 to-transparent opacity-50"></div>
 
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-10">
+                                            <div className="flex flex-wrap justify-center gap-8 md:gap-12 relative z-10">
                                                 {(pkg as any).daily_schedule.map((item: any, idx: number) => (
-                                                    <div key={idx} className="group/day relative flex flex-col items-center text-center">
+                                                    <div key={idx} className="group/day relative flex flex-col items-center text-center w-full md:w-56 shrink-0">
                                                         {/* Timeline Node */}
                                                         <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-lg transition-all duration-500 group-hover/day:scale-110 ${pkg.isPromotional ? 'bg-orange-500' : 'bg-solar-green'}`}>
                                                             <span className="text-[10px] font-black text-white">{idx + 1}º</span>
