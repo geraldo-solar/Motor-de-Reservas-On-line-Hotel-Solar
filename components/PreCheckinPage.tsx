@@ -31,7 +31,8 @@ interface FNRHData {
         estado: string;
         pais: string;
     };
-    acompanhantes: string[];
+    acompanhantes: { nome: string; cpf?: string }[];
+    motivoViagem: string;
     meioTransporte: string;
     placaVeiculo?: string;
     ultimaProcedencia: string;
@@ -110,7 +111,13 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                 // Preservar nomes já digitados, completar com vazio ou cortar excedente
                 const current = [...prev.acompanhantes];
                 if (current.length < accompanyingGuestCount) {
-                    return { ...prev, acompanhantes: [...current, ...Array(accompanyingGuestCount - current.length).fill('')] };
+                    return {
+                        ...prev,
+                        acompanhantes: [
+                            ...current,
+                            ...Array(accompanyingGuestCount - current.length).fill({ nome: '', cpf: '' })
+                        ]
+                    };
                 } else if (current.length > accompanyingGuestCount) {
                     return { ...prev, acompanhantes: current.slice(0, accompanyingGuestCount) };
                 }
@@ -119,9 +126,9 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
         }
     }, [accompanyingGuestCount]);
 
-    const handleAcompanhanteChange = (index: number, value: string) => {
+    const handleAcompanhanteChange = (index: number, field: 'nome' | 'cpf', value: string) => {
         const newAcompanhantes = [...formData.acompanhantes];
-        newAcompanhantes[index] = value;
+        newAcompanhantes[index] = { ...newAcompanhantes[index], [field]: value };
         setFormData(prev => ({ ...prev, acompanhantes: newAcompanhantes }));
     };
 
@@ -356,16 +363,34 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                                 </h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     {Array.from({ length: accompanyingGuestCount }).map((_, idx) => (
-                                        <div key={idx}>
-                                            <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
-                                                Nome Completo (Hóspede {idx + 2})
-                                            </label>
-                                            <input
-                                                value={formData.acompanhantes[idx] || ''}
-                                                onChange={e => handleAcompanhanteChange(idx, e.target.value)}
-                                                className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
-                                                placeholder={`Nome do acompanhante ${idx + 1}`}
-                                            />
+                                        <div key={idx} className="col-span-1 md:col-span-2 bg-slate-50 p-6 rounded-xl border border-slate-100 mb-4">
+                                            <h4 className="font-bold text-solar-green text-sm mb-4 border-b border-slate-200 pb-2">
+                                                Hóspede Acompanhante {idx + 1}
+                                            </h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
+                                                        Nome Completo
+                                                    </label>
+                                                    <input
+                                                        value={formData.acompanhantes[idx]?.nome || ''}
+                                                        onChange={e => handleAcompanhanteChange(idx, 'nome', e.target.value)}
+                                                        className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:border-solar-gold focus:outline-none transition-colors"
+                                                        placeholder="Nome completo do acompanhante"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
+                                                        CPF
+                                                    </label>
+                                                    <input
+                                                        value={formData.acompanhantes[idx]?.cpf || ''}
+                                                        onChange={e => handleAcompanhanteChange(idx, 'cpf', e.target.value)}
+                                                        className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:border-solar-gold focus:outline-none transition-colors"
+                                                        placeholder="000.000.000-00"
+                                                    />
+                                                </div>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

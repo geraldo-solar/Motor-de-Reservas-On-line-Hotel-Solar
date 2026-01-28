@@ -1337,8 +1337,15 @@ export const sendPreCheckinAdminEmail = async (reservation: Reservation, formDat
 
       ${formData.acompanhantes && formData.acompanhantes.length > 0 ? `
       <h4 style="margin-bottom: 8px; margin-top: 16px; border-top: 1px solid #eee; padding-top: 16px;">Hóspedes Acompanhantes</h4>
-      <ul style="padding-left: 20px; list-style-type: circle;">
-        ${formData.acompanhantes.filter((name: string) => name && name.trim() !== '').map((name: string) => `<li>${name}</li>`).join('')}
+      <ul style="padding-left: 20px; list-style-type: none; padding: 0;">
+        ${formData.acompanhantes
+          .filter((guest: { nome: string; cpf?: string }) => guest.nome && guest.nome.trim() !== '')
+          .map((guest: { nome: string; cpf?: string }) => `
+            <li style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;">
+                <strong>Nome:</strong> ${guest.nome}<br>
+                <strong>CPF:</strong> ${guest.cpf || '-'}
+            </li>
+            `).join('')}
       </ul>
       ` : ''}
 
