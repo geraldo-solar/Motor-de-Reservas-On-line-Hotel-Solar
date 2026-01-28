@@ -237,21 +237,40 @@ export const DiscountEditorModal: React.FC<DiscountEditorModalProps> = ({ isOpen
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <div className="p-6 border-t border-slate-100 bg-white">
-                        <button onClick={() => onSave(formData)} className="w-full bg-[#0F2820] text-[#D4AF37] py-5 rounded-2xl font-bold uppercase tracking-[0.3em] hover:bg-[#1a3c30] transition-all shadow-2xl active:scale-95">Salvar Cupom</button>
-                        {discount && onDelete && (
-                            <button
-                                onClick={() => { if (window.confirm(`Excluir cupom ${discount.code} permanentemente?`)) { onDelete(discount.code); } }}
-                                className="w-full text-red-300 py-4 mt-2 text-[9px] font-bold uppercase tracking-[0.2em] hover:text-red-500 hover:underline transition-all flex items-center justify-center gap-2"
-                            >
-                                <Trash2 size={12} /> Excluir Registro
-                            </button>
-                        )}
-                        {!discount && (
-                            <button onClick={onClose} className="w-full text-slate-400 py-4 text-[10px] font-bold uppercase tracking-widest hover:text-slate-600 font-bold">Descartar</button>
-                        )}
-                    </div>
+                <div className="p-6 border-t border-slate-100 bg-white z-10 relative">
+                    <button
+                        onClick={() => {
+                            if (!formData.code) {
+                                alert('Por favor, insira o código do cupom.');
+                                return;
+                            }
+                            if (formData.discountType === 'percentage' && !formData.percentage) {
+                                alert('Por favor, defina a porcentagem de desconto.');
+                                return;
+                            }
+                            if (formData.discountType === 'fixed' && !formData.fixedValue) {
+                                alert('Por favor, defina o valor fixo de desconto.');
+                                return;
+                            }
+                            onSave(formData);
+                        }}
+                        className="w-full bg-[#0F2820] text-[#D4AF37] py-5 rounded-2xl font-bold uppercase tracking-[0.3em] hover:bg-[#1a3c30] transition-all shadow-2xl active:scale-95"
+                    >
+                        Salvar Cupom
+                    </button>
+                    {discount && onDelete && (
+                        <button
+                            onClick={() => { if (window.confirm(`Excluir cupom ${discount.code} permanentemente?`)) { onDelete(discount.code); } }}
+                            className="w-full text-red-300 py-4 mt-2 text-[9px] font-bold uppercase tracking-[0.2em] hover:text-red-500 hover:underline transition-all flex items-center justify-center gap-2"
+                        >
+                            <Trash2 size={12} /> Excluir Registro
+                        </button>
+                    )}
+                    {!discount && (
+                        <button onClick={onClose} className="w-full text-slate-400 py-4 text-[10px] font-bold uppercase tracking-widest hover:text-slate-600 font-bold">Descartar</button>
+                    )}
                 </div>
             </div>
         </div>
