@@ -528,7 +528,7 @@ export const useSupabaseData = () => {
         stackable: discount.stackable,
         valid_days: discount.validDays,
         valid_room_types: discount.validRoomTypes,
-      });
+      }, { onConflict: 'code' });
       if (error) throw error;
       setDiscountsState(prev => {
         const index = prev.findIndex(d => d.code === discount.code);
