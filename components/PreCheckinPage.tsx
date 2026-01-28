@@ -87,7 +87,8 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                 ...prev,
                 nomeCompleto: found.mainGuest.name,
                 email: found.mainGuest.email,
-                telefone: found.mainGuest.phone
+                telefone: found.mainGuest.phone,
+                cpf: found.mainGuest.cpf
             }));
         }
         setLoading(false);
