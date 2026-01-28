@@ -28,11 +28,6 @@
         "day": "Sábado",
         "label": "Aniversário Solar",
         "description": "Clubinho (10h) • Praia (13h às 18h) • DJ no Reserva Solar (14h às 19h) • Brinde e Show Festivo na Pérgola (19h)"
-      },
-      {
-        "day": "Domingo",
-        "label": "Manhã Solar",
-        "description": "Café da manhã especial e despedida"
       }
     ]
   },
@@ -81,11 +76,6 @@
         "day": "Sábado",
         "label": "Vibe Reserva Solar",
         "description": "Clubinho (10h) • Praia do Solar (10h às 14h) • DJ (12h às 17h) • Show ao vivo (17h)"
-      },
-      {
-        "day": "Domingo",
-        "label": "Manhã Solar",
-        "description": "Café da manhã e check-out"
       }
     ]
   },
