@@ -38,6 +38,7 @@ interface AdminPanelProps {
   onUpdateExtras: React.Dispatch<React.SetStateAction<ExtraService[]>>;
   onUpdateConfig: (config: HotelConfig) => void;
   onUpdateReservationStatus: (id: string, status: string, reason?: string) => Promise<boolean>;
+  onUpdateReservation: (id: string, updates: Partial<Reservation>) => Promise<boolean>;
   onUpsertRoom: (room: Room) => Promise<boolean>;
   onUpsertRooms: (rooms: Room[]) => Promise<boolean>;
   onDeleteRoom: (roomId: string) => Promise<boolean>;
@@ -60,7 +61,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
   const {
     rooms, packages, discounts, extras, config, reservations,
     onUpdateRooms, onUpdatePackages, onUpdateDiscounts, onUpdateExtras, onUpdateConfig,
-    onUpdateReservationStatus, onUpsertRoom, onUpsertRooms, onDeleteRoom,
+    onUpdateReservationStatus, onUpdateReservation, onUpsertRoom, onUpsertRooms, onDeleteRoom,
     onUpsertPackage, onDeletePackage, onUpsertExtra, onDeleteExtra,
     onUpsertDiscount, onDeleteDiscount, isSaving, onLogout, onRefreshData
   } = props;
@@ -313,7 +314,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
 
       <ReservationDetailModal isOpen={isResModalOpen} onClose={() => setIsResModalOpen(false)} reservation={selectedRes} onUpdateStatus={async (id, status, reason) => {
         return await onUpdateReservationStatus(id, status, reason);
-      }} />
+      }} onUpdateReservation={onUpdateReservation} />
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Mail, Send, Type, ArrowRight, MessageSquare, QrCode, CreditCard } from 'lucide-react';
+import { X, Mail, Send, Type, ArrowRight, MessageSquare, QrCode, CreditCard, Edit2, Check } from 'lucide-react';
 import { Reservation, ReservationStatus } from '../../types';
 import { sendPaymentConfirmedEmail, sendReservationCanceledEmail } from '../../services/emailService';
 import { formatDisplayDate, formatDisplayDateTime } from '../../utils/dateUtils';
@@ -9,6 +9,7 @@ interface ReservationDetailModalProps {
     onClose: () => void;
     reservation: Reservation | null;
     onUpdateStatus: (id: string, status: ReservationStatus, reason?: string) => Promise<boolean | void> | void;
+    onUpdateReservation: (id: string, updates: Partial<Reservation>) => Promise<boolean>;
 }
 
 const getShortReservationId = (id: string): string => {
@@ -20,10 +21,14 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
     isOpen,
     onClose,
     reservation,
-    onUpdateStatus
+    onUpdateStatus,
+    onUpdateReservation
 }) => {
     const [localError, setLocalError] = React.useState<string | null>(null);
     const [localSuccess, setLocalSuccess] = React.useState<boolean>(false);
+
+    const [isEditingPrice, setIsEditingPrice] = React.useState(false);
+    const [priceInput, setPriceInput] = React.useState('');
 
     const [confirmType, setConfirmType] = React.useState<'CONFIRM' | 'CANCEL' | null>(null);
     const [cancelReason, setCancelReason] = React.useState<string>('');
@@ -153,9 +158,62 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                     <span>- R$ {reservation.packageDiscountApplied.amount.toLocaleString()}</span>
                                 </div>
                             )}
+
                             <div className="flex justify-between items-center pt-4">
                                 <span className="font-serif font-bold text-lg text-[#0F2820]">Total da Reserva</span>
-                                <span className="font-serif font-bold text-2xl text-solar-gold">R$ {reservation.totalPrice.toLocaleString()}</span>
+                                {isEditingPrice ? (
+                                    <div className="flex items-center gap-2 animate-in fade-in">
+                                        <div className="relative">
+                                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 font-serif text-sm">R$</span>
+                                            <input
+                                                type="number"
+                                                value={priceInput}
+                                                onChange={(e) => setPriceInput(e.target.value)}
+                                                className="w-32 bg-white border border-solar-gold rounded-lg py-1 pl-8 pr-2 text-right font-serif font-bold text-lg outline-none focus:ring-2 ring-solar-gold/20"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={async () => {
+                                                const val = parseFloat(priceInput);
+                                                if (!isNaN(val) && val >= 0) {
+                                                    const success = await onUpdateReservation(reservation.id, { totalPrice: val });
+                                                    if (success) {
+                                                        setIsEditingPrice(false);
+                                                        setLocalSuccess(true);
+                                                        setTimeout(() => setLocalSuccess(false), 3000);
+                                                    } else {
+                                                        setLocalError('Erro ao atualizar valor.');
+                                                    }
+                                                }
+                                            }}
+                                            className="p-1.5 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                                            title="Salvar"
+                                        >
+                                            <Check size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => setIsEditingPrice(false)}
+                                            className="p-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                                            title="Cancelar"
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-3 group/price">
+                                        <button
+                                            onClick={() => {
+                                                setPriceInput(reservation.totalPrice.toString());
+                                                setIsEditingPrice(true);
+                                            }}
+                                            className="opacity-0 group-hover/price:opacity-100 p-1.5 text-slate-400 hover:text-solar-gold transition-all"
+                                            title="Editar Valor"
+                                        >
+                                            <Edit2 size={14} />
+                                        </button>
+                                        <span className="font-serif font-bold text-2xl text-solar-gold">R$ {reservation.totalPrice.toLocaleString()}</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

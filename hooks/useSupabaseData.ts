@@ -743,6 +743,59 @@ export const useSupabaseData = () => {
     }
   };
 
+  const updateReservation = async (id: string, updates: Partial<Reservation>) => {
+    setIsSaving(true);
+    try {
+      // Map to snake_case for Supabase
+      const dataToUpdate: any = {};
+      if (updates.status) dataToUpdate.status = updates.status;
+      if (updates.cancellationReason !== undefined) dataToUpdate.cancellation_reason = updates.cancellationReason;
+      if (updates.totalPrice !== undefined) dataToUpdate.total_price = updates.totalPrice;
+      if (updates.paymentMethod) dataToUpdate.payment_method = updates.paymentMethod;
+      if (updates.observations !== undefined) dataToUpdate.observations = updates.observations;
+      if (updates.checkIn) dataToUpdate.check_in = updates.checkIn;
+      if (updates.checkOut) dataToUpdate.check_out = updates.checkOut;
+      if (updates.nights) dataToUpdate.nights = updates.nights;
+      // Add other fields as needed
+
+      const { error } = await supabase.from('reservations').update(dataToUpdate).eq('id', id);
+
+      if (error) {
+        if (error.message?.includes('failed to fetch') || error.message?.includes('NetworkError') || !navigator.onLine) {
+          console.warn('[Offline] Rede indisponível. Enfileirando atualização...');
+          await offlineQueue.enqueue({
+            table: 'reservations',
+            action: 'UPDATE',
+            data: dataToUpdate,
+            filters: [{ column: 'id', value: id }]
+          });
+        } else {
+          throw error;
+        }
+      }
+
+      // Update local state
+      setReservationsState(prev => {
+        const index = prev.findIndex(r => r.id === id);
+        if (index === -1) return prev;
+
+        const updatedRes = { ...prev[index], ...updates };
+        const newReservations = [...prev];
+        newReservations[index] = updatedRes;
+
+        saveToStorage(STORAGE_KEYS.reservations, newReservations);
+        return newReservations;
+      });
+
+      return true;
+    } catch (err: any) {
+      console.error('Erro ao atualizar reserva:', err);
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const updateReservationStatus = async (id: string, status: string, reason?: string) => {
     setIsSaving(true);
     try {
@@ -869,5 +922,6 @@ export const useSupabaseData = () => {
     deleteDiscount,
     saveReservationToSupabase,
     updateReservationStatus,
+    updateReservation,
   };
 };

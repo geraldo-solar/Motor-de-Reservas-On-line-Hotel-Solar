@@ -33,7 +33,7 @@ export default function App() {
     rooms, packages, discounts, extras, reservations,
     loading, isSaving, isConnected, error,
     setRooms, setPackages, setDiscounts, setExtras, setReservations,
-    saveReservationToSupabase, updateReservationStatus,
+    saveReservationToSupabase, updateReservationStatus, updateReservation,
     upsertRoom, upsertRooms, deleteRoom,
     upsertPackage, deletePackage,
     upsertExtra, deleteExtra,
@@ -789,6 +789,7 @@ export default function App() {
                   onUpdateExtras={setExtras}
                   onUpdateConfig={setConfig}
                   onUpdateReservationStatus={updateReservationStatus}
+                  onUpdateReservation={updateReservation}
                   onUpsertRoom={upsertRoom}
                   onUpsertRooms={upsertRooms}
                   onDeleteRoom={deleteRoom}
