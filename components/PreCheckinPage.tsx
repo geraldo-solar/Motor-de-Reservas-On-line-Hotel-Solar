@@ -31,7 +31,22 @@ interface FNRHData {
         estado: string;
         pais: string;
     };
-    acompanhantes: { nome: string; cpf?: string }[];
+    acompanhantes: {
+        nome: string;
+        cpf?: string;
+        dataNascimento?: string;
+        mesmoEndereco?: boolean;
+        endereco?: {
+            cep: string;
+            logradouro: string;
+            numero: string;
+            complemento: string;
+            bairro: string;
+            cidade: string;
+            estado: string;
+            pais: string;
+        };
+    }[];
     motivoViagem: string;
     meioTransporte: string;
     placaVeiculo?: string;
@@ -115,7 +130,22 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                         ...prev,
                         acompanhantes: [
                             ...current,
-                            ...Array(accompanyingGuestCount - current.length).fill({ nome: '', cpf: '' })
+                            ...Array(accompanyingGuestCount - current.length).fill({
+                                nome: '',
+                                cpf: '',
+                                dataNascimento: '',
+                                mesmoEndereco: true,
+                                endereco: {
+                                    cep: '',
+                                    logradouro: '',
+                                    numero: '',
+                                    complemento: '',
+                                    bairro: '',
+                                    cidade: '',
+                                    estado: '',
+                                    pais: 'Brasil'
+                                }
+                            })
                         ]
                     };
                 } else if (current.length > accompanyingGuestCount) {
@@ -126,9 +156,16 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
         }
     }, [accompanyingGuestCount]);
 
-    const handleAcompanhanteChange = (index: number, field: 'nome' | 'cpf', value: string) => {
+    const handleAcompanhanteChange = (index: number, field: string, value: any, nestedField?: string) => {
         const newAcompanhantes = [...formData.acompanhantes];
-        newAcompanhantes[index] = { ...newAcompanhantes[index], [field]: value };
+        if (nestedField && field === 'endereco') {
+            newAcompanhantes[index] = {
+                ...newAcompanhantes[index],
+                endereco: { ...newAcompanhantes[index].endereco!, [nestedField]: value }
+            };
+        } else {
+            newAcompanhantes[index] = { ...newAcompanhantes[index], [field]: value };
+        }
         setFormData(prev => ({ ...prev, acompanhantes: newAcompanhantes }));
     };
 
@@ -390,6 +427,61 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                                                         placeholder="000.000.000-00"
                                                     />
                                                 </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
+                                                        Data de Nascimento
+                                                    </label>
+                                                    <input
+                                                        type="date"
+                                                        value={formData.acompanhantes[idx]?.dataNascimento || ''}
+                                                        onChange={e => handleAcompanhanteChange(idx, 'dataNascimento', e.target.value)}
+                                                        className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:border-solar-gold focus:outline-none transition-colors"
+                                                    />
+                                                </div>
+
+                                                <div className="md:col-span-2 mt-2">
+                                                    <label className="flex items-center gap-3 p-3 border border-slate-100 rounded-lg bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors">
+                                                        <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${formData.acompanhantes[idx]?.mesmoEndereco ? 'bg-solar-gold border-solar-gold' : 'border-slate-300 bg-white'}`}>
+                                                            {formData.acompanhantes[idx]?.mesmoEndereco && <Check size={14} className="text-white" />}
+                                                        </div>
+                                                        <input
+                                                            type="checkbox"
+                                                            className="hidden"
+                                                            checked={formData.acompanhantes[idx]?.mesmoEndereco}
+                                                            onChange={e => handleAcompanhanteChange(idx, 'mesmoEndereco', e.target.checked)}
+                                                        />
+                                                        <span className="text-sm text-slate-600 font-medium">Reside no mesmo endereço do titular</span>
+                                                    </label>
+                                                </div>
+
+                                                {!formData.acompanhantes[idx]?.mesmoEndereco && (
+                                                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 pt-2 border-t border-slate-100 mt-2">
+                                                        <div>
+                                                            <input
+                                                                placeholder="CEP"
+                                                                value={formData.acompanhantes[idx]?.endereco?.cep || ''}
+                                                                onChange={e => handleAcompanhanteChange(idx, 'endereco', e.target.value, 'cep')}
+                                                                className="w-full p-3 bg-white border border-slate-200 rounded-lg text-sm"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <input
+                                                                placeholder="Cidade"
+                                                                value={formData.acompanhantes[idx]?.endereco?.cidade || ''}
+                                                                onChange={e => handleAcompanhanteChange(idx, 'endereco', e.target.value, 'cidade')}
+                                                                className="w-full p-3 bg-white border border-slate-200 rounded-lg text-sm"
+                                                            />
+                                                        </div>
+                                                        <div className="md:col-span-2">
+                                                            <input
+                                                                placeholder="Logradouro, Número, Bairro..."
+                                                                value={formData.acompanhantes[idx]?.endereco?.logradouro || ''}
+                                                                onChange={e => handleAcompanhanteChange(idx, 'endereco', e.target.value, 'logradouro')}
+                                                                className="w-full p-3 bg-white border border-slate-200 rounded-lg text-sm"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     ))}

@@ -1339,11 +1339,18 @@ export const sendPreCheckinAdminEmail = async (reservation: Reservation, formDat
       <h4 style="margin-bottom: 8px; margin-top: 16px; border-top: 1px solid #eee; padding-top: 16px;">Hóspedes Acompanhantes</h4>
       <ul style="padding-left: 20px; list-style-type: none; padding: 0;">
         ${formData.acompanhantes
-          .filter((guest: { nome: string; cpf?: string }) => guest.nome && guest.nome.trim() !== '')
-          .map((guest: { nome: string; cpf?: string }) => `
+          .filter((guest: any) => guest.nome && guest.nome.trim() !== '')
+          .map((guest: any) => `
             <li style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;">
                 <strong>Nome:</strong> ${guest.nome}<br>
-                <strong>CPF:</strong> ${guest.cpf || '-'}
+                <strong>CPF:</strong> ${guest.cpf || '-'}<br>
+                <strong>Nascimento:</strong> ${guest.dataNascimento ? formatDate(guest.dataNascimento) : '-'}<br>
+                ${!guest.mesmoEndereco && guest.endereco ? `
+                    <div style="margin-top:4px; font-size:12px; color:#555;">
+                        <strong>Endereço Diferente:</strong><br>
+                        ${guest.endereco.logradouro || ''}, ${guest.endereco.cidade || ''} - CEP: ${guest.endereco.cep || ''}
+                    </div>
+                ` : '<span style="font-size:12px; color:#888;">(Mesmo endereço do titular)</span>'}
             </li>
             `).join('')}
       </ul>
