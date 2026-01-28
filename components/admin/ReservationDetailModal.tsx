@@ -25,10 +25,18 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
     onUpdateReservation
 }) => {
     const [localError, setLocalError] = React.useState<string | null>(null);
-    const [localSuccess, setLocalSuccess] = React.useState<boolean>(false);
 
+    const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
     const [isEditingPrice, setIsEditingPrice] = React.useState(false);
     const [priceInput, setPriceInput] = React.useState('');
+    const [optimisticPaid, setOptimisticPaid] = React.useState<number | null>(null);
+
+    // Reset optimistic state when reservation changes
+    React.useEffect(() => {
+        setOptimisticPaid(null);
+    }, [reservation?.id]);
+
+    const currentPaid = optimisticPaid ?? reservation?.amountPaid ?? 0;
 
     const [confirmType, setConfirmType] = React.useState<'CONFIRM' | 'CANCEL' | null>(null);
     const [cancelReason, setCancelReason] = React.useState<string>('');
@@ -44,14 +52,17 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
         btn.disabled = true;
         btn.innerHTML = '<span class="animate-spin mr-2">⏳</span> Processando...';
         setLocalError(null);
-        setLocalSuccess(false);
+        setSuccessMessage(null);
 
         try {
             if (type === 'CONFIRM') {
-                const emailRes = await sendPaymentConfirmedEmail(reservation);
+                // FORCE: Use optimistic data for the email to prevent race conditions
+                const effectiveReservation = { ...reservation, amountPaid: currentPaid };
+                const emailRes = await sendPaymentConfirmedEmail(effectiveReservation);
+
                 const statusRes = await onUpdateStatus(reservation.id, 'CONFIRMED');
                 if (statusRes) {
-                    setLocalSuccess(true);
+                    setSuccessMessage('Pagamento confirmado e e-mail enviado com sucesso!');
                     if (!emailRes.success) setLocalError('Confirmado no banco, mas e-mail falhou: ' + emailRes.error);
                 } else {
                     setLocalError('Erro ao atualizar no banco de dados.');
@@ -60,7 +71,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                 await sendReservationCanceledEmail(reservation, cancelReason);
                 const statusRes = await onUpdateStatus(reservation.id, 'CANCELED', cancelReason);
                 if (statusRes) {
-                    setLocalSuccess(true);
+                    setSuccessMessage('Reserva cancelada e e-mail enviado.');
                 } else {
                     setLocalError('Erro ao cancelar no banco de dados.');
                 }
@@ -83,7 +94,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-[#D4AF37] animate-in zoom-in">
                 <div className="bg-[#0F2820] p-5 text-[#D4AF37] flex justify-between items-center border-b border-[#D4AF37]/20">
                     <h3 className="font-serif font-bold tracking-widest uppercase text-lg">Detalhes da Reserva #{getShortReservationId(reservation.id)}</h3>
-                    <button onClick={() => { setLocalError(null); setLocalSuccess(false); onClose(); }} className="hover:rotate-90 transition-transform"><X size={24} /></button>
+                    <button onClick={() => { setLocalError(null); setSuccessMessage(null); onClose(); }} className="hover:rotate-90 transition-transform"><X size={24} /></button>
                 </div>
                 <div className="p-8 space-y-6 overflow-y-auto max-h-[80vh]">
                     {localError && (
@@ -92,9 +103,9 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                         </div>
                     )}
 
-                    {localSuccess && (
+                    {successMessage && (
                         <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-xs font-bold animate-in slide-in-from-top-2">
-                            ✅ Operação realizada com sucesso! E-mail enviado.
+                            ✅ {successMessage}
                         </div>
                     )}
 
@@ -165,72 +176,117 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                             </div>
 
                             <div className="flex justify-between items-center pt-2">
-                                <span className="font-bold text-xs uppercase tracking-widest text-slate-500">Valor Pago (Sinal)</span>
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-xs uppercase tracking-widest text-slate-500">Total Pago (Sinal/Confrmação)</span>
+                                    {isEditingPrice && <span className="text-[9px] text-slate-400 italic font-medium mt-0.5">Novo total (substitui o anterior)</span>}
+                                </div>
                                 {isEditingPrice ? (
-                                    <div className="flex items-center gap-2 animate-in fade-in">
+                                    <div className="flex flex-col gap-3 w-full animate-in fade-in bg-slate-50 p-4 rounded-xl border border-slate-200 mt-2">
+                                        <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                                Quanto o cliente pagou?
+                                            </span>
+                                            <button
+                                                onClick={() => setPriceInput(reservation.totalPrice.toString())}
+                                                className="text-[9px] bg-green-100 text-green-700 px-3 py-1.5 rounded-full font-bold uppercase tracking-wider hover:bg-green-200 transition-colors flex items-center gap-1"
+                                            >
+                                                Marcar como Total
+                                            </button>
+                                        </div>
+
                                         <div className="relative">
-                                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 font-serif text-sm">R$</span>
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">R$</span>
                                             <input
+                                                autoFocus
                                                 type="number"
+                                                className="w-full bg-white border-2 border-solar-gold/30 rounded-lg pl-10 pr-4 py-3 text-xl font-bold text-slate-700 focus:outline-none focus:border-solar-gold focus:ring-4 focus:ring-solar-gold/10 transition-all placeholder:text-slate-200"
+                                                placeholder="0,00"
                                                 value={priceInput}
                                                 onChange={(e) => setPriceInput(e.target.value)}
-                                                className="w-28 bg-white border border-solar-gold rounded-lg py-1 pl-7 pr-2 text-right font-serif font-bold text-sm outline-none focus:ring-2 ring-solar-gold/20"
+                                                onKeyDown={async (e) => {
+                                                    if (e.key === 'Enter') {
+                                                        const val = parseFloat(priceInput);
+                                                        if (!isNaN(val) && val >= 0) {
+                                                            const success = await onUpdateReservation(reservation.id, { amountPaid: val });
+                                                            if (success) {
+                                                                setSuccessMessage("Valor do sinal atualizado com sucesso!");
+                                                                setIsEditingPrice(false);
+                                                                setOptimisticPaid(val);
+                                                                setTimeout(() => setSuccessMessage(null), 3000);
+                                                            } else {
+                                                                setLocalError("Erro ao atualizar valor. Tente novamente.");
+                                                            }
+                                                        }
+                                                    }
+                                                }}
                                             />
                                         </div>
-                                        <button
-                                            onClick={async () => {
-                                                const val = parseFloat(priceInput);
-                                                if (!isNaN(val) && val >= 0) {
-                                                    const success = await onUpdateReservation(reservation.id, { amountPaid: val });
-                                                    if (success) {
-                                                        setIsEditingPrice(false);
-                                                        setLocalSuccess(true);
-                                                        setTimeout(() => setLocalSuccess(false), 3000);
-                                                    } else {
-                                                        setLocalError('Erro ao atualizar valor pago.');
+
+                                        <div className="flex items-center justify-end gap-3 pt-1">
+                                            <button
+                                                onClick={() => {
+                                                    setIsEditingPrice(false);
+                                                    setPriceInput('');
+                                                }}
+                                                className="text-xs text-slate-400 hover:text-slate-600 font-bold uppercase tracking-wider px-3 py-2"
+                                            >
+                                                Cancelar
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    const val = parseFloat(priceInput);
+                                                    if (!isNaN(val) && val >= 0) {
+                                                        const success = await onUpdateReservation(reservation.id, { amountPaid: val });
+                                                        if (success) {
+                                                            setSuccessMessage("Valor do sinal atualizado com sucesso!");
+                                                            setIsEditingPrice(false);
+                                                            setOptimisticPaid(val);
+                                                            setTimeout(() => setSuccessMessage(null), 3000);
+                                                        } else {
+                                                            setLocalError("Erro ao atualizar valor. Tente novamente.");
+                                                        }
                                                     }
-                                                }
-                                            }}
-                                            className="p-1.5 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
-                                            title="Salvar"
-                                        >
-                                            <Check size={14} />
-                                        </button>
-                                        <button
-                                            onClick={() => setIsEditingPrice(false)}
-                                            className="p-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
-                                            title="Cancelar"
-                                        >
-                                            <X size={14} />
-                                        </button>
+                                                }}
+                                                className="bg-green-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-green-700 shadow-lg active:scale-95 transition-all flex items-center gap-2"
+                                            >
+                                                <Check size={16} /> Salvar Valor
+                                            </button>
+                                        </div>
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-3 group/price">
                                         <button
                                             onClick={() => {
-                                                setPriceInput((reservation.amountPaid ?? 0).toString());
+                                                setPriceInput(currentPaid.toString());
                                                 setIsEditingPrice(true);
                                             }}
-                                            className="opacity-0 group-hover/price:opacity-100 p-1.5 text-slate-400 hover:text-solar-gold transition-all"
+                                            className="p-1.5 text-solar-gold bg-solar-gold/10 rounded-lg hover:bg-solar-gold hover:text-white transition-all"
                                             title="Editar Valor Pago"
                                         >
                                             <Edit2 size={12} />
                                         </button>
-                                        <span className={`font-bold text-lg ${reservation.amountPaid && reservation.amountPaid >= reservation.totalPrice ? 'text-green-600' : 'text-slate-700'}`}>
-                                            R$ {(reservation.amountPaid ?? 0).toLocaleString()}
+                                        <span className={`font-bold text-lg ${currentPaid >= reservation.totalPrice ? 'text-green-600' : 'text-slate-700'}`}>
+                                            R$ {currentPaid.toLocaleString()}
                                         </span>
                                     </div>
                                 )}
                             </div>
 
                             {/* Mostrar saldo devedor se houver */}
-                            {(reservation.totalPrice - (reservation.amountPaid ?? 0)) > 0 && (
-                                <div className="flex justify-end pt-1">
-                                    <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest">
-                                        Pendente: R$ {(reservation.totalPrice - (reservation.amountPaid ?? 0)).toLocaleString()}
-                                    </span>
-                                </div>
-                            )}
+                            {(() => {
+                                const effectivePaid = isEditingPrice
+                                    ? (parseFloat(priceInput) || 0)
+                                    : currentPaid;
+                                const pending = reservation.totalPrice - effectivePaid;
+
+                                return pending > 0 ? (
+                                    <div className="flex justify-end pt-1">
+                                        <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest">
+                                            Pendente: R$ {pending.toLocaleString()}
+                                        </span>
+                                    </div>
+                                ) : null;
+                            })()}
                         </div>
                     </div>
 
@@ -273,7 +329,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                                 type="button"
                                                 onClick={() => setConfirmType('CONFIRM')}
                                                 className={`w-full py-3.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${reservation.status === 'CONFIRMED' ? 'bg-green-100 text-green-600 cursor-default' : 'bg-green-600 text-white hover:bg-green-700 active:scale-95'}`}
-                                                disabled={reservation.status === 'CONFIRMED' || localSuccess}
+                                                disabled={reservation.status === 'CONFIRMED' || !!successMessage}
                                             >
                                                 Confirmar Pagamento
                                             </button>
@@ -281,7 +337,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                                 type="button"
                                                 onClick={() => setConfirmType('CANCEL')}
                                                 className={`w-full py-3.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${reservation.status === 'CANCELED' ? 'bg-red-100 text-red-600 cursor-default' : 'bg-red-600 text-white hover:bg-red-700 active:scale-95'}`}
-                                                disabled={reservation.status === 'CANCELED' || localSuccess}
+                                                disabled={reservation.status === 'CANCELED' || !!successMessage}
                                             >
                                                 Cancelar Reserva
                                             </button>

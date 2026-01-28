@@ -77,7 +77,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
   const [isExtraModalOpen, setIsExtraModalOpen] = useState(false);
   const [selectedExtra, setSelectedExtra] = useState<ExtraService | null>(null);
   const [isResModalOpen, setIsResModalOpen] = useState(false);
-  const [selectedRes, setSelectedRes] = useState<Reservation | null>(null);
+  const [selectedResId, setSelectedResId] = useState<string | null>(null);
+
+  const selectedRes = React.useMemo(() => {
+    return reservations.find(r => r.id === selectedResId) || null;
+  }, [reservations, selectedResId]);
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
   const [selectedDiscount, setSelectedDiscount] = useState<DiscountCode | null>(null);
 
@@ -269,7 +273,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
           {activeTab === 'PACKAGES' && <PackagesManagement packages={packages} onEditPackage={(pkg) => { setSelectedPackage(pkg); setIsPackageModalOpen(true); }} onNewPackage={() => { setSelectedPackage(null); setIsPackageModalOpen(true); }} />}
           {activeTab === 'EXTRAS' && <ExtrasManagement extras={extras} onEditExtra={(e) => { setSelectedExtra(e); setIsExtraModalOpen(true); }} onNewExtra={() => { setSelectedExtra(null); setIsExtraModalOpen(true); }} onDeleteExtra={onDeleteExtra} onUpdateExtras={onUpdateExtras} />}
           {activeTab === 'DISCOUNTS' && <DiscountsManagement discounts={discounts} onEditDiscount={(d) => { setSelectedDiscount(d); setIsDiscountModalOpen(true); }} onNewDiscount={() => { setSelectedDiscount(null); setIsDiscountModalOpen(true); }} onDeleteDiscount={onDeleteDiscount} onUpdateDiscounts={onUpdateDiscounts} />}
-          {activeTab === 'RESERVATIONS' && <ReservationsList reservations={reservations} onViewDetails={(res) => { setSelectedRes(res); setIsResModalOpen(true); }} />}
+          {activeTab === 'RESERVATIONS' && <ReservationsList reservations={reservations} onViewDetails={(res) => { setSelectedResId(res.id); setIsResModalOpen(true); }} />}
           {activeTab === 'SETTINGS' && <SettingsManagement config={config} onUpdateConfig={onUpdateConfig} isSaving={isSaving} />}
         </div>
       </main>
@@ -312,7 +316,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
         }}
       />
 
-      <ReservationDetailModal isOpen={isResModalOpen} onClose={() => setIsResModalOpen(false)} reservation={selectedRes} onUpdateStatus={async (id, status, reason) => {
+      <ReservationDetailModal isOpen={isResModalOpen} onClose={() => { setIsResModalOpen(false); setSelectedResId(null); }} reservation={selectedRes} onUpdateStatus={async (id, status, reason) => {
         return await onUpdateReservationStatus(id, status, reason);
       }} onUpdateReservation={onUpdateReservation} />
     </div>

@@ -604,6 +604,9 @@ const generatePaymentConfirmedEmailHTML = (reservation: Reservation): string => 
       ? `Cartão Aprovado (${reservation.cardDetails.installments}x)`
       : 'Cartão Aprovado';
 
+  const amountPaid = reservation.amountPaid ?? reservation.totalPrice;
+  const remainingBalance = reservation.totalPrice - amountPaid;
+
   // Gerar lista de acomodações
   const roomsHTML = reservation.rooms.map(room => `
 <li style="margin-bottom: 4px;">${room.name}</li>
@@ -657,8 +660,13 @@ const generatePaymentConfirmedEmailHTML = (reservation: Reservation): string => 
         <p style="color: #86efac; margin: 4px 0; font-size: 12px;">Desconto Pacote: - ${formatCurrency(reservation.packageDiscountApplied.amount)}</p>
       ` : ''}
       <p style="color: #ffffff; margin: 8px 0 0 0; font-size: 18px; font-weight: bold;">
-        Total Pago: ${formatCurrency(reservation.totalPrice)}
+        Total Pago: ${formatCurrency(amountPaid)}
       </p>
+      ${remainingBalance > 0 ? `
+        <p style="color: rgba(255,255,255,0.9); margin: 4px 0 0 0; font-size: 14px;">
+          Restante a Pagar na Recepção: <strong>${formatCurrency(remainingBalance)}</strong>
+        </p>
+      ` : ''}
     </div>
   </div>
   
