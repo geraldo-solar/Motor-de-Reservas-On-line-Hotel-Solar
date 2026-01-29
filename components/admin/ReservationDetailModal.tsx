@@ -236,12 +236,26 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                                 onClick={async () => {
                                                     const val = parseFloat(priceInput);
                                                     if (!isNaN(val) && val >= 0) {
+                                                        // 1. Update Amount
                                                         const success = await onUpdateReservation(reservation.id, { amountPaid: val });
+
                                                         if (success) {
-                                                            setSuccessMessage("Valor do sinal atualizado com sucesso!");
-                                                            setIsEditingPrice(false);
-                                                            setOptimisticPaid(val);
-                                                            setTimeout(() => setSuccessMessage(null), 3000);
+                                                            try {
+                                                                // 2. Send Email (using explicit value to avoid race conditions)
+                                                                const effectiveReservation = { ...reservation, amountPaid: val };
+                                                                await sendPaymentConfirmedEmail(effectiveReservation);
+
+                                                                // 3. Confirm Status
+                                                                await onUpdateStatus(reservation.id, 'CONFIRMED');
+
+                                                                setSuccessMessage("Pagamento confirmado, valor atualizado e e-mail enviado!");
+                                                                setIsEditingPrice(false);
+                                                                setOptimisticPaid(val);
+                                                                setTimeout(() => setSuccessMessage(null), 4000);
+                                                            } catch (err) {
+                                                                console.error("Erro no fluxo de confirmação:", err);
+                                                                setLocalError("Valor salvo, mas erro ao confirmar ou enviar e-mail.");
+                                                            }
                                                         } else {
                                                             setLocalError("Erro ao atualizar valor. Tente novamente.");
                                                         }
@@ -249,7 +263,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                                 }}
                                                 className="bg-green-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-green-700 shadow-lg active:scale-95 transition-all flex items-center gap-2"
                                             >
-                                                <Check size={16} /> Salvar Valor
+                                                <Check size={16} /> Confirmar & Enviar Email
                                             </button>
                                         </div>
                                     </div>
@@ -325,15 +339,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                 <div className="flex flex-col gap-3">
                                     {confirmType === null ? (
                                         <>
-                                            <button
-                                                type="button"
-                                                onClick={() => setConfirmType('CONFIRM')}
-                                                className={`w-full py-3.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${reservation.status === 'CONFIRMED' || isEditingPrice ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 active:scale-95'}`}
-                                                disabled={reservation.status === 'CONFIRMED' || !!successMessage || isEditingPrice}
-                                                title={isEditingPrice ? "Termine de editar o valor antes de confirmar" : ""}
-                                            >
-                                                {isEditingPrice ? 'Salve o Valor Primeiro' : 'Confirmar Pagamento'}
-                                            </button>
+                                            {/* Botão de confirmar removido conforme solicitação de unificação */}
                                             <button
                                                 type="button"
                                                 onClick={() => setConfirmType('CANCEL')}
