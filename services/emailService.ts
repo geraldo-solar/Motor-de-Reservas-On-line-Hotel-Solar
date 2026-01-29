@@ -664,7 +664,7 @@ const generatePaymentConfirmedEmailHTML = (reservation: Reservation): string => 
       </p>
       ${remainingBalance > 0 ? `
         <p style="color: rgba(255,255,255,0.9); margin: 4px 0 0 0; font-size: 14px;">
-          Restante a Pagar na Recepção: <strong>${formatCurrency(remainingBalance)}</strong>
+          Saldo Restante a Ser Pago: <strong>${formatCurrency(remainingBalance)}</strong>
         </p>
       ` : ''}
     </div>
