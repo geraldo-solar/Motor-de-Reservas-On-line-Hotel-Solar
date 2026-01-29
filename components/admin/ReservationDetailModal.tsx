@@ -323,7 +323,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                             {/* Mostrar saldo devedor se houver */}
                             {(() => {
                                 const effectivePaid = isEditingPrice
-                                    ? (parseFloat(priceInput) || 0)
+                                    ? currentPaid + (parseFloat(priceInput) || 0)
                                     : currentPaid;
                                 const pending = reservation.totalPrice - effectivePaid;
 
