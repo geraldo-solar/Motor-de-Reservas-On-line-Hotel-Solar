@@ -515,11 +515,16 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
       }
     });
 
+    // Mapeamento correto dos resultados (A ordem deve bater com o array do Promise.allSettled)
+    const [hotelEmailResult, clientEmailResult, brevoResult, preCheckinResult] = results;
+
     // Se quiser alertar o usuário sobre falhas REAIS de email:
-    const clientEmailResult = results[2]; // Index 2 é o Email Cliente
     if (clientEmailResult.status === 'rejected') {
-      const msg = `⚠️ O sistema tentou enviar o e-mail, mas o provedor recusou. Verifique se o e-mail '${reservation.mainGuest.email}' está correto. Erro: ${clientEmailResult.reason}`;
+      const msg = `⚠️ O sistema tentou enviar o e-mail, mas falhou. Erro: ${clientEmailResult.reason}`;
       alert(msg); // ALERTA VISUAL PARA O USUÁRIO DEBUGAR
+    }
+    if (hotelEmailResult.status === 'rejected') {
+      console.error('Falha ao enviar email do hotel:', hotelEmailResult.reason);
     }
 
     return { success: true };
