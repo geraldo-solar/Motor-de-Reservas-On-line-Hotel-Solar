@@ -54,18 +54,18 @@ const generateClientEmailHTML = (reservation: Reservation): string => {
   // Gerar lista de acomodações
   const roomsHTML = reservation.rooms.map(room => {
     return `
-  < li style = "margin-bottom: 8px;" >
-    <strong style="color: #1a3c34;" > ${room.name} </strong> - ${formatCurrency(room.priceSnapshot)}
+      <li style="margin-bottom: 8px;">
+        <strong style="color: #1a3c34;">${room.name}</strong> - ${formatCurrency(room.priceSnapshot)}
       </li>
-        `;
+    `;
   }).join('');
 
   // Gerar lista de extras
   const extrasHTML = reservation.extras.length > 0
     ? reservation.extras.map(extra => `
-      < li style = "margin-bottom: 4px;" >
+      <li style="margin-bottom: 4px;">
         ${extra.name} (${extra.quantity}x) - ${formatCurrency(extra.priceSnapshot * extra.quantity)}
-</li>
+      </li>
   `).join('')
     : '<li style="color: #666;">Nenhum serviço extra</li>';
 
@@ -73,78 +73,78 @@ const generateClientEmailHTML = (reservation: Reservation): string => {
   let paymentSection = '';
   if (isPix) {
     paymentSection = `
-  < div style = "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px 0;" >
-    <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 18px;" >
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px 0;">
+        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 18px;">
           📱 Instruções de Pagamento via PIX
-  </h3>
-  < ol style = "color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;" >
-    <li>Realize o pagamento via PIX no valor de < strong style = "color: #1a3c34;" > ${formatCurrency(reservation.totalPrice)} </strong></li >
-      <li>Envie o comprovante para: <a href="mailto:${HOTEL_CONFIG.email}" style = "color: #d4a853; text-decoration: none;" > ${HOTEL_CONFIG.email} </a></li >
-        <li>Após recebermos o comprovante, enviaremos a confirmação </li>
-          </ol>
-          </div>
+        </h3>
+        <ol style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">
+          <li>Realize o pagamento via PIX no valor de <strong style="color: #1a3c34;">${formatCurrency(reservation.totalPrice)}</strong></li>
+          <li>Envie o comprovante para: <a href="mailto:${HOTEL_CONFIG.email}" style="color: #d4a853; text-decoration: none;">${HOTEL_CONFIG.email}</a></li>
+          <li>Após recebermos o comprovante, enviaremos a confirmação</li>
+        </ol>
+      </div>
 
-          < div style = "background: #ffffff; border: 2px solid #1a3c34; border-radius: 12px; padding: 24px; margin: 24px 0;" >
-            <h3 style="color: #1a3c34; margin: 0 0 20px 0; font-size: 18px;" >
+      <div style="background: #ffffff; border: 2px solid #1a3c34; border-radius: 12px; padding: 24px; margin: 24px 0;">
+        <h3 style="color: #1a3c34; margin: 0 0 20px 0; font-size: 18px;">
           📋 Dados para Transferência PIX
-  </h3>
-  < table style = "width: 100%; color: #1e293b; font-size: 14px; border-collapse: collapse;" >
-    <tr>
-    <td style="padding: 10px 0; color: #64748b; width: 45%; border-bottom: 1px solid #f1f5f9;" > CHAVE PIX(CELULAR) </td>
-      < td style = "padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;" > ${HOTEL_CONFIG.pix.chave} </td>
-        </tr>
-        < tr >
-        <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;" > BENEFICIÁRIO </td>
-          < td style = "padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;" > ${HOTEL_CONFIG.pix.beneficiario} </td>
-            </tr>
-            < tr >
-            <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;" > CNPJ </td>
-              < td style = "padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;" > ${HOTEL_CONFIG.pix.cnpj} </td>
-                </tr>
-                < tr >
-                <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;" > BANCO </td>
-                  < td style = "padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;" > ${HOTEL_CONFIG.pix.banco} </td>
-                    </tr>
-                    < tr >
-                    <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;" > AGÊNCIA </td>
-                      < td style = "padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;" > ${HOTEL_CONFIG.pix.agencia} </td>
-                        </tr>
-                        < tr >
-                        <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;" > CONTA CORRENTE </td>
-                          < td style = "padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;" > ${HOTEL_CONFIG.pix.conta} </td>
-                            </tr>
-                            < tr >
-                            <td style="padding: 12px 0; color: #1a3c34; font-weight: bold; font-size: 16px;" > VALOR TOTAL </td>
-                              < td style = "padding: 12px 0; text-align: right; color: #1a3c34; font-weight: bold; font-size: 20px;" > ${formatCurrency(reservation.totalPrice)} </td>
-                                </tr>
-                                </table>
+        </h3>
+        <table style="width: 100%; color: #1e293b; font-size: 14px; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 10px 0; color: #64748b; width: 45%; border-bottom: 1px solid #f1f5f9;">CHAVE PIX (CELULAR)</td>
+            <td style="padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;">${HOTEL_CONFIG.pix.chave}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;">BENEFICIÁRIO</td>
+            <td style="padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;">${HOTEL_CONFIG.pix.beneficiario}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;">CNPJ</td>
+            <td style="padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;">${HOTEL_CONFIG.pix.cnpj}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;">BANCO</td>
+            <td style="padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;">${HOTEL_CONFIG.pix.banco}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;">AGÊNCIA</td>
+            <td style="padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;">${HOTEL_CONFIG.pix.agencia}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;">CONTA CORRENTE</td>
+            <td style="padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;">${HOTEL_CONFIG.pix.conta}</td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 0; color: #1a3c34; font-weight: bold; font-size: 16px;">VALOR TOTAL</td>
+            <td style="padding: 12px 0; text-align: right; color: #1a3c34; font-weight: bold; font-size: 20px;">${formatCurrency(reservation.totalPrice)}</td>
+          </tr>
+        </table>
 
-                                < div style = "margin-top: 20px; padding: 16px; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;" >
-                                  <p style="color: #166534; margin: 0 0 12px 0; font-weight: bold;" >✅ Após realizar a transferência: </p>
-                                    < ol style = "color: #166534; margin: 0; padding-left: 20px; line-height: 1.8; font-size: 13px;" >
-                                      <li>Envie o comprovante para: <a href="mailto:${HOTEL_CONFIG.email}" style = "color: #1a3c34; font-weight: bold; text-decoration: none;" > ${HOTEL_CONFIG.email} </a></li >
-                                        <li>Sua reserva será confirmada em até 24 horas úteis.</li>
-                                          </ol>
-                                          </div>
-                                          </div>
-                                            `;
+        <div style="margin-top: 20px; padding: 16px; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
+          <p style="color: #166534; margin: 0 0 12px 0; font-weight: bold;">✅ Após realizar a transferência:</p>
+          <ol style="color: #166534; margin: 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
+            <li>Envie o comprovante para: <a href="mailto:${HOTEL_CONFIG.email}" style="color: #1a3c34; font-weight: bold; text-decoration: none;">${HOTEL_CONFIG.email}</a></li>
+            <li>Sua reserva será confirmada em até 24 horas úteis.</li>
+          </ol>
+        </div>
+      </div>
+    `;
   } else {
     const installmentsText = reservation.cardDetails?.installments && reservation.cardDetails.installments > 1
       ? `em ${reservation.cardDetails.installments} x`
       : 'à vista';
     paymentSection = `
-  < div style = "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px 0;" >
-    <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 18px;" >
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px 0;">
+        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 18px;">
           💳 Pagamento via Cartão de Crédito
-  </h3>
-  < p style = "color: #475569; margin: 0;" >
-    Pagamento ${installmentsText} no valor de < strong style = "color: #1a3c34;" > ${formatCurrency(reservation.totalPrice)} </strong>
-      </p>
-      < p style = "color: #64748b; margin: 12px 0 0 0; font-size: 13px;" >
-        Aguarde a confirmação do processamento do pagamento.
+        </h3>
+        <p style="color: #475569; margin: 0;">
+          Pagamento ${installmentsText} no valor de <strong style="color: #1a3c34;">${formatCurrency(reservation.totalPrice)}</strong>
         </p>
-          </div>
-            `;
+        <p style="color: #64748b; margin: 12px 0 0 0; font-size: 13px;">
+          Aguarde a confirmação do processamento do pagamento.
+        </p>
+      </div>
+    `;
   }
 
   // O Link de Pré-Check-in agora aponta para o Próprio Motor de Reservas
