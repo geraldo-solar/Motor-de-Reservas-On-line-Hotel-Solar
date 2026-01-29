@@ -33,18 +33,7 @@ const HOTEL_CONFIG = {
 };
 
 // Formatar data para exibição sem erro de fuso horário
-const formatDate = (dateStr: string): string => {
-  if (!dateStr) return '---';
-  try {
-    // Se a data vier no formato YYYY-MM-DD, adicionamos o horário de meio-dia
-    // para evitar que o fuso horário mude a data para o dia anterior.
-    const normalizedStr = dateStr.includes('T') ? dateStr : `${dateStr} T12:00:00`;
-    const date = new Date(normalizedStr);
-    return date.toLocaleDateString('pt-BR');
-  } catch {
-    return dateStr;
-  }
-};
+
 
 // Formatar valor em reais
 const formatCurrency = (value: number): string => {
@@ -214,8 +203,8 @@ const generateClientEmailHTML = (reservation: Reservation): string => {
         <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
           📋 Detalhes da Reserva
         </h3>
-        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
-        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
+        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDisplayDate(reservation.checkIn)}</p>
+        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDisplayDate(reservation.checkOut)}</p>
         <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">Noites:</strong> ${reservation.nights}</p>
       </div>
       
@@ -375,8 +364,8 @@ const generateHotelEmailHTML = (reservation: Reservation): string => {
         <h2 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 18px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
           Detalhes da Reserva
         </h2>
-        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
-        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
+        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDisplayDate(reservation.checkIn)}</p>
+        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDisplayDate(reservation.checkOut)}</p>
         <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">Noites:</strong> ${reservation.nights}</p>
       </div>
       
@@ -679,14 +668,15 @@ const generatePaymentConfirmedEmailHTML = (reservation: Reservation): string => 
     }
       </div>
 
-      <p style="color: #ffffff; margin: 16px 0 0 0; font-size: 18px; font-weight: bold; border-top: 1px solid rgba(255,255,255,0.2); paddingTop: 12px;">
+      <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px; border-top: 1px solid rgba(255,255,255,0.2); paddingTop: 12px; margin-top: 12px;">
+        Valor Total da Reserva: <strong>${formatCurrency(reservation.totalPrice)}</strong>
+      </p>
+      <p style="color: #ffffff; margin: 4px 0 0 0; font-size: 18px; font-weight: bold;">
         Total Pago: ${formatCurrency(amountPaid)}
       </p>
-      ${remainingBalance > 0 ? `
-        <p style="color: rgba(255,255,255,0.9); margin: 4px 0 0 0; font-size: 14px;">
-          Saldo Restante a Ser Pago: <strong>${formatCurrency(remainingBalance)}</strong>
-        </p>
-      ` : ''}
+      <p style="color: ${remainingBalance > 0 ? '#fca5a5' : '#86efac'}; margin: 4px 0 0 0; font-size: 14px;">
+        Saldo Restante: <strong>${formatCurrency(remainingBalance)}</strong>
+      </p>
     </div>
   </div>
   
@@ -706,8 +696,8 @@ const generatePaymentConfirmedEmailHTML = (reservation: Reservation): string => 
       📋 Detalhes da Reserva
     </h3>
     <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
-      <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
-      <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
+      <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDisplayDate(reservation.checkIn)}</p>
+      <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDisplayDate(reservation.checkOut)}</p>
       <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Noites:</strong> ${reservation.nights}</p>
       <p style="color: #475569; margin: 12px 0 8px 0; border-top: 1px solid #e2e8f0; padding-top: 8px;"><strong style="color: #1e293b;">Acomodações:</strong></p>
       <ul style="color: #475569; margin: 8px 0 0 0; padding-left: 20px;">
@@ -814,8 +804,8 @@ const generateReservationCanceledEmailHTML = (reservation: Reservation, customRe
       📋 Detalhes da Reserva Cancelada
     </h3>
     <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
-      <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
-      <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
+      <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDisplayDate(reservation.checkIn)}</p>
+      <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDisplayDate(reservation.checkOut)}</p>
       <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">Valor:</strong> ${formatCurrency(reservation.totalPrice)}</p>
     </div>
   </div>
@@ -883,7 +873,7 @@ const generatePreCheckInEmailHTML = (reservation: Reservation): string => {
  
   <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
     <h3 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 14px;">📅 Sua Reserva: #${shortId}</h3>
-    <p style="color: #475569; margin: 0; font-size: 13px;">Previsão de Check-in: <strong>${formatDate(reservation.checkIn)}</strong></p>
+    <p style="color: #475569; margin: 0; font-size: 13px;">Previsão de Check-in: <strong>${formatDisplayDate(reservation.checkIn)}</strong></p>
   </div>
  
   <div style="background: rgba(212, 168, 83, 0.1); border-left: 4px solid #d4a853; padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
@@ -1085,8 +1075,8 @@ ${isPartialCancellation ? `
     📋 Detalhes da Reserva Cancelada
   </h3>
   <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
-    <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
-    <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
+    <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDisplayDate(reservation.checkIn)}</p>
+    <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDisplayDate(reservation.checkOut)}</p>
     <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">Valor:</strong> ${formatCurrency(reservation.totalPrice)}</p>
   </div>
 </div>
@@ -1188,8 +1178,8 @@ const generateAdminCancellationNotificationHTML = (reservation: Reservation, can
   <h2 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
     Detalhes da Reserva
   </h2>
-  <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
-  <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
+  <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${formatDisplayDate(reservation.checkIn)}</p>
+  <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${formatDisplayDate(reservation.checkOut)}</p>
   <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">Valor Total:</strong> ${formatCurrency(reservation.totalPrice)}</p>
 </div>
  
@@ -1324,8 +1314,8 @@ export const sendPreCheckinAdminEmail = async (reservation: Reservation, formDat
     <div style="padding: 24px;">
       <h3 style="color: #1a3c34; border-bottom: 2px solid #d4a853; padding-bottom: 8px;">Dados da Reserva</h3>
       <p><strong>Hóspede Principal:</strong> ${reservation.mainGuest.name}</p>
-      <p><strong>Check-in:</strong> ${formatDate(reservation.checkIn)}</p>
-      <p><strong>Check-out:</strong> ${formatDate(reservation.checkOut)}</p>
+      <p><strong>Check-in:</strong> ${formatDisplayDate(reservation.checkIn)}</p>
+      <p><strong>Check-out:</strong> ${formatDisplayDate(reservation.checkOut)}</p>
       
       <h3 style="color: #1a3c34; border-bottom: 2px solid #d4a853; padding-bottom: 8px; margin-top: 24px;">Fichas FNRH (Dados)</h3>
       
@@ -1335,7 +1325,7 @@ export const sendPreCheckinAdminEmail = async (reservation: Reservation, formDat
         <p><strong>Telefone:</strong> ${formData.telefone}</p>
         <p><strong>CPF:</strong> ${formData.cpf}</p>
         <p><strong>RG:</strong> ${formData.rg} (${formData.orgaoEmissor})</p>
-        <p><strong>Data de Nascimento:</strong> ${formatDate(formData.dataNascimento)}</p>
+        <p><strong>Data de Nascimento:</strong> ${formatDisplayDate(formData.dataNascimento)}</p>
         <p><strong>Gênero:</strong> ${formData.genero}</p>
         <p><strong>Profissão:</strong> ${formData.profissao}</p>
         <p><strong>Nacionalidade:</strong> ${formData.nacionalidade}</p>
@@ -1363,7 +1353,7 @@ export const sendPreCheckinAdminEmail = async (reservation: Reservation, formDat
             <li style="margin-bottom: 12px; border-bottom: 1px dashed #eee; padding-bottom: 8px;">
                 <strong>Nome:</strong> ${guest.nome}<br>
                 <strong>CPF:</strong> ${guest.cpf || '-'}<br>
-                <strong>Nascimento:</strong> ${guest.dataNascimento ? formatDate(guest.dataNascimento) : '-'}<br>
+                <strong>Nascimento:</strong> ${guest.dataNascimento ? formatDisplayDate(guest.dataNascimento) : '-'}<br>
                 <strong>Email:</strong> ${guest.email || '-'}<br>
                 <strong>Telefone:</strong> ${guest.telefone || '-'}<br>
                 ${!guest.mesmoEndereco && guest.endereco ? `
