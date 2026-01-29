@@ -343,8 +343,8 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                             <button
                                                 type="button"
                                                 onClick={() => setConfirmType('CANCEL')}
-                                                className={`w-full py-3.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${reservation.status === 'CANCELED' || isEditingPrice ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-700 active:scale-95'}`}
-                                                disabled={reservation.status === 'CANCELED' || !!successMessage || isEditingPrice}
+                                                className={`w-full py-3.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${reservation.status === 'CANCELED' ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-700 active:scale-95'}`}
+                                                disabled={reservation.status === 'CANCELED' || !!successMessage}
                                             >
                                                 Cancelar Reserva
                                             </button>
