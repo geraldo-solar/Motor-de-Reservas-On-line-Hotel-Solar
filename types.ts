@@ -141,4 +141,5 @@ export interface Reservation {
   status: ReservationStatus;
   cancellationReason?: string;
   amountPaid?: number;
+  paymentHistory?: { date: string; amount: number; user?: string }[];
 }

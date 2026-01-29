@@ -151,6 +151,7 @@ export const useSupabaseData = () => {
           amount: Number((r.package_discount_applied || r.packageDiscountApplied).amount || 0)
         } : undefined,
         amountPaid: r.amount_paid !== undefined ? Number(r.amount_paid) : (r.amountPaid !== undefined ? Number(r.amountPaid) : undefined),
+        paymentHistory: safeArray(r.payment_history),
       };
     } catch (e) {
       console.error('[Mapper] Erro ao mapear reserva individual:', e, r);

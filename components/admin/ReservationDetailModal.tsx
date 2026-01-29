@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Mail, Send, Type, ArrowRight, MessageSquare, QrCode, CreditCard, Edit2, Check } from 'lucide-react';
+import { X, Check, Edit2, MessageSquare, Mail, Phone, Calendar, Clock, CreditCard, ChevronRight, User, AlertTriangle, ArrowRight, Send, Type, QrCode, Plus } from 'lucide-react';
 import { Reservation, ReservationStatus } from '../../types';
 import { sendPaymentConfirmedEmail, sendReservationCanceledEmail } from '../../services/emailService';
 import { formatDisplayDate, formatDisplayDateTime } from '../../utils/dateUtils';
@@ -175,22 +175,68 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                 <span className="font-serif font-bold text-2xl text-solar-gold">R$ {reservation.totalPrice.toLocaleString()}</span>
                             </div>
 
-                            <div className="flex justify-between items-center pt-2">
-                                <div className="flex flex-col">
-                                    <span className="font-bold text-xs uppercase tracking-widest text-slate-500">Total Pago (Sinal/Confrmação)</span>
-                                    {isEditingPrice && <span className="text-[9px] text-slate-400 italic font-medium mt-0.5">Novo total (substitui o anterior)</span>}
+                            <div className="flex flex-col gap-2 pt-2">
+                                <div className="flex justify-between items-center">
+                                    <span className="font-bold text-xs uppercase tracking-widest text-slate-500">Histórico de Pagamentos</span>
+                                    {!isEditingPrice && (
+                                        <button
+                                            onClick={() => {
+                                                setPriceInput('');
+                                                setIsEditingPrice(true);
+                                            }}
+                                            className="text-[10px] bg-solar-gold/10 text-solar-gold px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider hover:bg-solar-gold hover:text-white transition-all flex items-center gap-1"
+                                        >
+                                            <Plus size={12} /> Adicionar Pagamento
+                                        </button>
+                                    )}
                                 </div>
-                                {isEditingPrice ? (
+
+                                {/* Lista de Pagamentos (Histórico) */}
+                                <div className="space-y-1 my-2">
+                                    {reservation.paymentHistory && reservation.paymentHistory.length > 0 ? (
+                                        reservation.paymentHistory.map((payment, idx) => (
+                                            <div key={idx} className="flex justify-between items-center text-xs bg-slate-50 p-2 rounded border border-slate-100">
+                                                <span className="text-slate-500">{formatDisplayDate(payment.date)}</span>
+                                                <span className="font-bold text-slate-700">R$ {payment.amount.toLocaleString()}</span>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        // Fallback para reservas antigas sem histórico (mostra apenas o total se > 0)
+                                        currentPaid > 0 && (
+                                            <div className="flex justify-between items-center text-xs bg-slate-50 p-2 rounded border border-slate-100 italic">
+                                                <span className="text-slate-400">Pagamento inicial (sem data)</span>
+                                                <span className="font-bold text-slate-700">R$ {currentPaid.toLocaleString()}</span>
+                                            </div>
+                                        )
+                                    )}
+                                    {(!reservation.paymentHistory?.length && currentPaid === 0) && (
+                                        <p className="text-[10px] text-slate-400 italic text-center py-2">Nenhum pagamento registrado.</p>
+                                    )}
+                                </div>
+
+                                {/* Total Pago */}
+                                <div className="flex justify-between items-center border-t border-slate-100 pt-2">
+                                    <span className="font-bold text-xs text-slate-600">Total Pago</span>
+                                    <span className={`font-bold text-lg ${currentPaid >= reservation.totalPrice ? 'text-green-600' : 'text-slate-700'}`}>
+                                        R$ {currentPaid.toLocaleString()}
+                                    </span>
+                                </div>
+
+                                {/* Formulário de Adição */}
+                                {isEditingPrice && (
                                     <div className="flex flex-col gap-3 w-full animate-in fade-in bg-slate-50 p-4 rounded-xl border border-slate-200 mt-2">
                                         <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                                                Quanto o cliente pagou?
+                                                Valor do Novo Pagamento
                                             </span>
                                             <button
-                                                onClick={() => setPriceInput(reservation.totalPrice.toString())}
+                                                onClick={() => {
+                                                    const pending = reservation.totalPrice - currentPaid;
+                                                    setPriceInput(pending > 0 ? pending.toString() : '');
+                                                }}
                                                 className="text-[9px] bg-green-100 text-green-700 px-3 py-1.5 rounded-full font-bold uppercase tracking-wider hover:bg-green-200 transition-colors flex items-center gap-1"
                                             >
-                                                Marcar como Total
+                                                Completar Restante
                                             </button>
                                         </div>
 
@@ -203,22 +249,6 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                                 placeholder="0,00"
                                                 value={priceInput}
                                                 onChange={(e) => setPriceInput(e.target.value)}
-                                                onKeyDown={async (e) => {
-                                                    if (e.key === 'Enter') {
-                                                        const val = parseFloat(priceInput);
-                                                        if (!isNaN(val) && val >= 0) {
-                                                            const success = await onUpdateReservation(reservation.id, { amountPaid: val });
-                                                            if (success) {
-                                                                setSuccessMessage("Valor do sinal atualizado com sucesso!");
-                                                                setIsEditingPrice(false);
-                                                                setOptimisticPaid(val);
-                                                                setTimeout(() => setSuccessMessage(null), 3000);
-                                                            } else {
-                                                                setLocalError("Erro ao atualizar valor. Tente novamente.");
-                                                            }
-                                                        }
-                                                    }
-                                                }}
                                             />
                                         </div>
 
@@ -235,53 +265,57 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                             <button
                                                 onClick={async () => {
                                                     const val = parseFloat(priceInput);
-                                                    if (!isNaN(val) && val >= 0) {
-                                                        // 1. Update Amount
-                                                        const success = await onUpdateReservation(reservation.id, { amountPaid: val });
+                                                    if (!isNaN(val) && val > 0) {
+                                                        const newTotal = currentPaid + val;
+                                                        const newHistory = [
+                                                            ...(reservation.paymentHistory || []),
+                                                            { date: new Date().toISOString(), amount: val }
+                                                        ];
+
+                                                        // Se não tinha histórico mas tinha valor, adiciona o valor antigo como entrada inicial
+                                                        if ((!reservation.paymentHistory || reservation.paymentHistory.length === 0) && currentPaid > 0) {
+                                                            newHistory.unshift({ date: reservation.createdAt.toISOString(), amount: currentPaid });
+                                                        }
+
+                                                        // 1. Update Amount & History
+                                                        const success = await onUpdateReservation(reservation.id, {
+                                                            amountPaid: newTotal,
+                                                            paymentHistory: newHistory
+                                                        });
 
                                                         if (success) {
                                                             try {
-                                                                // 2. Send Email (using explicit value to avoid race conditions)
-                                                                const effectiveReservation = { ...reservation, amountPaid: val };
+                                                                // 2. Send Email
+                                                                const effectiveReservation = {
+                                                                    ...reservation,
+                                                                    amountPaid: newTotal,
+                                                                    paymentHistory: newHistory
+                                                                };
                                                                 await sendPaymentConfirmedEmail(effectiveReservation);
 
-                                                                // 3. Confirm Status
-                                                                await onUpdateStatus(reservation.id, 'CONFIRMED');
+                                                                // 3. Confirm Status (se ainda não estiver)
+                                                                if (reservation.status !== 'CONFIRMED') {
+                                                                    await onUpdateStatus(reservation.id, 'CONFIRMED');
+                                                                }
 
-                                                                setSuccessMessage("Pagamento confirmado, valor atualizado e e-mail enviado!");
+                                                                setSuccessMessage("Novo pagamento registrado e notificado!");
                                                                 setIsEditingPrice(false);
-                                                                setOptimisticPaid(val);
+                                                                setOptimisticPaid(newTotal);
                                                                 setTimeout(() => setSuccessMessage(null), 4000);
                                                             } catch (err) {
-                                                                console.error("Erro no fluxo de confirmação:", err);
-                                                                setLocalError("Valor salvo, mas erro ao confirmar ou enviar e-mail.");
+                                                                console.error("Erro no fluxo de novo pagamento:", err);
+                                                                setLocalError("Pagamento salvo, mas erro ao enviar e-mail.");
                                                             }
                                                         } else {
-                                                            setLocalError("Erro ao atualizar valor. Tente novamente.");
+                                                            setLocalError("Erro ao salvar pagamento. Tente novamente.");
                                                         }
                                                     }
                                                 }}
                                                 className="bg-green-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-green-700 shadow-lg active:scale-95 transition-all flex items-center gap-2"
                                             >
-                                                <Check size={16} /> Confirmar & Enviar Email
+                                                <Check size={16} /> Registrar & Enviar
                                             </button>
                                         </div>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center gap-3 group/price">
-                                        <button
-                                            onClick={() => {
-                                                setPriceInput(currentPaid.toString());
-                                                setIsEditingPrice(true);
-                                            }}
-                                            className="p-1.5 text-solar-gold bg-solar-gold/10 rounded-lg hover:bg-solar-gold hover:text-white transition-all"
-                                            title="Editar Valor Pago"
-                                        >
-                                            <Edit2 size={12} />
-                                        </button>
-                                        <span className={`font-bold text-lg ${currentPaid >= reservation.totalPrice ? 'text-green-600' : 'text-slate-700'}`}>
-                                            R$ {currentPaid.toLocaleString()}
-                                        </span>
                                     </div>
                                 )}
                             </div>
