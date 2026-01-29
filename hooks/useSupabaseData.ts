@@ -759,6 +759,7 @@ export const useSupabaseData = () => {
       if (updates.checkOut) dataToUpdate.check_out = updates.checkOut;
       if (updates.nights) dataToUpdate.nights = updates.nights;
       if (updates.amountPaid !== undefined) dataToUpdate.amount_paid = updates.amountPaid;
+      if (updates.paymentHistory) dataToUpdate.payment_history = updates.paymentHistory;
       // Add other fields as needed
 
       const { error } = await supabase.from('reservations').update(dataToUpdate).eq('id', id);
