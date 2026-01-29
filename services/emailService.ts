@@ -37,7 +37,10 @@ const HOTEL_CONFIG = {
 
 // Formatar valor em reais
 const formatCurrency = (value: number): string => {
-  return `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `;
+  if (value === undefined || value === null) return 'R$ 0,00';
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(num)) return 'R$ 0,00';
+  return `R$ ${num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} `;
 };
 
 // Gerar número da reserva curto (8 caracteres) - funciona com UUID ou RES-xxx
