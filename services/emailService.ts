@@ -1,7 +1,7 @@
 // Serviço de envio de e-mails via Brevo (Sendinblue)
 
 import { Reservation } from '../types';
-import { formatCurrency } from '../utils/formatUtils';
+
 import { formatDisplayDate } from '../utils/dateUtils';
 // --- MUDANÇA: WHATSAPP REMOVIDO TEMPORARIAMENTE ---
 
