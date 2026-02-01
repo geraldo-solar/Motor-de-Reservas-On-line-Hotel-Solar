@@ -2,16 +2,31 @@ import React, { useState } from 'react';
 import { Lock, ArrowRight, ShieldCheck, User } from 'lucide-react';
 
 interface AdminLoginProps {
-    onLogin: (password: string) => void;
+    onLogin: (email: string, pass: string) => Promise<{ error: any }>;
     error?: boolean;
 }
 
 export const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [loginError, setLoginError] = useState<string | null>(null);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        onLogin(password);
+        setLoading(true);
+        setLoginError(null);
+
+        try {
+            const { error } = await onLogin(email, password);
+            if (error) {
+                setLoginError('Credenciais inválidas. Verifique e tente novamente.');
+            }
+        } catch (err) {
+            setLoginError('Erro de conexão.');
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -39,6 +54,19 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
                             <div className="space-y-4">
                                 <div className="relative group">
                                     <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-solar-gold transition-colors">
+                                        <User size={20} />
+                                    </div>
+                                    <input
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        placeholder="E-mail Administrativo"
+                                        className="w-full bg-slate-50 border-2 py-4 pl-12 pr-4 rounded-2xl outline-none transition-all text-sm font-bold tracking-widest border-slate-100 focus:border-solar-gold"
+                                        autoFocus
+                                    />
+                                </div>
+                                <div className="relative group">
+                                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300 group-focus-within:text-solar-gold transition-colors">
                                         <Lock size={20} />
                                     </div>
                                     <input
@@ -46,20 +74,20 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, error }) => {
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         placeholder="Senha de Acesso"
-                                        className={`w-full bg-slate-50 border-2 py-4 pl-12 pr-4 rounded-2xl outline-none transition-all text-sm font-bold tracking-widest ${error ? 'border-red-200 focus:border-red-500' : 'border-slate-100 focus:border-solar-gold'}`}
-                                        autoFocus
+                                        className={`w-full bg-slate-50 border-2 py-4 pl-12 pr-4 rounded-2xl outline-none transition-all text-sm font-bold tracking-widest ${loginError ? 'border-red-200 focus:border-red-500' : 'border-slate-100 focus:border-solar-gold'}`}
                                     />
                                 </div>
-                                {error && (
-                                    <p className="text-[10px] text-red-500 font-bold uppercase tracking-widest text-center animate-bounce">Senha incorreta. Tente novamente.</p>
+                                {loginError && (
+                                    <p className="text-[10px] text-red-500 font-bold uppercase tracking-widest text-center animate-bounce">{loginError}</p>
                                 )}
                             </div>
 
                             <button
                                 type="submit"
-                                className="w-full bg-[#0F2820] text-solar-gold py-5 rounded-2xl font-bold uppercase tracking-[0.3em] hover:bg-black transition-all shadow-xl active:scale-95 flex items-center justify-center gap-3"
+                                className="w-full bg-[#0F2820] text-solar-gold py-5 rounded-2xl font-bold uppercase tracking-[0.3em] hover:bg-black transition-all shadow-xl active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={loading}
                             >
-                                Acessar Sistema <ArrowRight size={18} />
+                                {loading ? 'Entrando...' : <><ArrowRight size={18} /> Acessar Sistema</>}
                             </button>
                         </form>
 

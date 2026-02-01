@@ -32,6 +32,7 @@ export default function App() {
   const {
     rooms, packages, discounts, extras, reservations,
     loading, isSaving, isConnected, error,
+    user, authLoading, login, logout, // Auth from hook
     setRooms, setPackages, setDiscounts, setExtras, setReservations,
     saveReservationToSupabase, updateReservationStatus, updateReservation,
     upsertRoom, upsertRooms, deleteRoom,
@@ -43,9 +44,9 @@ export default function App() {
 
   const [selectedRooms, setSelectedRooms] = useState<Room[]>([]);
   const [activePackage, setActivePackage] = useState<HolidayPackage | null>(null);
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
-  const [loginError, setLoginError] = useState(false);
+  // isAdminLoggedIn and loginError removed in favor of hook auth
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+
   const [lastReservation, setLastReservation] = useState<Reservation | null>(null);
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const [zoomData, setZoomData] = useState<{ images: string[], index: number } | null>(null);
@@ -774,7 +775,11 @@ export default function App() {
 
         {
           currentView === ViewState.ADMIN && (
-            isAdminLoggedIn ? (
+            authLoading ? (
+              <div className="flex h-screen items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-solar-gold"></div>
+              </div>
+            ) : user ? (
               <ErrorBoundary>
                 <AdminPanel
                   rooms={rooms}
@@ -801,23 +806,15 @@ export default function App() {
                   onDeleteDiscount={deleteDiscount}
                   isSaving={isSaving}
                   onRefreshData={refreshData}
-                  onLogout={() => { setIsAdminLoggedIn(false); setCurrentView(ViewState.HOME); }}
+                  onLogout={async () => {
+                    await logout();
+                    setCurrentView(ViewState.HOME);
+                  }}
                 />
               </ErrorBoundary>
             ) : (
               <AdminLogin
-                onLogin={(pass) => {
-                  console.log('[Admin] Tentativa de login...');
-                  if (pass === 'metron82') {
-                    console.log('[Admin] Senha correta. Entrando no painel...');
-                    setIsAdminLoggedIn(true);
-                    setLoginError(false);
-                  } else {
-                    console.warn('[Admin] Senha incorreta.');
-                    setLoginError(true);
-                  }
-                }}
-                error={loginError}
+                onLogin={login}
               />
             )
           )

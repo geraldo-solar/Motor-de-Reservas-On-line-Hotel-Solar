@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { User, Session } from '@supabase/supabase-js';
 import { Room, HolidayPackage, DiscountCode, ExtraService, Reservation } from '../types';
 import { supabase } from '../lib/supabase';
 import { offlineQueue } from '../lib/offlineQueue';
@@ -69,6 +70,10 @@ export const useSupabaseData = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   const [rooms, setRoomsState] = useState<Room[]>([]);
   const [packages, setPackagesState] = useState<HolidayPackage[]>([]);
@@ -277,7 +282,27 @@ export const useSupabaseData = () => {
       await loadFromSupabase(cachedRooms.length > 0);
     };
     init();
+    init();
   }, [loadFromSupabase]);
+
+  // Auth State Listener
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Realtime subscription para manter o Painel Admin sincronizado com o ERP e outras mudanças
   useEffect(() => {
@@ -899,22 +924,30 @@ export const useSupabaseData = () => {
   const setExtras = useCallback((val: any) => setExtrasState(val), []);
   const setReservations = useCallback((val: any) => setReservationsState(val), []);
 
+  const login = async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    return { data, error };
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
+  };
+
   return {
-    loading,
-    isSaving,
-    isConnected,
-    error,
-    rooms,
-    packages,
-    discounts,
-    extras,
-    reservations,
-    setRooms,
-    setPackages,
-    setDiscounts,
-    setExtras,
-    setReservations,
-    refreshData: () => loadFromSupabase(false),
+    rooms, packages, discounts, extras, reservations,
+    loading, isSaving, isConnected, error,
+    user, session, authLoading, // New Auth Exports
+    setRooms: setRoomsState,
+    setPackages: setPackagesState,
+    setDiscounts: setDiscountsState,
+    setExtras: setExtrasState,
+    setReservations: setReservationsState,
+    saveReservationToSupabase,
+    updateReservationStatus,
+    updateReservation,
     upsertRoom,
     upsertRooms,
     deleteRoom,
@@ -924,8 +957,8 @@ export const useSupabaseData = () => {
     deleteExtra,
     upsertDiscount,
     deleteDiscount,
-    saveReservationToSupabase,
-    updateReservationStatus,
-    updateReservation,
+    refreshData: () => loadFromSupabase(false),
+    login,
+    logout
   };
 };
