@@ -109,6 +109,10 @@ export default function App() {
         setCheckIn(checkInDate);
         setCheckOut(checkOutDate);
         setCurrentCalendarDate(checkInDate);
+        // Scroll to rooms section after render
+        setTimeout(() => {
+          document.getElementById('quartos-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 500);
       }
     }
 
