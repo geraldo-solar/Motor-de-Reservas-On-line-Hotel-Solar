@@ -644,16 +644,7 @@ export const useSupabaseData = () => {
 
       console.log('[Supabase] Reserva salva com sucesso no banco');
 
-      // Notifica o ERP em tempo real via Broadcast (mais rápido que a replicação do Postgres)
-      supabase.channel('erp-sync').subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          supabase.channel('erp-sync').send({
-            type: 'broadcast',
-            event: 'new-online-res',
-            payload: { name: reservation.mainGuest.name, id: reservation.id }
-          });
-        }
-      });
+// O ERP Antigo foi desconectado pelo proprietário. Sinais realtime 'erp-sync' desativados.
 
       // --- SINCRONIZAÇÃO DE INVENTÁRIO (DECREMENTO) ---
       // Caso a reserva venha do site, decrementamos o estoque imediatamente
