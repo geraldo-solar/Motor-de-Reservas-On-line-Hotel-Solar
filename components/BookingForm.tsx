@@ -86,6 +86,9 @@ const BookingForm: React.FC<BookingFormProps> = ({
   const [cpf, setCpf] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'PIX' | 'CREDIT_CARD'>('PIX');
 
+  // Controle de Hóspedes Adicionais (Por Quarto)
+  const [additionalGuests, setAdditionalGuests] = useState<{name: string, age: string, roomId: string, roomName: string}[]>([]);
+
   const [cardHolder, setCardHolder] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
@@ -211,6 +214,13 @@ const BookingForm: React.FC<BookingFormProps> = ({
         }
       }
 
+      // Validação dos Hóspedes Extras
+      additionalGuests.forEach((guest, index) => {
+        if (!guest.name.trim()) {
+           newErrors[`guest_${index}`] = 'Nome do acompanhante é obrigatório';
+        }
+      });
+
       if (Object.keys(newErrors).length > 0) {
         setErrors(newErrors);
         isSubmittingRef.current = false;
@@ -227,7 +237,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
         checkOut: initialCheckOut ? toLocalISO(initialCheckOut) : '',
         nights,
         mainGuest: { name, email, phone, cpf },
-        additionalGuests: [],
+        additionalGuests: additionalGuests.map(g => ({ name: g.name, cpf: '', age: g.age, roomId: g.roomId, roomName: g.roomName })),
         observations,
         rooms: selectedRooms.map(r => ({ id: r.id, name: r.name, priceSnapshot: calculateRoomTotal(r) })),
         extras: Object.entries(selectedExtras).map(([id, qty]) => {
@@ -455,7 +465,109 @@ const BookingForm: React.FC<BookingFormProps> = ({
           </div>
         </div>
 
-        <div className="space-y-4">
+        {/* --- INÍCIO: Seção de Hóspedes Adicionais por Quarto --- */}
+        <div className="space-y-4 pt-4 border-t border-slate-100 animate-in fade-in duration-500">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-bold text-solar-green uppercase tracking-widest text-xs flex items-center gap-2">
+              <Users size={18} className="text-solar-gold" /> Acompanhantes (Por Quarto)
+            </h3>
+          </div>
+
+          <div className="space-y-6">
+            {selectedRooms.map((room) => {
+              // Os hóspedes atrelados a ESTE quarto específico
+              const roomGuests = additionalGuests.filter(g => g.roomId === room.id);
+              // Lotação total disponível para preencher
+              const maxCapacity = room.capacity;
+
+              return (
+                <div key={room.id} className="bg-slate-50/50 rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="bg-slate-100/80 p-3 border-b border-slate-200 flex items-center justify-between">
+                    <span className="font-bold text-[11px] text-solar-green uppercase tracking-widest flex items-center gap-2">
+                      <BedDouble size={14} className="text-solar-gold"/> {room.name}
+                    </span>
+                     <span className="text-[9px] font-bold bg-white text-slate-500 px-2 py-1 rounded-full uppercase tracking-widest border border-slate-200 shadow-sm">
+                      Lotação: {roomGuests.length} de {maxCapacity}
+                    </span>
+                  </div>
+
+                  <div className="p-4 space-y-3">
+                    {roomGuests.map((guest, idx) => {
+                      // Precisamos achar o indice real desse hospede no array principal de additionalGuests
+                      // para não quebrar o setErrors e a lógica de edição.
+                      const globalIndex = additionalGuests.findIndex(ag => ag === guest);
+
+                      return (
+                        <div key={globalIndex} className="flex gap-2 items-start bg-white p-3 rounded-xl border border-slate-200 relative animate-in slide-in-from-left-2 shadow-sm">
+                          <div className="flex-1 space-y-1">
+                            <label className={`text-[9px] font-bold uppercase tracking-widest block ${errors[`guest_${globalIndex}`] ? 'text-red-500' : 'text-slate-400'}`}>Nome do Acompanhante</label>
+                            <input
+                              value={guest.name}
+                              onChange={e => {
+                                const updated = [...additionalGuests];
+                                updated[globalIndex].name = e.target.value.toUpperCase();
+                                setAdditionalGuests(updated);
+                                if (errors[`guest_${globalIndex}`]) {
+                                  setErrors(prev => { const newErrors = { ...prev }; delete newErrors[`guest_${globalIndex}`]; return newErrors; });
+                                }
+                              }}
+                              placeholder="Nome completo"
+                              className={`w-full p-2 bg-slate-50 border rounded-lg outline-none text-xs uppercase ${errors[`guest_${globalIndex}`] ? 'border-red-500 ring-1 ring-red-100 bg-red-50/10' : 'focus:border-solar-gold border-slate-200'}`}
+                            />
+                            {errors[`guest_${globalIndex}`] && <span className="text-[9px] text-red-500 font-bold uppercase">{errors[`guest_${globalIndex}`]}</span>}
+                          </div>
+
+                          <div className="w-28 md:w-36 space-y-1">
+                            <label className="text-[9px] font-bold uppercase tracking-widest block text-slate-400">Tipo</label>
+                            <div className="relative">
+                              <select
+                                value={guest.age}
+                                onChange={e => {
+                                  const updated = [...additionalGuests];
+                                  updated[globalIndex].age = e.target.value;
+                                  setAdditionalGuests(updated);
+                                }}
+                                className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none text-xs focus:border-solar-gold cursor-pointer appearance-none"
+                              >
+                                <option value="Adulto/Mais de 6 anos">Adulto (+6)</option>
+                                <option value="Criança até 6 anos (Colo)">Criança (Colo)</option>
+                              </select>
+                              <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => setAdditionalGuests(prev => prev.filter((_, i) => i !== globalIndex))}
+                            className="mt-4 p-2 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100 ml-1"
+                            title="Remover acompanhante desta Suíte"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      );
+                    })}
+
+                    {roomGuests.length < maxCapacity && (
+                      <button
+                        onClick={() => setAdditionalGuests(prev => [...prev, { name: '', age: 'Adulto/Mais de 6 anos', roomId: room.id, roomName: room.name }])}
+                        className="w-full py-3 border border-dashed border-slate-300 hover:border-solar-gold text-slate-400 hover:text-solar-gold rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 group bg-white hover:bg-solar-gold/5"
+                      >
+                        <Plus size={14} className="group-hover:scale-125 transition-transform" /> Adicionar na {room.name}
+                      </button>
+                    )}
+
+                    {roomGuests.length === maxCapacity && (
+                      <p className="text-[9px] text-slate-400 flex items-center gap-1 justify-center mt-2 uppercase tracking-widest"><CheckCircle size={10} className="text-green-500"/> Lotação máxima preenchida</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {/* --- FIM: Seção de Hóspedes Adicionais por Quarto --- */}
+
+        <div className="space-y-4 pt-6 border-t border-slate-100">
           <h3 className="font-bold text-solar-green uppercase tracking-widest text-xs flex items-center gap-2"><CreditCard size={18} className="text-solar-gold" /> Escolha como pagar</h3>
           <div className="flex gap-4">
             <button onClick={() => setPaymentMethod('PIX')} className={`flex-1 p-6 rounded-xl border-2 flex flex-col items-center gap-3 transition-all ${paymentMethod === 'PIX' ? 'border-solar-gold bg-solar-gold/5 shadow-inner' : 'border-slate-100 text-slate-400 grayscale'}`}>

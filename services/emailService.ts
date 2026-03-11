@@ -72,6 +72,31 @@ const generateClientEmailHTML = (reservation: Reservation): string => {
   `).join('')
     : '<li style="color: #666;">Nenhum serviço extra</li>';
 
+  // Agrupar acompanhantes por Quarto
+  let guestsHTML = '<li style="color: #666;">Apenas o titular da reserva</li>';
+  if (reservation.additionalGuests && reservation.additionalGuests.length > 0) {
+    // Pegar nomes únicos dos quartos
+    const uniqueRooms = Array.from(new Set(reservation.additionalGuests.map(g => g.roomName)));
+    
+    guestsHTML = uniqueRooms.map(roomName => {
+      const gInRoom = reservation.additionalGuests.filter(g => g.roomName === roomName);
+      const listItems = gInRoom.map(guest => `
+        <li style="margin-bottom: 4px;">
+          <strong style="color: #1a3c34;">${guest.name}</strong> - <span style="font-size: 13px; color: #64748b;">${guest.age}</span>
+        </li>
+      `).join('');
+
+      return `
+        <div style="margin-bottom: 12px;">
+          <h4 style="color: #1a3c34; margin: 0 0 6px 0; font-size: 14px; text-transform: uppercase; font-weight: bold;">Na ${roomName}</h4>
+          <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">
+            ${listItems}
+          </ul>
+        </div>
+      `;
+    }).join('');
+  }
+
   // Seção de pagamento
   let paymentSection = '';
   if (isPix) {
@@ -220,6 +245,14 @@ const generateClientEmailHTML = (reservation: Reservation): string => {
           ${roomsHTML}
         </ul>
       </div>
+
+      <!-- Acompanhantes -->
+      <div style="margin-bottom: 24px;">
+        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px;">
+          👥 Acompanhantes Incluídos
+        </h3>
+        ${reservation.additionalGuests && reservation.additionalGuests.length > 0 ? guestsHTML : '<ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;"><li>Apenas o Titular</li></ul>'}
+      </div>
       
       <!-- Serviços Extras -->
       <div style="margin-bottom: 24px;">
@@ -322,6 +355,28 @@ const generateHotelEmailHTML = (reservation: Reservation): string => {
       `).join('')
     : '<li>Nenhum serviço extra</li>';
 
+  // Agrupar acompanhantes por quarto (Recepção)
+  let adminGuestsHTML = '<li>Apenas o titular</li>';
+  if (reservation.additionalGuests && reservation.additionalGuests.length > 0) {
+    const uniqueRooms = Array.from(new Set(reservation.additionalGuests.map(g => g.roomName)));
+    
+    adminGuestsHTML = uniqueRooms.map(roomName => {
+      const gInRoom = reservation.additionalGuests.filter(g => g.roomName === roomName);
+      const listItems = gInRoom.map(guest => `
+        <li style="margin-bottom: 4px;"><strong>${guest.name}</strong> (${guest.age})</li>
+      `).join('');
+
+      return `
+        <div style="margin-bottom: 8px;">
+          <h4 style="color: #1e293b; margin: 0 0 6px 0; font-size: 14px; text-decoration: underline;">${roomName}</h4>
+          <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.4;">
+            ${listItems}
+          </ul>
+        </div>
+      `;
+    }).join('');
+  }
+
   return `
 <!DOCTYPE html>
 <html>
@@ -354,12 +409,20 @@ const generateHotelEmailHTML = (reservation: Reservation): string => {
       <!-- Dados do Hóspede -->
       <div style="margin-bottom: 24px;">
         <h2 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 18px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
-          Dados do Hóspede
+          Dados do Titular
         </h2>
         <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Nome:</strong> ${reservation.mainGuest.name}</p>
         <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Email:</strong> <a href="mailto:${reservation.mainGuest.email}" style="color: #d4a853;">${reservation.mainGuest.email}</a></p>
         <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Telefone:</strong> ${reservation.mainGuest.phone}</p>
         <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">CPF:</strong> ${reservation.mainGuest.cpf}</p>
+      </div>
+
+      <!-- Acompanhantes -->
+      <div style="margin-bottom: 24px;">
+        <h2 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+          Acompanhantes Cadastrados
+        </h2>
+        ${reservation.additionalGuests && reservation.additionalGuests.length > 0 ? adminGuestsHTML : '<ul style="color: #475569; margin: 0; padding-left: 20px;"><li>Apenas o Titular</li></ul>'}
       </div>
       
       <!-- Detalhes da Reserva -->

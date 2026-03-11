@@ -114,6 +114,8 @@ export interface ReservationGuest {
   age?: string;
   email?: string;
   phone?: string;
+  roomId?: string;
+  roomName?: string;
 }
 
 export interface Reservation {

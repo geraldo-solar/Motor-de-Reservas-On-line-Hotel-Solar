@@ -38,8 +38,7 @@ export default function App() {
     upsertRoom, upsertRooms, deleteRoom,
     upsertPackage, deletePackage,
     upsertExtra, deleteExtra,
-    upsertDiscount, deleteDiscount,
-    refreshData
+    upsertDiscount, deleteDiscount
   } = useSupabaseData();
 
   const [selectedRooms, setSelectedRooms] = useState<Room[]>([]);
@@ -809,7 +808,6 @@ export default function App() {
                   onUpsertDiscount={upsertDiscount}
                   onDeleteDiscount={deleteDiscount}
                   isSaving={isSaving}
-                  onRefreshData={refreshData}
                   onLogout={async () => {
                     await logout();
                     setCurrentView(ViewState.HOME);
