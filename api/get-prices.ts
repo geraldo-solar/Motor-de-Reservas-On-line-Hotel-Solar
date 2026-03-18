@@ -115,9 +115,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       summaryText += "Não há quartos disponíveis para este período.";
     }
 
+    const safeSummary = summaryText.replace(/\n/g, " ||| ");
+
     return res.status(200).json({ 
         message: 'Success', 
-        prices_summary: summaryText,
+        prices_summary: safeSummary,
         discount_applied: activePackage ? true : false,
         package_name: activePackage ? activePackage.name : null
     });
