@@ -45,6 +45,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const activePackage = packages?.find(p => p.start_iso_date === checkIn && p.end_iso_date === checkOut);
 
     let summaryText = `Orçamento para ${nights} ${nights === 1 ? 'diária' : 'diárias'} (${checkIn} a ${checkOut}):\n\n`;
+
+    if (activePackage) {
+      let pkgInfo = `\n🎉 PACOTE ESPECIAL ATIVO: ${activePackage.name}\n`;
+      if (activePackage.description) pkgInfo += `Detalhes: ${activePackage.description}\n`;
+      if (activePackage.benefits && activePackage.benefits.length > 0) {
+        pkgInfo += `Benefícios Inclusos:\n- ${activePackage.benefits.join('\n- ')}\n`;
+      }
+      if (activePackage.includes && activePackage.includes.length > 0) {
+        pkgInfo += `Programação/Inclusos:\n- ${activePackage.includes.join('\n- ')}\n`;
+      }
+      summaryText = pkgInfo + '\n' + summaryText;
+    }
+
     let availableCount = 0;
 
     for (const room of rooms) {
