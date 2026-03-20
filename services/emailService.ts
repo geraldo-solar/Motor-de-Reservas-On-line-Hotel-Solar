@@ -11,7 +11,7 @@ import { formatDisplayDate } from '../utils/dateUtils';
 // Não expomos mais a chave no cliente.
 
 // Configurações do Hotel
-const HOTEL_CONFIG = {
+export const HOTEL_CONFIG = {
   name: 'Hotel Solar',
   email: 'geraldo@hotelsolar.tur.br',
   adminEmail: 'reserva@hotelsolar.tur.br',
@@ -50,7 +50,7 @@ const getShortReservationId = (id: string): string => {
 };
 
 // Template de e-mail para o cliente
-const generateClientEmailHTML = (reservation: Reservation): string => {
+export const generateClientEmailHTML = (reservation: Reservation): string => {
   const shortId = getShortReservationId(reservation.id);
   const isPix = reservation.paymentMethod === 'PIX';
 
@@ -331,7 +331,7 @@ const generateClientEmailHTML = (reservation: Reservation): string => {
 };
 
 // Template de e-mail para o hotel (notificação de nova reserva)
-const generateHotelEmailHTML = (reservation: Reservation): string => {
+export const generateHotelEmailHTML = (reservation: Reservation): string => {
   const shortId = getShortReservationId(reservation.id);
 
   // Determinar forma de pagamento

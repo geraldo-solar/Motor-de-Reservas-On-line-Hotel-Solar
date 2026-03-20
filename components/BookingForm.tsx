@@ -17,6 +17,7 @@ interface BookingFormProps {
   onBack: () => void;
   isSaving?: boolean;
   submissionError?: string | null;
+  draftPayload?: any;
 }
 
 const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -72,7 +73,8 @@ const BookingForm: React.FC<BookingFormProps> = ({
   onAddReservation,
   onBack,
   isSaving = false,
-  submissionError = null
+  submissionError = null,
+  draftPayload = null
 }) => {
   const [step, setStep] = useState(1);
   const [discountCode, setDiscountCode] = useState('');
@@ -102,12 +104,33 @@ const BookingForm: React.FC<BookingFormProps> = ({
 
   // ID persistente para evitar duplicidade em caso de retentativa/instabilidade de rede
   const [persistentId] = useState(() => {
-    return (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+    return draftPayload?.id || ((typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
       ? crypto.randomUUID()
-      : 'RES-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+      : 'RES-' + Math.random().toString(36).substring(2, 9).toUpperCase());
   });
 
   const formTopRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (draftPayload) {
+      setName(draftPayload.mainGuest?.name || '');
+      setEmail(draftPayload.mainGuest?.email || '');
+      setPhone(draftPayload.mainGuest?.phone || '');
+      setCpf(draftPayload.mainGuest?.cpf || '');
+      if (draftPayload.additionalGuests) {
+        setAdditionalGuests(draftPayload.additionalGuests);
+      }
+      setPaymentMethod('CREDIT_CARD');
+      if (draftPayload.observations) {
+        setObservations(draftPayload.observations);
+      }
+      setStep(2);
+
+      setTimeout(() => {
+        formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 500);
+    }
+  }, [draftPayload]);
 
   const nights = initialCheckIn && initialCheckOut
     ? Math.max(1, Math.ceil((initialCheckOut.getTime() - initialCheckIn.getTime()) / (1000 * 60 * 60 * 24)))

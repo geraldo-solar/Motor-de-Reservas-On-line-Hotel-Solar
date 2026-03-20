@@ -51,6 +51,7 @@ export default function App() {
   const [zoomData, setZoomData] = useState<{ images: string[], index: number } | null>(null);
   const [cancellationReservationId, setCancellationReservationId] = useState<string>('');
   const [preCheckinReservationId, setPreCheckinReservationId] = useState<string>('');
+  const [draftPayload, setDraftPayload] = useState<any>(null);
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [offlineCount, setOfflineCount] = useState(offlineQueue.getPendingCount());
@@ -145,6 +146,24 @@ export default function App() {
       if (id) {
         setPreCheckinReservationId(id);
         setCurrentView(ViewState.PRE_CHECKIN);
+      }
+    }
+
+    // Parse AI Draft Link
+    const draftParam = params.get('draft');
+    if (draftParam) {
+      try {
+        const decodedStr = decodeURIComponent(escape(atob(draftParam)));
+        const parsed = JSON.parse(decodedStr);
+        setDraftPayload(parsed);
+        
+        // Setup initial state from draft
+        setCheckIn(parseISODate(parsed.checkIn));
+        setCheckOut(parseISODate(parsed.checkOut));
+        setSelectedRooms(parsed.rooms);
+        setCurrentView(ViewState.BOOKING);
+      } catch (err) {
+        console.error('Error parsing draft link:', err);
       }
     }
   }, []);
@@ -739,6 +758,7 @@ export default function App() {
                 isSaving={isSaving}
                 submissionError={submissionError}
                 onBack={() => handleNavigate(ViewState.HOME)}
+                draftPayload={draftPayload}
               />
             </div>
           )

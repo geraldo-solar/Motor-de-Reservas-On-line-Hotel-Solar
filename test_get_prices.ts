@@ -1,8 +1,10 @@
-import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+import path from 'path';
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
   throw new Error("Missing Supabase credentials in environment variables.");
@@ -10,17 +12,7 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed. Use POST.' });
-  }
-
-  const { checkIn, checkOut, guests } = req.body;
-
-  if (!checkIn || !checkOut) {
-    return res.status(400).json({ error: 'Missing checkIn or checkOut dates.' });
-  }
-
+async function testHandler(checkIn: string, checkOut: string, guests: number) {
   try {
     const ci = new Date(checkIn);
     const co = new Date(checkOut);
@@ -30,46 +22,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const nights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
     if (nights <= 0) {
-      return res.status(400).json({ error: 'Check-out date must be after check-in date.' });
+      console.log('Error: Check-out date must be after check-in date.');
+      return;
     }
 
     // Busca quartos e pacotes do Supabase
-    const { data: rooms } = await supabase.from('room_types').select('*').eq('active', true);
-    const { data: packages } = await supabase.from('packages').select('*').eq('active', true);
+    const { data: rooms, error: roomsError } = await supabase.from('room_types').select('*').eq('active', true);
+    const { data: packages, error: packagesError } = await supabase.from('packages').select('*').eq('active', true);
 
-    if (!rooms) {
-      return res.status(500).json({ error: 'Failed to fetch rooms from Supabase.' });
+    if (roomsError) {
+      console.log('Failed to fetch rooms from Supabase.', roomsError);
+      return;
     }
 
     // Verifica se algum pacote ativo casa exatamente com as datas pesquisadas
     const activePackage = packages?.find(p => p.start_iso_date === checkIn && p.end_iso_date === checkOut);
 
     let summaryText = `Orçamento para ${nights} ${nights === 1 ? 'diária' : 'diárias'} (${checkIn} a ${checkOut}):\n\n`;
-
-    if (activePackage) {
-      let pkgInfo = `\n🎉 PACOTE ESPECIAL ATIVO: ${activePackage.name}\n`;
-      if (activePackage.description) pkgInfo += `Detalhes: ${activePackage.description}\n`;
-      if (activePackage.benefits && activePackage.benefits.length > 0) {
-        pkgInfo += `Benefícios Inclusos:\n- ${activePackage.benefits.join('\n- ')}\n`;
-      }
-      if (activePackage.includes && activePackage.includes.length > 0) {
-        pkgInfo += `Programação/Inclusos:\n- ${activePackage.includes.join('\n- ')}\n`;
-      }
-      summaryText = pkgInfo + '\n' + summaryText;
-    }
-
     let availableCount = 0;
 
     for (const room of rooms) {
-      // Filtragem por capacidade se quiser restrição forte, mas como o Assistente já sabe, ele pode lidar com isso.
-      // let capacity = room.capacity || 2;
-      // if (guests && guests > capacity) continue;
-
       let total = 0;
       let isAvailable = true;
       let reason = '';
-      
-      let minRemainingQty = 9999;
       
       const current = new Date(ci);
       
@@ -92,13 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         const availableQty = override?.availableQuantity !== undefined ? override.availableQuantity : room.totalQuantity;
-        const remainingQty = availableQty;
-
-        if (remainingQty < minRemainingQty) {
-          minRemainingQty = remainingQty;
-        }
-
-        if (remainingQty <= 0) {
+        if (availableQty <= 0) {
           isAvailable = false;
           reason = 'Esgotado em uma das datas';
           break;
@@ -126,7 +95,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         if (isAvailable) {
-            summaryText += `- **${room.name}** (Até ${room.capacity} pessoas): R$ ${Math.round(finalPrice).toLocaleString('pt-BR')} total por quarto. (Restam apenas ${minRemainingQty} unidades)\n`;
+            summaryText += `- **${room.name}** (Até ${room.capacity} pessoas): R$ ${Math.round(finalPrice).toLocaleString('pt-BR')} total.\n`;
             availableCount++;
         }
       }
@@ -136,17 +105,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       summaryText += "Não há quartos disponíveis para este período.";
     }
 
-    const safeSummary = summaryText.replace(/\n/g, " ||| ");
-
-    return res.status(200).json({ 
+    console.log(JSON.stringify({ 
         message: 'Success', 
-        prices_summary: safeSummary,
+        prices_summary: summaryText,
         discount_applied: activePackage ? true : false,
         package_name: activePackage ? activePackage.name : null
-    });
+    }, null, 2));
 
   } catch (error: any) {
     console.error("API Error:", error);
-    return res.status(500).json({ error: error.message });
   }
 }
+
+testHandler('2026-05-12', '2026-05-15', 2);
