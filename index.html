@@ -130,6 +130,13 @@
 <body class="bg-[#F9F8F6] text-slate-800 antialiased selection:bg-solar-gold selection:text-white">
   <div id="root"></div>
   <div id="error-overlay"></div>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for(let registration of registrations) { registration.unregister(); }
+      }).catch(function(err) { console.error('SW cleanup fail:', err); });
+    }
+  </script>
   <script type="module" src="/index.tsx"></script>
 </body>
 

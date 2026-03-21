@@ -158,6 +158,14 @@ export default function App() {
           const { data, error } = await supabase.from('reservations').select('*').eq('id', paymentId).single();
           if (error || !data) throw error;
           
+          const mappedRooms = (data.rooms || []).map((draftRoom: any) => {
+            const actualRoom = rooms.find((r) => r.name === draftRoom.name || r.id === draftRoom.id);
+            return {
+              ...(actualRoom || draftRoom),
+              priceSnapshot: draftRoom.priceSnapshot || (actualRoom ? actualRoom.price : 0)
+            };
+          }).filter((r: any) => !!r);
+          
           const parsed = {
             id: data.id,
             checkIn: data.check_in,
@@ -166,7 +174,7 @@ export default function App() {
             additionalGuests: data.additional_guests || [],
             observations: (data.observations || '').replace('[ORIGEM: AI CHATBOT] ', ''),
             extraServices: data.extras || [],
-            rooms: data.rooms || [],
+            rooms: mappedRooms,
             totalPrice: data.total_price,
             isSupabaseDraft: true
           };
@@ -174,7 +182,7 @@ export default function App() {
           setDraftPayload(parsed);
           setCheckIn(parseISODate(parsed.checkIn));
           setCheckOut(parseISODate(parsed.checkOut));
-          setSelectedRooms(parsed.rooms);
+          setSelectedRooms(mappedRooms);
           setCurrentView(ViewState.BOOKING);
         } catch (err: any) {
           console.error('Error fetching Supabase draft:', err);
