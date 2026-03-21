@@ -22,6 +22,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { DateSelectorBar } from './components/DateSelectorBar';
 import { RoomGallery } from './components/RoomGallery';
 import { PreCheckinPage } from './components/PreCheckinPage';
+import { supabase } from './lib/supabase';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.HOME);
@@ -149,13 +150,46 @@ export default function App() {
       }
     }
 
-    // Parse AI Draft Link
+    // New Routing for Secure Checkout Micro-URIs
+    const paymentId = params.get('paymentId');
+    if (paymentId) {
+      const loadDraftFromSupabase = async () => {
+        try {
+          const { data, error } = await supabase.from('reservations').select('*').eq('id', paymentId).single();
+          if (error || !data) throw error;
+          
+          const parsed = {
+            id: data.id,
+            checkIn: data.check_in,
+            checkOut: data.check_out,
+            mainGuest: data.main_guest,
+            additionalGuests: data.additional_guests || [],
+            observations: (data.observations || '').replace('[ORIGEM: AI CHATBOT] ', ''),
+            extraServices: data.extras || [],
+            rooms: data.rooms || [],
+            totalPrice: data.total_price,
+            isSupabaseDraft: true
+          };
+          
+          setDraftPayload(parsed);
+          setCheckIn(parseISODate(parsed.checkIn));
+          setCheckOut(parseISODate(parsed.checkOut));
+          setSelectedRooms(parsed.rooms);
+          setCurrentView(ViewState.BOOKING);
+        } catch (err: any) {
+          console.error('Error fetching Supabase draft:', err);
+          alert('Este link de pagamento expirou ou é inválido. Por favor solicite outra reserva via Chatbot.');
+        }
+      };
+      loadDraftFromSupabase();
+      return;
+    }
+
+    // Legacy Routing for Base64 (Will be progressively phased out by backend changes)
     const draftParam = params.get('draft');
     if (draftParam) {
       try {
-        // Handle Base64Url variants to prevent WhatsApp link truncation corruptions
         let base64Draft = draftParam.replace(/-/g, '+').replace(/_/g, '/');
-        // Pad strictly with equal signs to prevent DOMException inside atob
         while (base64Draft.length % 4) {
           base64Draft += '=';
         }
@@ -163,14 +197,13 @@ export default function App() {
         const parsed = JSON.parse(decodedStr);
         setDraftPayload(parsed);
         
-        // Setup initial state from draft
         setCheckIn(parseISODate(parsed.checkIn));
         setCheckOut(parseISODate(parsed.checkOut));
         setSelectedRooms(parsed.rooms);
         setCurrentView(ViewState.BOOKING);
       } catch (err: any) {
-        console.error('Error parsing draft link:', err);
-        alert('Erro ao abrir link da reserva: ' + err.message + '\n\nIsso ocorre se o link do bot estiver quebrado ou incompleto. Se o link estiver cortado no meio, o WhatsApp não carregou ele inteiro.');
+        console.error('Error parsing legacy draft link:', err);
+        alert('Erro ao abrir link da reserva: ' + err.message + '\n\nO limite do seu robô estrangulou e destruiu o texto seguro da URL.');
       }
     }
   }, []);

@@ -619,7 +619,15 @@ export const useSupabaseData = () => {
       };
 
       // Tenta salvar no Supabase
-      const { error: insertError } = await supabase.from('reservations').insert(dataToSave);
+      let insertError = null;
+
+      if (reservation.isSupabaseDraft) {
+        const { error } = await supabase.from('reservations').upsert(dataToSave, { onConflict: 'id' });
+        insertError = error;
+      } else {
+        const { error } = await supabase.from('reservations').insert(dataToSave);
+        insertError = error;
+      }
 
       if (insertError) {
         // Se for erro de rede, enfileira e finge sucesso (otimismo)
@@ -628,13 +636,13 @@ export const useSupabaseData = () => {
           console.warn('[Offline] Rede indisponível (ou erro de Load failed). Enfileirando reserva...');
           await offlineQueue.enqueue({
             table: 'reservations',
-            action: 'INSERT',
+            action: reservation.isSupabaseDraft ? 'UPSERT' : 'INSERT',
             data: dataToSave
           });
 
           // Atualiza estado local otimista
-          setReservationsState(prev => [reservation, ...prev].slice(0, 500));
-          saveToStorage(STORAGE_KEYS.reservations, [reservation, ...reservations].slice(0, 500));
+          setReservationsState(prev => [reservation, ...prev.filter(r => r.id !== reservation.id)].slice(0, 500));
+          saveToStorage(STORAGE_KEYS.reservations, [reservation, ...reservations.filter(r => r.id !== reservation.id)].slice(0, 500));
           return { success: true };
         }
 

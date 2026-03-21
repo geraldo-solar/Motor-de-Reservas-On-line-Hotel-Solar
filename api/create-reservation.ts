@@ -39,13 +39,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const reservationId = generateSafeUUID();
 
     const isCreditCard = ['CREDIT_CARD', 'CARTAO_DE_CREDITO', 'CARTÃO DE CRÉDITO', 'CARTAO', 'CARTÃO'].includes((paymentMethod || '').toString().toUpperCase());
-    if (isCreditCard) {
-      const draftPayload = { id: reservationId, checkIn, checkOut, mainGuest, additionalGuests, observations, extraServices, rooms, totalPrice };
-      const base64Draft = Buffer.from(JSON.stringify(draftPayload)).toString('base64');
-      const base64UrlSafe = base64Draft.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-      const draftUrl = `https://motor-de-reservas-on-line-hotel-sol.vercel.app/?draft=${base64UrlSafe}`;
-      return res.status(200).json({ success: true, message: `Link seguro: ${draftUrl}`, paymentLink: draftUrl, isDraft: true });
-    }
 
     const start = new Date(checkIn);
     const end = new Date(checkOut);
@@ -65,12 +58,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       rooms: rooms,
       extras: extraServices,
       total_price: totalPrice,
-      payment_method: 'PIX',
+      payment_method: isCreditCard ? 'CREDIT_CARD' : 'PIX',
       status: 'PENDING'
     };
 
     const { data, error } = await supabase.from('reservations').insert(dataToSave).select().single();
     if (error) return res.status(500).json({ error: error.message });
+
+
 
     // Inventory Decrement
     try {
@@ -255,18 +250,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       emailDebugInfo.statuses = [];
 
-      await executeBrevoStictly({
-        sender: { name: 'Hotel Solar', email: hotelEmail },
-        to: [{ email: mainGuest.email || 'geraldo@hotelsolar.tur.br', name: mainGuest.name }],
-        subject: `Confirmação de Reserva #${shortId} - Hotel Solar`,
-        htmlContent: luxuryClientHtml,
-      });
+      if (!isCreditCard) {
+        await executeBrevoStictly({
+          sender: { name: 'Hotel Solar', email: hotelEmail },
+          to: [{ email: mainGuest.email || 'geraldo@hotelsolar.tur.br', name: mainGuest.name }],
+          subject: `Confirmação de Reserva #${shortId} - Hotel Solar`,
+          htmlContent: luxuryClientHtml,
+        });
 
-      await executeBrevoStictly({
-        sender: { name: 'Sistema de Reservas AI', email: hotelEmail },
-        to: [{ email: adminEmail, name: 'Administração Hotel Solar' }],
-        subject: `🤖 Nova Reserva AI #${shortId} - ${mainGuest.name}`,
-        htmlContent: luxuryHotelHtml,
+        await executeBrevoStictly({
+          sender: { name: 'Sistema de Reservas AI', email: hotelEmail },
+          to: [{ email: adminEmail, name: 'Administração Hotel Solar' }],
+          subject: `🤖 Nova Reserva AI #${shortId} - ${mainGuest.name}`,
+          htmlContent: luxuryHotelHtml,
+        });
+      }
+    }
+
+    if (isCreditCard) {
+      const draftUrl = `https://motor-de-reservas-on-line-hotel-sol.vercel.app/?paymentId=${reservationId}`;
+      return res.status(200).json({ 
+        success: true, 
+        message: `Link seguro: ${draftUrl}`, 
+        paymentLink: draftUrl, 
+        isDraft: true,
+        emailDebug: emailDebugInfo 
       });
     }
 

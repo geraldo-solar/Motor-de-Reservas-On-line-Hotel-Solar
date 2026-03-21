@@ -144,4 +144,5 @@ export interface Reservation {
   cancellationReason?: string;
   amountPaid?: number;
   paymentHistory?: { date: string; amount: number; user?: string }[];
+  isSupabaseDraft?: boolean;
 }
