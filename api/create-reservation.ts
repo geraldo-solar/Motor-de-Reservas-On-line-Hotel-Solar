@@ -1,257 +1,152 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-// import { generateUUID } from '../utils/uuid';
-// import { generateClientEmailHTML, generateHotelEmailHTML, HOTEL_CONFIG } from '../services/emailService';
+
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error("Missing Supabase credentials in environment variables.");
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS Headers
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
-  );
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
+    return res.status(405).json({ error: 'Method Not Allowed. Use POST.' });
   }
 
-  // Configure Supabase INSIDE handler to intercept loader errors.
-  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+  const { checkIn, checkOut, guests } = req.body;
 
-  if (!supabaseUrl || !supabaseKey) {
-    console.error("Missing Supabase credentials");
-    return res.status(500).json({ error: "Missing Supabase credentials" });
+  if (!checkIn || !checkOut) {
+    return res.status(400).json({ error: 'Missing checkIn or checkOut dates.' });
   }
-
-  const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
-    const { 
-      checkIn, 
-      checkOut, 
-      rooms, 
-      mainGuest, 
-      additionalGuests, 
-      totalPrice, 
-      observations = "",
-      paymentMethod = "PIX"
-    } = req.body;
-
-    if (!checkIn || !checkOut || !rooms || !mainGuest || !mainGuest.name) {
-      return res.status(400).json({ error: 'Missing required fields (checkIn, checkOut, rooms, mainGuest)' });
-    }
-
-    // Generate unique ID
-    const reservationId = 'res-' + Math.random().toString(36).substring(2, 10);
-
-    // If Credit Card, do NOT insert yet. Return a magic checkout link.
-    const isCreditCard = ['CREDIT_CARD', 'CARTAO_DE_CREDITO', 'CARTÃO DE CRÉDITO', 'CARTAO', 'CARTÃO'].includes((paymentMethod || '').toString().toUpperCase());
+    const ci = new Date(checkIn);
+    const co = new Date(checkOut);
     
-    if (isCreditCard) {
-      const draftPayload = {
-        id: reservationId, // Assign a pre-generated ID so it doesn't double-insert later
-        checkIn,
-        checkOut,
-        mainGuest,
-        additionalGuests,
-        observations,
-        rooms,
-        totalPrice
-      };
-      
-      const base64Draft = Buffer.from(JSON.stringify(draftPayload)).toString('base64');
-      const draftUrl = `https://motor-de-reservas-on-line-hotel-sol.vercel.app/?draft=${base64Draft}`;
-      
-      return res.status(200).json({
-        success: true,
-        message: `Por favor, realize o pagamento no cartão de crédito acessando o link seguro: ${draftUrl}`,
-        paymentLink: draftUrl,
-        isDraft: true
-      });
-    }
-
-    // Calculate nights for PIX
-    const start = new Date(checkIn);
-    const end = new Date(checkOut);
-    const diffTime = Math.abs(end.getTime() - start.getTime());
+    // Calcula o número de diárias
+    const diffTime = Math.abs(co.getTime() - ci.getTime());
     const nights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    const dataToSave = {
-      id: reservationId,
-      created_at: new Date().toISOString(),
-      check_in: checkIn,
-      check_out: checkOut,
-      nights: nights,
-      main_guest: {
-        name: mainGuest.name,
-        email: mainGuest.email || '',
-        phone: mainGuest.phone || '',
-        cpf: mainGuest.cpf || ''
-      },
-      additional_guests: additionalGuests || [],
-      discount_applied: null,
-      package_discount_applied: null,
-      observations: `[ORIGEM: AI CHATBOT] ${observations}`,
-      rooms: rooms,
-      extras: [],
-      total_price: totalPrice,
-      payment_method: 'PIX', // Default
-      status: 'PENDING'
-    };
-
-    console.log('[API/Create-Reservation] Inserting:', dataToSave);
-
-    const { data, error } = await supabase
-      .from('reservations')
-      .insert(dataToSave)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('[API/Create-Reservation] Supabase error:', error);
-      return res.status(500).json({ error: error.message });
+    
+    if (nights <= 0) {
+      return res.status(400).json({ error: 'Check-out date must be after check-in date.' });
     }
 
-    // --- SINCRONIZAÇÃO DE INVENTÁRIO (DECREMENTO) ---
-    try {
-      if (rooms && rooms.length > 0) {
-        for (const roomSnapshot of rooms) {
-          // Achar a categoria pelo nome (pois a IA não envia UUID)
-          const { data: roomTypes } = await supabase
-             .from('room_types')
-             .select('*')
-             .ilike('name', `%${roomSnapshot.name}%`);
-          
-          if (roomTypes && roomTypes.length > 0) {
-            const currentRoom = roomTypes[0];
-            const checkInDate = new Date(checkIn);
-            const checkOutDate = new Date(checkOut);
-            const updatedOverrides = [...(currentRoom.overrides || [])];
+    // Busca quartos e pacotes do Supabase
+    const { data: rooms } = await supabase.from('room_types').select('*').eq('active', true);
+    const { data: packages } = await supabase.from('packages').select('*').eq('active', true);
 
-            let current = new Date(checkInDate);
-            while (current < checkOutDate) {
-              const iso = current.toISOString().split('T')[0];
-              const ovIndex = updatedOverrides.findIndex(o => o.dateIso === iso);
+    if (!rooms) {
+      return res.status(500).json({ error: 'Failed to fetch rooms from Supabase.' });
+    }
 
-              if (ovIndex >= 0) {
-                const currentQty = updatedOverrides[ovIndex].availableQuantity ?? currentRoom.total_quantity;
-                updatedOverrides[ovIndex] = {
-                  ...updatedOverrides[ovIndex],
-                  availableQuantity: Math.max(0, currentQty - 1)
-                };
-              } else {
-                updatedOverrides.push({
-                  dateIso: iso,
-                  price: currentRoom.base_price,
-                  availableQuantity: Math.max(0, (currentRoom.total_quantity || 1) - 1),
-                  isClosed: false
-                });
-              }
-              current.setDate(current.getDate() + 1);
-            }
-            await supabase.from('room_types').update({ overrides: updatedOverrides }).eq('id', currentRoom.id);
-            console.log(`[API/Create-Reservation] Estoque decrescido para: ${currentRoom.name}`);
-          }
-        }
+    // Verifica se algum pacote ativo casa exatamente com as datas pesquisadas
+    const activePackage = packages?.find(p => p.start_iso_date === checkIn && p.end_iso_date === checkOut);
+
+    let summaryText = `Orçamento para ${nights} ${nights === 1 ? 'diária' : 'diárias'} (${checkIn} a ${checkOut}):\n\n`;
+
+    if (activePackage) {
+      let pkgInfo = `\n🎉 PACOTE ESPECIAL ATIVO: ${activePackage.name}\n`;
+      if (activePackage.description) pkgInfo += `Detalhes: ${activePackage.description}\n`;
+      if (activePackage.benefits && activePackage.benefits.length > 0) {
+        pkgInfo += `Benefícios Inclusos:\n- ${activePackage.benefits.join('\n- ')}\n`;
       }
-    } catch (invErr) {
-      console.error('[API/Create-Reservation] Erro ao decrementar estoque:', invErr);
+      if (activePackage.includes && activePackage.includes.length > 0) {
+        pkgInfo += `Programação/Inclusos:\n- ${activePackage.includes.join('\n- ')}\n`;
+      }
+      summaryText = pkgInfo + '\n' + summaryText;
     }
-    // --- FIM DA SINCRONIZAÇÃO ---
 
-    let emailDebugInfo: any = { attempted: false, skipped_reason: 'no_api_key' };
+    let availableCount = 0;
 
-    // --- ENVIAR EMAILS VIA BREVO ---
-    /*
-    const apiKey = process.env.VITE_BREVO_API_KEY || process.env.BREVO_API_KEY;
-    if (apiKey) {
-      emailDebugInfo = { attempted: true };
-      try {
-        console.log('[API/Create-Reservation] Enviando e-mails...');
+    for (const room of rooms) {
+      // Filtragem por capacidade se quiser restrição forte, mas como o Assistente já sabe, ele pode lidar com isso.
+      // let capacity = room.capacity || 2;
+      // if (guests && guests > capacity) continue;
+
+      let total = 0;
+      let isAvailable = true;
+      let reason = '';
+      
+      let minRemainingQty = 9999;
+      
+      const current = new Date(ci);
+      
+      // Checa restrição de checkin (no primeiro dia)
+      const ciIso = current.toISOString().split('T')[0];
+      const ciOverride = room.overrides?.find((o: any) => o.dateIso === ciIso);
+      if (ciOverride?.noCheckIn || ciOverride?.isClosed) {
+          isAvailable = false;
+          reason = 'Fechado para Check-in nessa data';
+      }
+
+      for (let i = 0; i < nights; i++) {
+        const iso = current.toISOString().split('T')[0];
+        const override = room.overrides?.find((o: any) => o.dateIso === iso);
         
-        // Formatar objeto reservation para o template
-        const reservationForEmail = {
-          ...dataToSave,
-          checkIn: dataToSave.check_in,
-          checkOut: dataToSave.check_out,
-          mainGuest: dataToSave.main_guest,
-          additionalGuests: dataToSave.additional_guests,
-          totalPrice: dataToSave.total_price,
-          paymentMethod: dataToSave.payment_method
-        } as any;
+        if (override?.isClosed) {
+          isAvailable = false;
+          reason = 'Esgotado em uma das datas';
+          break;
+        }
 
-        const emailPromises = [
-          // Email para o Cliente
-          fetch('https://api.brevo.com/v3/smtp/email', {
-            method: 'POST',
-            headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
-            body: JSON.stringify({
-              sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
-              to: [{ email: dataToSave.main_guest.email, name: dataToSave.main_guest.name }],
-              subject: `Confirmação de Reserva #${reservationId.substring(0,8).toUpperCase()} - Hotel Solar`,
-              htmlContent: generateClientEmailHTML(reservationForEmail),
-            }),
-          }),
-          // Email para o Hotel
-          fetch('https://api.brevo.com/v3/smtp/email', {
-            method: 'POST',
-            headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
-            body: JSON.stringify({
-              sender: { name: 'Sistema de Reservas AI', email: HOTEL_CONFIG.email },
-              to: [{ email: HOTEL_CONFIG.adminEmail, name: 'Administração Hotel Solar' }],
-              subject: `🔔 Nova Reserva AI #${reservationId.substring(0,8).toUpperCase()} - ${dataToSave.main_guest.name}`,
-              htmlContent: generateHotelEmailHTML(reservationForEmail),
-            }),
-          })
-        ];
+        const availableQty = override?.availableQuantity !== undefined ? override.availableQuantity : room.totalQuantity;
+        const remainingQty = availableQty;
 
-        const emailResponses = await Promise.allSettled(emailPromises);
-        let statuses: any[] = [];
+        if (remainingQty < minRemainingQty) {
+          minRemainingQty = remainingQty;
+        }
+
+        if (remainingQty <= 0) {
+          isAvailable = false;
+          reason = 'Esgotado em uma das datas';
+          break;
+        }
+
+        total += override?.price !== undefined ? override.price : room.base_price;
         
-        for (let i = 0; i < emailResponses.length; i++) {
-          const promiseResult = emailResponses[i];
-          if (promiseResult.status === 'fulfilled') {
-             const resFetch = promiseResult.value;
-             const text = await resFetch.text();
-             statuses.push({ ok: resFetch.ok, status: resFetch.status, text });
-             if (!resFetch.ok) {
-                console.error('[API/Create-Reservation] Email failed with status:', resFetch.status, text);
-                await supabase.from('reservations').update({ observations: dataToSave.observations + ' | BREVO_ERROR: ' + text }).eq('id', reservationId);
-             }
-          } else {
-             statuses.push({ promise_rejected: true, reason: String(promiseResult.reason) });
-             console.error('[API/Create-Reservation] Promise rejected:', promiseResult.reason);
-             await supabase.from('reservations').update({ observations: dataToSave.observations + ' | PROMISE_ERROR: ' + String(promiseResult.reason) }).eq('id', reservationId);
-          }
+        // avança o dia
+        current.setDate(current.getDate() + 1);
+      }
+
+      if (isAvailable) {
+        // Aplica o desconto do pacote se houver
+        let finalPrice = total;
+        if (activePackage && activePackage.discount_percentage) {
+            finalPrice = total * (1 - (activePackage.discount_percentage / 100));
         }
         
-        emailDebugInfo.statuses = statuses;
-        console.log('[API/Create-Reservation] E-mails enviados.');
-      } catch (err: any) {
-        emailDebugInfo.crashed = err.message;
-        console.error('[API/Create-Reservation] Erro ao enviar emails:', err);
-        await supabase.from('reservations').update({ observations: dataToSave.observations + ' | TRY_CATCH_ERROR: ' + err.message }).eq('id', reservationId);
+        // Verifica restrição de checkout no último dia
+        const coIso = co.toISOString().split('T')[0];
+        const coOverride = room.overrides?.find((o: any) => o.dateIso === coIso);
+        if (coOverride?.noCheckOut) {
+            isAvailable = false;
+            reason = 'Check-out restrito nessa data';
+        }
+
+        if (isAvailable) {
+            summaryText += `- **${room.name}** (Até ${room.capacity} pessoas): R$ ${Math.round(finalPrice).toLocaleString('pt-BR')} total por quarto. (Restam apenas ${minRemainingQty} unidades)\n`;
+            availableCount++;
+        }
       }
     }
-    */
+
+    if (availableCount === 0) {
+      summaryText += "Não há quartos disponíveis para este período.";
+    }
+
+    const safeSummary = summaryText.replace(/\n/g, " ||| ");
 
     return res.status(200).json({ 
-      success: true, 
-      message: 'Reserva criada com sucesso!',
-      reservationId: reservationId,
-      data: data,
-      emailDebug: emailDebugInfo
+        message: 'Success', 
+        prices_summary: safeSummary,
+        discount_applied: activePackage ? true : false,
+        package_name: activePackage ? activePackage.name : null
     });
 
   } catch (error: any) {
-    console.error('[API/Create-Reservation] Execution error:', error);
+    console.error("API Error:", error);
     return res.status(500).json({ error: error.message });
   }
 }
