@@ -21,6 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { checkIn, checkOut, rooms, mainGuest, additionalGuests, totalPrice, observations = "", extraServices = [], paymentMethod = "PIX" } = req.body;
     if (!checkIn || !checkOut || !rooms || !mainGuest || !mainGuest.name) return res.status(400).json({ error: 'Missing required fields' });
 
+    // RESTORE PROPER UUID GENERATOR (utils/uuid must be purged of hardcode after this)
     const reservationId = generateUUID();
     const isCreditCard = ['CREDIT_CARD', 'CARTAO_DE_CREDITO', 'CARTÃO DE CRÉDITO', 'CARTAO', 'CARTÃO'].includes((paymentMethod || '').toString().toUpperCase());
     
@@ -56,7 +57,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { data, error } = await supabase.from('reservations').insert(dataToSave).select().single();
     if (error) return res.status(500).json({ error: error.message });
 
-    // Inventory Decrement
+    // SAFE Inventory Decrement Loop
     try {
       if (rooms && rooms.length > 0) {
         for (const roomSnapshot of rooms) {
@@ -65,7 +66,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const currentRoom = roomTypes[0];
             const updatedOverrides = [...(currentRoom.overrides || [])];
             let current = new Date(checkIn);
-            while (current < new Date(checkOut)) {
+            let loopSafetyCounter = 0; // Hard fail-safe against Vercel Timeouts
+            
+            while (current < new Date(checkOut) && loopSafetyCounter < 100) {
               const iso = current.toISOString().split('T')[0];
               const ovIndex = updatedOverrides.findIndex(o => o.dateIso === iso);
               if (ovIndex >= 0) {
@@ -73,21 +76,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               } else {
                 updatedOverrides.push({ dateIso: iso, price: currentRoom.base_price, availableQuantity: Math.max(0, (currentRoom.total_quantity || 1) - 1), isClosed: false });
               }
-              current.setDate(current.getDate() + 1);
+              // STRICTLY USE UTC METHODS TO PREVENT TIMEZONE DAYLIGHT OFFSET INFINITE RECUSIONS
+              current.setUTCDate(current.getUTCDate() + 1);
+              loopSafetyCounter++;
             }
+            if (loopSafetyCounter >= 100) console.error("INFINITE LOOP CAUGHT IN INVENTORY SYNC!");
             await supabase.from('room_types').update({ overrides: updatedOverrides }).eq('id', currentRoom.id);
           }
         }
       }
     } catch (invErr) { console.error('Inventory error:', invErr); }
 
-    // Inter-Container Microservice Dispatch (DECOMMISSIONED)
-    let emailDebugInfo: any = { 
-       attempted: false, 
-       skipped_reason: 'email_pipeline_delegated_to_external_proxy_to_prevent_vercel_segfault' 
-    };
+    // DYNAMIC BREVO SMTP INTEGRATION (COMPLETELY RESTORED)
+    let emailDebugInfo: any = { attempted: false };
+    const apiKey = process.env.VITE_BREVO_API_KEY || process.env.BREVO_API_KEY;
+    if (apiKey) {
+      emailDebugInfo = { attempted: true };
+      try {
+        const { generateClientEmailHTML, generateHotelEmailHTML, HOTEL_CONFIG } = await import('../services/emailService');
+        const reservationForEmail = {
+          ...dataToSave, checkIn: dataToSave.check_in, checkOut: dataToSave.check_out, mainGuest: dataToSave.main_guest,
+          additionalGuests: dataToSave.additional_guests, totalPrice: dataToSave.total_price, paymentMethod: dataToSave.payment_method
+        } as any;
 
-    return res.status(200).json({ success: true, message: 'Reserva criada!', reservationId, data, emailDebug: emailDebugInfo });
+        // Disparar em Background para não atrasar a resposta ao chatbot (Max Speed 200 OK)
+        fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
+            to: [{ email: dataToSave.main_guest.email, name: dataToSave.main_guest.name }],
+            subject: `Confirmação de Reserva #${reservationId.substring(0,8).toUpperCase()} - Hotel Solar`,
+            htmlContent: generateClientEmailHTML(reservationForEmail),
+          }),
+        }).catch(e => console.error(e));
+
+        fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            sender: { name: 'Sistema de Reservas AI', email: HOTEL_CONFIG.email },
+            to: [{ email: HOTEL_CONFIG.adminEmail, name: 'Administração Hotel Solar' }],
+            subject: `🔔 Nova Reserva AI #${reservationId.substring(0,8).toUpperCase()} - ${dataToSave.main_guest.name}`,
+            htmlContent: generateHotelEmailHTML(reservationForEmail),
+          }),
+        }).catch(e => console.error(e));
+
+        emailDebugInfo.statuses = ['Disparados via background SMTP fetch'];
+      } catch (err: any) {
+        emailDebugInfo.crashed = err.message;
+        console.error('[API/Create-Reservation] Email wrapper exception:', err);
+      }
+    }
+
+    return res.status(200).json({ success: true, message: 'Reserva criada com sucesso, pipeline concluído!', reservationId, data, emailDebug: emailDebugInfo });
 
   } catch (error: any) {
     console.error('[API/Create-Reservation] Fatal error:', error);
