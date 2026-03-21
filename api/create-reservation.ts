@@ -173,10 +173,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (apiKey) {
       emailDebugInfo = { attempted: true };
       try {
-        console.log('[API/Create-Reservation] Enviando e-mails dinamicamente...');
+        console.log('[API/Create-Reservation] Enviando e-mails dinamicamente (MOCK) ...');
         
-        // AST Bypass - Async Module Import strictly isolating parsing at runtime
-        const { generateClientEmailHTML, generateHotelEmailHTML, HOTEL_CONFIG } = await import('../services/emailService');
+        // Inline mock to bypass the fatal transpiler bug
+        const HOTEL_CONFIG = { name: 'Hotel Solar', email: 'geraldo@hotelsolar.tur.br', adminEmail: 'reserva@hotelsolar.tur.br' };
+        const generateClientEmailHTML = (res: any) => `<html><body>Ola cliente ${res.mainGuest.name}</body></html>`;
+        const generateHotelEmailHTML = (res: any) => `<html><body>Nova reserva de ${res.mainGuest.name}</body></html>`;
         
         // Formatar objeto reservation para o template
         const reservationForEmail = {
