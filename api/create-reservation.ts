@@ -21,6 +21,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  // TEST LEVEL 1: Check if basic handler runs despite all top-level imports existing.
+  if (req.body?.testLevel === 1) {
+    return res.status(200).json({ status: 'ok', level: 1 });
+  }
+
   // Supabase setup moved inside handler to prevent Top-Level crashes
   const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -31,6 +36,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
+
+  // TEST LEVEL 2: Supabase client instantiated successfully without hanging Vercel
+  if (req.body?.testLevel === 2) {
+    return res.status(200).json({ status: 'ok', level: 2 });
+  }
 
   try {
     const { 
@@ -122,6 +132,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('[API/Create-Reservation] Supabase error:', error);
       return res.status(500).json({ error: error.message });
     }
+
+    // TEST LEVEL 4: Supabase TCP fetch strictly returned without silently eating the event loop or triggering OOM 
+    if (req.body?.testLevel === 4) {
+      return res.status(200).json({ status: 'ok', level: 4, supabaseData: data });
+    }
     */
     const data = dataToSave;
     const error = null;
@@ -172,6 +187,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('[API/Create-Reservation] Erro ao decrementar estoque:', invErr);
     }
     // --- FIM DA SINCRONIZAÇÃO ---
+
+    // TEST LEVEL 5: Supabase iterative inventory updates succeeded
+    if (req.body?.testLevel === 5) {
+      return res.status(200).json({ status: 'ok', level: 5 });
+    }
 
     let emailDebugInfo: any = { attempted: false, skipped_reason: 'no_api_key' };
 
