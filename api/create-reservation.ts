@@ -191,42 +191,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 segundos max para não estourar os 10s do Vercel
 
-        // Dispatch Client Email
-        try {
-          const res1 = await fetch('https://api.brevo.com/v3/smtp/email', {
-            method: 'POST',
-            headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
-            body: JSON.stringify({
-              sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
-              to: [{ email: dataToSave.main_guest.email, name: dataToSave.main_guest.name }],
-              subject: `Confirmação de Reserva #${reservationId.substring(0,8).toUpperCase()} - Hotel Solar`,
-              htmlContent: generateClientEmailHTML(reservationForEmail),
-            }),
-          });
-          if (!res1.ok) console.error('[API/Create-Reservation] Client Email error', await res1.text());
-        } catch (e: any) {
-          console.error('[API/Create-Reservation] Exception in Client email', e);
-        }
+        // Dispatch Client Email Asynchronously (Fire and Forget)
+        fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
+            to: [{ email: dataToSave.main_guest.email, name: dataToSave.main_guest.name }],
+            subject: `Confirmação de Reserva #${reservationId.substring(0,8).toUpperCase()} - Hotel Solar`,
+            htmlContent: generateClientEmailHTML(reservationForEmail),
+          }),
+        }).catch(e => console.error('[API/Create-Reservation] Background Email error', e));
 
-        // Dispatch Hotel Email
-        try {
-          const res2 = await fetch('https://api.brevo.com/v3/smtp/email', {
-            method: 'POST',
-            headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
-            body: JSON.stringify({
-              sender: { name: 'Sistema de Reservas AI', email: HOTEL_CONFIG.email },
-              to: [{ email: HOTEL_CONFIG.adminEmail, name: 'Administração Hotel Solar' }],
-              subject: `🔔 Nova Reserva AI #${reservationId.substring(0,8).toUpperCase()} - ${dataToSave.main_guest.name}`,
-              htmlContent: generateHotelEmailHTML(reservationForEmail),
-            }),
-          });
-          if (!res2.ok) console.error('[API/Create-Reservation] Hotel Email error', await res2.text());
-        } catch (e: any) {
-             console.error('[API/Create-Reservation] Exception in Hotel email', e);
-        }
+        // Dispatch Hotel Email Asynchronously (Fire and Forget)
+        fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            sender: { name: 'Sistema de Reservas AI', email: HOTEL_CONFIG.email },
+            to: [{ email: HOTEL_CONFIG.adminEmail, name: 'Administração Hotel Solar' }],
+            subject: `🔔 Nova Reserva AI #${reservationId.substring(0,8).toUpperCase()} - ${dataToSave.main_guest.name}`,
+            htmlContent: generateHotelEmailHTML(reservationForEmail),
+          }),
+        }).catch(e => console.error('[API/Create-Reservation] Background Hotel Email error', e));
 
-        emailDebugInfo.statuses = ['Sequential Fetch dispatched successfully'];
-        console.log('[API/Create-Reservation] E-mails Sequenciais processados.');
+        emailDebugInfo.statuses = ['Dispatched Asynchronously in Background'];
+        console.log('[API/Create-Reservation] E-mails Sequenciais processados em background.');
       } catch (err: any) {
         emailDebugInfo.crashed = err.message;
         console.error('[API/Create-Reservation] Erro dinâmico emails:', err);
