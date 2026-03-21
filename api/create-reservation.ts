@@ -191,11 +191,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 segundos max para não estourar os 10s do Vercel
 
-        const emailPromises = [
-          // Email para o Cliente
-          fetch('https://api.brevo.com/v3/smtp/email', {
+        // Dispatch Client Email
+        try {
+          const res1 = await fetch('https://api.brevo.com/v3/smtp/email', {
             method: 'POST',
-            signal: controller.signal,
             headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
             body: JSON.stringify({
               sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
@@ -203,11 +202,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               subject: `Confirmação de Reserva #${reservationId.substring(0,8).toUpperCase()} - Hotel Solar`,
               htmlContent: generateClientEmailHTML(reservationForEmail),
             }),
-          }),
-          // Email para o Hotel
-          fetch('https://api.brevo.com/v3/smtp/email', {
+          });
+          if (!res1.ok) console.error('[API/Create-Reservation] Client Email error', await res1.text());
+        } catch (e: any) {
+          console.error('[API/Create-Reservation] Exception in Client email', e);
+        }
+
+        // Dispatch Hotel Email
+        try {
+          const res2 = await fetch('https://api.brevo.com/v3/smtp/email', {
             method: 'POST',
-            signal: controller.signal,
             headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
             body: JSON.stringify({
               sender: { name: 'Sistema de Reservas AI', email: HOTEL_CONFIG.email },
@@ -215,34 +219,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               subject: `🔔 Nova Reserva AI #${reservationId.substring(0,8).toUpperCase()} - ${dataToSave.main_guest.name}`,
               htmlContent: generateHotelEmailHTML(reservationForEmail),
             }),
-          })
-        ];
-
-        const emailResponses = await Promise.allSettled(emailPromises);
-        clearTimeout(timeoutId);
-        let statuses: any[] = [];
-        
-        for (let i = 0; i < emailResponses.length; i++) {
-          const promiseResult = emailResponses[i];
-          if (promiseResult.status === 'fulfilled') {
-             const resFetch = promiseResult.value;
-             try {
-               const text = await resFetch.text();
-               statuses.push({ ok: resFetch.ok, status: resFetch.status, text });
-               if (!resFetch.ok) {
-                  console.error('[API/Create-Reservation] Email failed:', text);
-               }
-             } catch (textErr) {
-               statuses.push({ error: 'Failed to read response body' });
-             }
-          } else {
-             statuses.push({ promise_rejected: true, reason: String(promiseResult.reason) });
-             console.error('[API/Create-Reservation] Promise rejected (Timeout ou Erro):', promiseResult.reason);
-          }
+          });
+          if (!res2.ok) console.error('[API/Create-Reservation] Hotel Email error', await res2.text());
+        } catch (e: any) {
+             console.error('[API/Create-Reservation] Exception in Hotel email', e);
         }
-        
-        emailDebugInfo.statuses = statuses;
-        console.log('[API/Create-Reservation] E-mails processados via Promise.allSettled.');
+
+        emailDebugInfo.statuses = ['Sequential Fetch dispatched successfully'];
+        console.log('[API/Create-Reservation] E-mails Sequenciais processados.');
       } catch (err: any) {
         emailDebugInfo.crashed = err.message;
         console.error('[API/Create-Reservation] Erro dinâmico emails:', err);
