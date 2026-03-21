@@ -136,6 +136,15 @@ const BookingForm: React.FC<BookingFormProps> = ({
     ? Math.max(1, Math.ceil((initialCheckOut.getTime() - initialCheckIn.getTime()) / (1000 * 60 * 60 * 24)))
     : 0;
 
+  const WEEKEND_PRICES: Record<string, number> = {
+    "Suíte Casal": 610,
+    "Suíte Triplo": 710,
+    "Suíte Sacada Vista Mar": 810,
+    "Suíte Quádruplo": 810,
+    "Suíte Varanda Térreo": 920,
+    "LOFT": 1450
+  };
+
   const calculateRoomTotal = (room: Room) => {
     if (activePackage) {
       const pkgPrice = activePackage.roomPrices.find(rp => rp.roomId === room.id);
@@ -153,7 +162,9 @@ const BookingForm: React.FC<BookingFormProps> = ({
       let dailyPrice = override?.price !== undefined ? override.price : room.price;
       if (override?.price === undefined) {
         const day = tempDate.getDay();
-        if (day === 5 || day === 6) dailyPrice *= 1.15;
+        if (day === 5 || day === 6) {
+          dailyPrice = WEEKEND_PRICES[room.name] || (room.price * 1.15);
+        }
       }
       total += dailyPrice;
       tempDate.setDate(tempDate.getDate() + 1);
@@ -666,7 +677,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
                       onChange={e => setInstallments(Number(e.target.value))}
                       className="w-full p-4 pl-12 bg-white border border-slate-200 rounded-lg outline-none text-sm focus:border-solar-gold appearance-none cursor-pointer"
                     >
-                      {[1, 2, 3, 4, 5, 6].map(num => (
+                      {[1, 2, 3].map(num => (
                         <option key={num} value={num}>
                           {num}x de R$ {(total / num).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sem juros
                         </option>

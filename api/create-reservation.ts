@@ -41,6 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       additionalGuests, 
       totalPrice, 
       observations = "",
+      extraServices = [],
       paymentMethod = "PIX"
     } = req.body;
 
@@ -62,6 +63,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         mainGuest,
         additionalGuests,
         observations,
+        extraServices,
         rooms,
         totalPrice
       };
@@ -100,7 +102,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       package_discount_applied: null,
       observations: `[ORIGEM: AI CHATBOT] ${observations}`,
       rooms: rooms,
-      extras: [],
+      extras: extraServices,
       total_price: totalPrice,
       payment_method: 'PIX', // Default
       status: 'PENDING'
