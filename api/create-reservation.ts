@@ -173,12 +173,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (apiKey) {
       emailDebugInfo = { attempted: true };
       try {
-        console.log('[API/Create-Reservation] Enviando e-mails dinamicamente (MOCK) ...');
+        console.log('[API/Create-Reservation] Enviando e-mails dinamicamente com timeout de 6s...');
         
-        // Inline mock to bypass the fatal transpiler bug
-        const HOTEL_CONFIG = { name: 'Hotel Solar', email: 'geraldo@hotelsolar.tur.br', adminEmail: 'reserva@hotelsolar.tur.br' };
-        const generateClientEmailHTML = (res: any) => `<html><body>Ola cliente ${res.mainGuest.name}</body></html>`;
-        const generateHotelEmailHTML = (res: any) => `<html><body>Nova reserva de ${res.mainGuest.name}</body></html>`;
+        const { generateClientEmailHTML, generateHotelEmailHTML, HOTEL_CONFIG } = await import('../services/emailService');
         
         // Formatar objeto reservation para o template
         const reservationForEmail = {
@@ -191,10 +188,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           paymentMethod: dataToSave.payment_method
         } as any;
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 segundos max para não estourar os 10s do Vercel
+
         const emailPromises = [
           // Email para o Cliente
           fetch('https://api.brevo.com/v3/smtp/email', {
             method: 'POST',
+            signal: controller.signal,
             headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
             body: JSON.stringify({
               sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
@@ -206,6 +207,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Email para o Hotel
           fetch('https://api.brevo.com/v3/smtp/email', {
             method: 'POST',
+            signal: controller.signal,
             headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
             body: JSON.stringify({
               sender: { name: 'Sistema de Reservas AI', email: HOTEL_CONFIG.email },
@@ -217,31 +219,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ];
 
         const emailResponses = await Promise.allSettled(emailPromises);
+        clearTimeout(timeoutId);
         let statuses: any[] = [];
         
         for (let i = 0; i < emailResponses.length; i++) {
           const promiseResult = emailResponses[i];
           if (promiseResult.status === 'fulfilled') {
              const resFetch = promiseResult.value;
-             const text = await resFetch.text();
-             statuses.push({ ok: resFetch.ok, status: resFetch.status, text });
-             if (!resFetch.ok) {
-                console.error('[API/Create-Reservation] Email failed:', text);
-                await supabase.from('reservations').update({ observations: dataToSave.observations + ' | BREVO_ERROR: ' + text }).eq('id', reservationId);
+             try {
+               const text = await resFetch.text();
+               statuses.push({ ok: resFetch.ok, status: resFetch.status, text });
+               if (!resFetch.ok) {
+                  console.error('[API/Create-Reservation] Email failed:', text);
+               }
+             } catch (textErr) {
+               statuses.push({ error: 'Failed to read response body' });
              }
           } else {
              statuses.push({ promise_rejected: true, reason: String(promiseResult.reason) });
-             console.error('[API/Create-Reservation] Promise rejected:', promiseResult.reason);
-             await supabase.from('reservations').update({ observations: dataToSave.observations + ' | PROMISE_ERROR: ' + String(promiseResult.reason) }).eq('id', reservationId);
+             console.error('[API/Create-Reservation] Promise rejected (Timeout ou Erro):', promiseResult.reason);
           }
         }
         
         emailDebugInfo.statuses = statuses;
-        console.log('[API/Create-Reservation] E-mails enviados.');
+        console.log('[API/Create-Reservation] E-mails processados via Promise.allSettled.');
       } catch (err: any) {
         emailDebugInfo.crashed = err.message;
         console.error('[API/Create-Reservation] Erro dinâmico emails:', err);
-        await supabase.from('reservations').update({ observations: dataToSave.observations + ' | T_AST_ERROR: ' + err.message }).eq('id', reservationId);
       }
     }
 
