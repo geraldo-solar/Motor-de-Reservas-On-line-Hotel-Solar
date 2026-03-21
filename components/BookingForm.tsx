@@ -146,6 +146,9 @@ const BookingForm: React.FC<BookingFormProps> = ({
   };
 
   const calculateRoomTotal = (room: Room) => {
+    // Bypass iterative database math if the room is a static quotation snapshot from the Chatbot Draft API
+    if (room.priceSnapshot !== undefined) return room.priceSnapshot;
+
     if (activePackage) {
       const pkgPrice = activePackage.roomPrices.find(rp => rp.roomId === room.id);
       if (pkgPrice && pkgPrice.price > 0) return pkgPrice.price;
@@ -319,10 +322,16 @@ const BookingForm: React.FC<BookingFormProps> = ({
             {selectedRooms.map((room, index) => (
               <div key={index} className="flex justify-between items-center bg-slate-50 p-4 rounded border border-slate-100 shadow-sm">
                 <div className="flex items-center gap-4">
-                  <img src={getPublicImageUrl(room.imageUrls[0], 200)} className="w-16 h-16 rounded-lg object-cover border border-slate-200" alt={room.name} loading="lazy" decoding="async" />
+                  {room.imageUrls && room.imageUrls.length > 0 ? (
+                    <img src={getPublicImageUrl(room.imageUrls[0], 200)} className="w-16 h-16 rounded-lg object-cover border border-slate-200" alt={room.name} loading="lazy" decoding="async" />
+                  ) : (
+                    <div className="w-16 h-16 rounded-lg bg-slate-200 border border-slate-300 flex items-center justify-center">
+                      <BedDouble size={24} className="text-slate-400" />
+                    </div>
+                  )}
                   <div>
                     <h4 className="font-bold text-solar-green text-sm">{room.name}</h4>
-                    <p className="text-[10px] text-slate-400 uppercase font-bold">{nights} noites • {room.capacity} hóspedes</p>
+                    <p className="text-[10px] text-slate-400 uppercase font-bold">{nights} noites • {room.capacity || 2} hóspedes</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
