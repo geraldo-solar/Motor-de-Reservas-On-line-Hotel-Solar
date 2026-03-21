@@ -115,78 +115,195 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const luxuryClientHtml = `
 <!DOCTYPE html>
 <html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
 <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
   <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
     
+    <!-- Header com Logo -->
     <div style="background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); padding: 40px 20px; text-align: center;">
-      <img src="https://i.ibb.co/3sBw7xY/solar-logo.png" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
-      <h1 style="color: #4ade80; margin: 0; font-size: 28px; font-weight: normal;">✅ Reserva Solicitada!</h1>
-      <p style="color: #d4a853; margin: 10px 0 0 0; font-size: 16px;">Obrigado por nos escolher!</p>
+      <img src="https://motor-de-reservas-on-line-hotel-sol.vercel.app/logo-gold.png" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
+      <h1 style="color: #4ade80; margin: 0; font-size: 28px; font-weight: normal;">
+        ✅ Reserva Solicitada!
+      </h1>
+      <p style="color: #d4a853; margin: 10px 0 0 0; font-size: 16px;">
+        Obrigado por nos escolher!
+      </p>
     </div>
     
+    <!-- Conteúdo Principal -->
     <div style="background-color: #ffffff; padding: 32px 24px;">
-      <p style="color: #1e293b; font-size: 16px; margin: 0 0 24px 0;">Olá <strong>${mainGuest.name}</strong>,</p>
+      
+      <!-- Saudação -->
+      <p style="color: #1e293b; font-size: 16px; margin: 0 0 24px 0;">
+        Olá <strong>${mainGuest.name}</strong>,
+      </p>
       <p style="color: #475569; font-size: 14px; margin: 0 0 24px 0; line-height: 1.6;">
-        Recebemos sua solicitação de reserva no Hotel Solar através do nosso assistente virtual! Para sua comodidade, você já pode agilizar sua chegada realizando o pré-check-in digital.
+        Recebemos sua solicitação de reserva no Hotel Solar através do nosso assistente virtual! Ficamos felizes com sua preferência. Para sua comodidade, você já pode agilizar sua chegada realizando o pré-check-in digital.
       </p>
 
+      <!-- Botão de Pré-Check-in -->
       <div style="text-align: center; margin: 32px 0;">
         <a href="${preCheckInUrl}" style="background-color: #1a3c34; color: #d4a853; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">AGILIZAR MEU CHECK-IN AGORA</a>
         <p style="color: #64748b; font-size: 11px; margin-top: 12px;">Preencha seus dados agora e ganhe tempo na recepção!</p>
       </div>
       
+      <!-- Número da Reserva -->
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
-        <p style="color: #64748b; margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">Número da Reserva</p>
-        <p style="color: #d4a853; margin: 0; font-size: 32px; font-weight: bold; letter-spacing: 4px;">${shortId}</p>
+        <p style="color: #64748b; margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">
+          Número da Reserva
+        </p>
+        <p style="color: #d4a853; margin: 0; font-size: 32px; font-weight: bold; letter-spacing: 4px;">
+          ${shortId}
+        </p>
       </div>
       
+      <!-- Detalhes da Reserva -->
       <div style="margin-bottom: 24px;">
-        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">📋 Detalhes da Reserva</h3>
+        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+          📋 Detalhes da Reserva
+        </h3>
         <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${checkIn.split('-').reverse().join('/')}</p>
         <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${checkOut.split('-').reverse().join('/')}</p>
         <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">Noites:</strong> ${nights}</p>
       </div>
       
+      <!-- Acomodações -->
       <div style="margin-bottom: 24px;">
-        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px;">🏨 Acomodações</h3>
-        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">${rooms.map((r: any) => `<li><b>${r.name}</b></li>`).join('')}</ul>
+        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px;">
+          🏨 Acomodações
+        </h3>
+        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">
+          ${roomsHtml}
+        </ul>
       </div>
 
+      <!-- Acompanhantes -->
       <div style="margin-bottom: 24px;">
-        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px;">👥 Acompanhantes</h3>
-        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">${guestsHtml}</ul>
-      </div>
-
-      <div style="margin-bottom: 24px;">
-        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px;">➕ Serviços Extras</h3>
-        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">${extrasHtml}</ul>
+        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px;">
+          👥 Acompanhantes
+        </h3>
+        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">
+          ${guestsHtml}
+        </ul>
       </div>
       
+      <!-- Serviços Extras -->
+      <div style="margin-bottom: 24px;">
+        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px;">
+          ➕ Serviços Extras
+        </h3>
+        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">
+          ${extrasHtml}
+        </ul>
+      </div>
+      
+      <!-- Observações -->
+      ${observations ? `
+      <div style="margin-bottom: 24px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px;">
+        <h3 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 16px;">
+          📝 Observações
+        </h3>
+        <p style="color: #475569; margin: 0; font-size: 14px; line-height: 1.6; font-style: italic;">
+          "${observations}"
+        </p>
+      </div>
+      ` : ''}
+      
+      <!-- Valor Total -->
       <div style="border-top: 1px solid #e2e8f0; padding-top: 20px; margin-bottom: 24px;">
         <p style="color: #1e293b; margin: 0; font-size: 18px;">
-          <strong>Valor Total:</strong> <span style="color: #1a3c34; font-size: 24px; font-weight: bold;">${formatCurrencyLocal(totalPrice)}</span>
+          <strong>Valor Total:</strong> 
+          <span style="color: #1a3c34; font-size: 24px; font-weight: bold;">${formatCurrencyLocal(totalPrice)}</span>
         </p>
       </div>
       
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px 0;">
-        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 18px;">💠 Pagamento via PIX (50%)</h3>
-        <p style="color: #475569; margin: 0 0 12px 0;">Para garantir sua reserva, realize a transferência de 50% do valor total (<strong style="color: #1a3c34;">${formatCurrencyLocal(totalPrice / 2)}</strong>).</p>
-        <div style="background: #ffffff; border: 2px dashed #cbd5e1; padding: 16px; border-radius: 8px; text-align: center; margin-bottom: 16px;">
-          <p style="color: #1e293b; margin: 0 0 8px 0; font-weight: bold; font-size: 14px;">CHAVE PIX (CELULAR):</p>
-          <p style="color: #d4a853; margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 1px;">(91) 98100-0800</p>
-          <p style="color: #64748b; margin: 8px 0 0 0; font-size: 12px;">J Ramos Barros Hotelaria e Eventos Me</p>
-          <p style="color: #64748b; margin: 2px 0 0 0; font-size: 12px;">CNPJ: 09.519.659/0001-90</p>
-        </div>
-        <div style="padding: 16px; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
-          <p style="color: #166534; margin: 0 0 12px 0; font-weight: bold;">✅ Após realizar a transferência:</p>
-          <ol style="color: #166534; margin: 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
-            <li>Envie o comprovante para nosso WhatsApp ou E-mail.</li>
-            <li>Sua reserva será confirmada oficialmente.</li>
+      <!-- Seção de Pagamento -->
+      <div style="color: #1e293b">
+        <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px 0;">
+          <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 18px;">
+            📱 Instruções de Pagamento via PIX
+          </h3>
+          <ol style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">
+            <li>Realize o pagamento via PIX no valor de <strong style="color: #1a3c34;">${formatCurrencyLocal(totalPrice)}</strong></li>
+            <li>Envie o comprovante para: <a href="mailto:geraldo@hotelsolar.tur.br" style="color: #d4a853; text-decoration: none;">geraldo@hotelsolar.tur.br</a></li>
+            <li>Após recebermos o comprovante, enviaremos a confirmação</li>
           </ol>
         </div>
+
+        <div style="background: #ffffff; border: 2px solid #1a3c34; border-radius: 12px; padding: 24px; margin: 24px 0;">
+          <h3 style="color: #1a3c34; margin: 0 0 20px 0; font-size: 18px;">
+            📋 Dados para Transferência PIX
+          </h3>
+          <table style="width: 100%; color: #1e293b; font-size: 14px; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 10px 0; color: #64748b; width: 45%; border-bottom: 1px solid #f1f5f9;">CHAVE PIX (CELULAR)</td>
+              <td style="padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;">(91) 98100-0800</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;">BENEFICIÁRIO</td>
+              <td style="padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;">J Ramos Barros Hotelaria e Eventos Me</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;">CNPJ</td>
+              <td style="padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;">09.519.659/0001-90</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;">BANCO</td>
+              <td style="padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;">Caixa Econômica Federal</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;">AGÊNCIA</td>
+              <td style="padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;">3632</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; color: #64748b; border-bottom: 1px solid #f1f5f9;">CONTA CORRENTE</td>
+              <td style="padding: 10px 0; text-align: right; font-weight: bold; border-bottom: 1px solid #f1f5f9;">386-6</td>
+            </tr>
+            <tr>
+              <td style="padding: 12px 0; color: #1a3c34; font-weight: bold; font-size: 16px;">VALOR TOTAL</td>
+              <td style="padding: 12px 0; text-align: right; color: #1a3c34; font-weight: bold; font-size: 20px;">${formatCurrencyLocal(totalPrice)}</td>
+            </tr>
+          </table>
+
+          <div style="margin-top: 20px; padding: 16px; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
+            <p style="color: #166534; margin: 0 0 12px 0; font-weight: bold;">✅ Após realizar a transferência:</p>
+            <ol style="color: #166534; margin: 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
+              <li>Envie o comprovante para: <a href="mailto:geraldo@hotelsolar.tur.br" style="color: #1a3c34; font-weight: bold; text-decoration: none;">geraldo@hotelsolar.tur.br</a></li>
+              <li>Sua reserva será confirmada em até 24 horas úteis.</li>
+            </ol>
+          </div>
+        </div>
+
+      </div>
+      
+      <!-- Links -->
+      <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e2e8f0;">
+        <a href="https://motor-de-reservas-on-line-hotel-sol.vercel.app/?view=regulamento" style="color: #d4a853; text-decoration: none; font-size: 14px;">
+          📄 Política de Reservas e Cancelamento
+        </a>
+        <p style="color: #64748b; margin: 16px 0 0 0; font-size: 12px;">
+          Precisa cancelar sua reserva? 
+          <a href="https://motor-de-reservas-on-line-hotel-sol.vercel.app/?view=cancelamento&reserva=${reservationId}" style="color: #ef4444; text-decoration: none;">
+            Cancelar Reserva
+          </a>
+        </p>
       </div>
       
     </div>
+    
+    <!-- Footer -->
+    <div style="background-color: #f8fafc; padding: 24px; text-align: center; border-top: 1px solid #e2e8f0;">
+      <p style="color: #64748b; margin: 0 0 8px 0; font-size: 13px;">
+        Hotel Solar - Belém, PA
+      </p>
+      <p style="color: #64748b; margin: 0; font-size: 13px;">
+        Email: <a href="mailto:reserva@hotelsolar.tur.br" style="color: #d4a853; text-decoration: none;">reserva@hotelsolar.tur.br</a>
+      </p>
+    </div>
+    
   </div>
 </body>
 </html>
@@ -195,31 +312,108 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const luxuryHotelHtml = `
 <!DOCTYPE html>
 <html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
 <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
   <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-        <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 30px 20px; text-align: center; border-bottom: 4px solid #d4a853;">
-          <span style="font-size: 40px; display: block; margin-bottom: 10px;">🤖</span>
-          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: normal;">Nova Pré-Reserva via Chatbot</h1>
-          <p style="color: #94a3b8; margin: 8px 0 0 0; font-size: 14px;">Reserva #${shortId}</p>
-        </div>
-        <div style="padding: 32px 24px;">
-          <p style="margin: 0 0 8px 0;"><strong>Hóspede:</strong> ${mainGuest.name}</p>
-          <p style="margin: 0 0 8px 0;"><strong>Email:</strong> ${mainGuest.email}</p>
-          <p style="margin: 0 0 8px 0;"><strong>Período:</strong> ${checkIn.split('-').reverse().join('/')} a ${checkOut.split('-').reverse().join('/')} (${nights} noites)</p>
-          <p style="margin: 0 0 8px 0;"><strong>Valor Total:</strong> ${formatCurrencyLocal(totalPrice)} (Aguardando PIX)</p>
-          
-          <h4 style="margin: 20px 0 10px 0; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">Quartos</h4>
-          <ul style="margin: 0; padding-left: 20px;">${rooms.map((r: any) => `<li><b>${r.name}</b></li>`).join('')}</ul>
-          
-          <h4 style="margin: 20px 0 10px 0; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">Extras</h4>
-          <ul style="margin: 0; padding-left: 20px;">${extrasHtml}</ul>
-          
-          <h4 style="margin: 20px 0 10px 0; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">Acompanhantes</h4>
-          <ul style="margin: 0; padding-left: 20px;">${guestsHtml}</ul>
-          
-          <h4 style="margin: 20px 0 10px 0; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">Observações</h4>
-          <p style="background: #f8fafc; padding: 12px; border-radius: 6px;">[CHATBOT] ${observations}</p>
-        </div>
+    
+    <!-- Header com Logo -->
+    <div style="background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); padding: 30px 20px; text-align: center;">
+      <img src="https://motor-de-reservas-on-line-hotel-sol.vercel.app/logo-gold.png" alt="Hotel Solar" style="height: 100px;">
+    </div>
+    
+    <!-- Linha dourada -->
+    <div style="height: 3px; background: linear-gradient(90deg, transparent, #d4a853, transparent);"></div>
+    
+    <!-- Conteúdo Principal -->
+    <div style="background-color: #ffffff; padding: 32px 24px;">
+      
+      <!-- Título -->
+      <h1 style="color: #1a3c34; margin: 0 0 8px 0; font-size: 24px;">
+        🔔 Nova Reserva (Via Chatbot AI)
+      </h1>
+      <p style="color: #64748b; margin: 0 0 24px 0; font-size: 14px;">
+        <strong style="color: #1e293b;">Número da Reserva:</strong> ${shortId}
+      </p>
+      
+      <!-- Dados do Hóspede -->
+      <div style="margin-bottom: 24px;">
+        <h2 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 18px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+          Dados do Titular
+        </h2>
+        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Nome:</strong> ${mainGuest.name}</p>
+        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Email:</strong> <a href="mailto:${mainGuest.email}" style="color: #d4a853;">${mainGuest.email}</a></p>
+        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Telefone:</strong> ${mainGuest.phone || 'Não informado'}</p>
+        <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">CPF:</strong> ${mainGuest.cpf || 'Não informado'}</p>
+      </div>
+
+      <!-- Acompanhantes -->
+      <div style="margin-bottom: 24px;">
+        <h2 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+          Acompanhantes Cadastrados
+        </h2>
+        <ul style="color: #475569; margin: 0; padding-left: 20px;">
+          ${guestsHtml}
+        </ul>
+      </div>
+      
+      <!-- Detalhes da Reserva -->
+      <div style="margin-bottom: 24px;">
+        <h2 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 18px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+          Detalhes da Reserva
+        </h2>
+        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${checkIn.split('-').reverse().join('/')}</p>
+        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${checkOut.split('-').reverse().join('/')}</p>
+        <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">Noites:</strong> ${nights}</p>
+      </div>
+      
+      <!-- Acomodações -->
+      <div style="margin-bottom: 24px;">
+        <h3 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 16px;">Acomodações:</h3>
+        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">
+          ${roomsHtml}
+        </ul>
+      </div>
+      
+      <!-- Serviços Extras -->
+      <div style="margin-bottom: 24px;">
+        <h3 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 16px;">Serviços Extras:</h3>
+        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">
+          ${extrasHtml}
+        </ul>
+      </div>
+      
+      <!-- Observações do Cliente -->
+      ${observations ? `
+      <div style="margin-bottom: 24px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
+        <h3 style="color: #1a3c34; margin: 0 0 12px 0; font-size: 16px;">📝 Observações do Cliente:</h3>
+        <p style="color: #475569; margin: 0; font-size: 14px; line-height: 1.6; font-style: italic;">
+          "${observations}"
+        </p>
+      </div>
+      ` : ''}
+      
+      <!-- Valor e Pagamento -->
+      <div style="margin-bottom: 24px;">
+        <p style="color: #1a3c34; margin: 0 0 8px 0; font-size: 16px;">
+          <strong>Valor Total:</strong> ${formatCurrencyLocal(totalPrice)}
+        </p>
+        <p style="color: #475569; margin: 0;">
+          <strong style="color: #1e293b;">Forma de Pagamento:</strong> PIX
+        </p>
+      </div>
+      
+      <!-- Alerta de Ação -->
+      <div style="background: rgba(212, 168, 83, 0.1); border-left: 4px solid #d4a853; padding: 16px; border-radius: 0 8px 8px 0;">
+        <p style="color: #d4a853; margin: 0; font-size: 14px;">
+          <strong>⚠️ Ação Necessária:</strong> Confirme o pagamento do PIX na Caixa Econômica (bot).
+        </p>
+      </div>
+      
+    </div>
+    
   </div>
 </body>
 </html>
