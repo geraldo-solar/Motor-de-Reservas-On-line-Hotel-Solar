@@ -292,7 +292,8 @@ const BookingForm: React.FC<BookingFormProps> = ({
           cvv: cardCvv,
           installments: installments
         } : undefined,
-        status: 'PENDING'
+        status: 'PENDING',
+        isSupabaseDraft: draftPayload?.isSupabaseDraft
       };
 
       const success = await onAddReservation(reservation);

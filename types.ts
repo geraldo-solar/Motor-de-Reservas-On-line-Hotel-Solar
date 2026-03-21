@@ -22,6 +22,7 @@ export interface Room {
   overrides?: RoomDateOverride[];
   inventory?: { [dateIso: string]: number };
   defaultInventory?: number;
+  priceSnapshot?: number;
 }
 
 export interface HolidayPackage {
