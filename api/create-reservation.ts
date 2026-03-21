@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { generateUUID } from '../utils/uuid';
-import { generateClientEmailHTML, generateHotelEmailHTML, HOTEL_CONFIG } from '../services/emailService';
+// import { generateUUID } from '../utils/uuid';
+// import { generateClientEmailHTML, generateHotelEmailHTML, HOTEL_CONFIG } from '../services/emailService';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS Headers
@@ -60,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Generate unique ID
-    const reservationId = generateUUID();
+    const reservationId = 'res-' + Math.random().toString(36).substring(2, 10);
 
     // If Credit Card, do NOT insert yet. Return a magic checkout link.
     const isCreditCard = ['CREDIT_CARD', 'CARTAO_DE_CREDITO', 'CARTÃO DE CRÉDITO', 'CARTAO', 'CARTÃO'].includes((paymentMethod || '').toString().toUpperCase());
@@ -196,6 +196,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let emailDebugInfo: any = { attempted: false, skipped_reason: 'no_api_key' };
 
     // --- ENVIAR EMAILS VIA BREVO ---
+    /*
     const apiKey = process.env.VITE_BREVO_API_KEY || process.env.BREVO_API_KEY;
     if (apiKey) {
       emailDebugInfo = { attempted: true };
@@ -266,6 +267,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await supabase.from('reservations').update({ observations: dataToSave.observations + ' | TRY_CATCH_ERROR: ' + err.message }).eq('id', reservationId);
       }
     }
+    */
 
     return res.status(200).json({ 
       success: true, 
