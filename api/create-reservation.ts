@@ -81,42 +81,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     } catch (invErr) { console.error('Inventory error:', invErr); }
 
-    // Inter-Container Microservice Dispatch
-    let emailDebugInfo: any = { attempted: false };
-    try {
-      console.log('[API/Create-Reservation] Handing TCP dispatch off to secondary container...');
-      const { generateClientEmailHTML, generateHotelEmailHTML, HOTEL_CONFIG } = await import('../services/emailService');
-      
-      const reservationForEmail = {
-        ...dataToSave,
-        checkIn: dataToSave.check_in, checkOut: dataToSave.check_out, mainGuest: dataToSave.main_guest,
-        additionalGuests: dataToSave.additional_guests, totalPrice: dataToSave.total_price, paymentMethod: dataToSave.payment_method
-      } as any;
-
-      const reqUrl = 'https://motor-de-reservas-on-line-hotel-sol.vercel.app/api/send-email';
-
-      // Disparar container vizinho
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 4000); 
-
-      const resClient = await fetch(reqUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
-          to: [{ email: dataToSave.main_guest.email, name: dataToSave.main_guest.name }],
-          subject: `Confirmação de Reserva #${reservationId.substring(0,8).toUpperCase()} - Hotel Solar`,
-          htmlContent: generateClientEmailHTML(reservationForEmail),
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(id);
-
-      emailDebugInfo = { attempted: true, container_response: resClient.status };
-    } catch (err: any) {
-      emailDebugInfo = { crashed: err.message };
-      console.error('[API/Create-Reservation] Inter-container dispatch failed:', err);
-    }
+    // Inter-Container Microservice Dispatch (DECOMMISSIONED)
+    let emailDebugInfo: any = { 
+       attempted: false, 
+       skipped_reason: 'email_pipeline_delegated_to_external_proxy_to_prevent_vercel_segfault' 
+    };
 
     return res.status(200).json({ success: true, message: 'Reserva criada!', reservationId, data, emailDebug: emailDebugInfo });
 
