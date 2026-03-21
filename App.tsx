@@ -153,7 +153,13 @@ export default function App() {
     const draftParam = params.get('draft');
     if (draftParam) {
       try {
-        const decodedStr = decodeURIComponent(escape(atob(draftParam)));
+        // Handle Base64Url variants to prevent WhatsApp link truncation corruptions
+        let base64Draft = draftParam.replace(/-/g, '+').replace(/_/g, '/');
+        // Pad strictly with equal signs to prevent DOMException inside atob
+        while (base64Draft.length % 4) {
+          base64Draft += '=';
+        }
+        const decodedStr = decodeURIComponent(escape(atob(base64Draft)));
         const parsed = JSON.parse(decodedStr);
         setDraftPayload(parsed);
         
