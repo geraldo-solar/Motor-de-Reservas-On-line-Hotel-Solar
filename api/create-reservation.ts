@@ -42,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (isCreditCard) {
       const draftPayload = { id: reservationId, checkIn, checkOut, mainGuest, additionalGuests, observations, extraServices, rooms, totalPrice };
       const base64Draft = Buffer.from(JSON.stringify(draftPayload)).toString('base64');
-      const draftUrl = `https://motor-de-reservas-on-line-hotel-sol.vercel.app/?draft=${base64Draft}`;
+      const draftUrl = `https://motor-de-reservas-on-line-hotel-sol.vercel.app/?draft=${encodeURIComponent(base64Draft)}`;
       return res.status(200).json({ success: true, message: `Link seguro: ${draftUrl}`, paymentLink: draftUrl, isDraft: true });
     }
 
