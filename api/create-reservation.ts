@@ -42,6 +42,87 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ status: 'ok', level: 2 });
   }
 
-  // Transpiler Bisection Complete Block
-  return res.status(200).json({ status: 'transpiler_passed' });
+  try {
+    const { 
+      checkIn, 
+      checkOut, 
+      rooms, 
+      mainGuest, 
+      additionalGuests, 
+      totalPrice, 
+      observations = "",
+      extraServices = [],
+      paymentMethod = "PIX"
+    } = req.body;
+
+    if (!checkIn || !checkOut || !rooms || !mainGuest || !mainGuest.name) {
+      return res.status(400).json({ error: 'Missing required fields (checkIn, checkOut, rooms, mainGuest)' });
+    }
+
+    // Generate unique ID
+    const reservationId = 'res-' + Math.random().toString(36).substring(2, 10);
+
+    // If Credit Card, do NOT insert yet. Return a magic checkout link.
+    const isCreditCard = ['CREDIT_CARD', 'CARTAO_DE_CREDITO', 'CARTÃO DE CRÉDITO', 'CARTAO', 'CARTÃO'].includes((paymentMethod || '').toString().toUpperCase());
+    
+    if (isCreditCard) {
+      const draftPayload = {
+        id: reservationId, // Assign a pre-generated ID
+        checkIn,
+        checkOut,
+        mainGuest,
+        additionalGuests,
+        observations,
+        extraServices,
+        rooms,
+        totalPrice
+      };
+      
+      const base64Draft = Buffer.from(JSON.stringify(draftPayload)).toString('base64');
+      const draftUrl = `https://motor-de-reservas-on-line-hotel-sol.vercel.app/?draft=${base64Draft}`;
+      
+      return res.status(200).json({
+        success: true,
+        message: `Por favor, realize o pagamento no cartão de crédito acessando o link seguro: ${draftUrl}`,
+        paymentLink: draftUrl,
+        isDraft: true
+      });
+    }
+
+    // Calculate nights for PIX
+    const start = new Date(checkIn);
+    const end = new Date(checkOut);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const nights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    const dataToSave = {
+      id: reservationId,
+      created_at: new Date().toISOString(),
+      check_in: checkIn,
+      check_out: checkOut,
+      nights: nights,
+      main_guest: {
+        name: mainGuest.name,
+        email: mainGuest.email || '',
+        phone: mainGuest.phone || '',
+        cpf: mainGuest.cpf || ''
+      },
+      additional_guests: additionalGuests || [],
+      discount_applied: null,
+      package_discount_applied: null,
+      observations: `[ORIGEM: AI CHATBOT] ${observations}`,
+      rooms: rooms,
+      extras: extraServices,
+      total_price: totalPrice,
+      payment_method: 'PIX', // Default
+      status: 'PENDING'
+    };
+
+    console.log('[API/Create-Reservation] Transpiler survived up to data payload parsing.');
+    return res.status(200).json({ status: 'transpiler_passed_midpoint', dataToSave });
+
+  } catch (error: any) {
+    res.statusCode = 500;
+    return res.end('FATAL_SANDBOX_EJECT:' + error.stack);
+  }
 }
