@@ -122,50 +122,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // --- SINCRONIZAÇÃO DE INVENTÁRIO (DECREMENTO) ---
-    try {
-      if (rooms && rooms.length > 0) {
-        for (const roomSnapshot of rooms) {
-          // Achar a categoria pelo nome (pois a IA não envia UUID)
-          const { data: roomTypes } = await supabase
-             .from('room_types')
-             .select('*')
-             .ilike('name', `%${roomSnapshot.name}%`);
-          
-          if (roomTypes && roomTypes.length > 0) {
-            const currentRoom = roomTypes[0];
-            const checkInDate = new Date(checkIn);
-            const checkOutDate = new Date(checkOut);
-            const updatedOverrides = [...(currentRoom.overrides || [])];
-
-            let current = new Date(checkInDate);
-            while (current < checkOutDate) {
-              const iso = current.toISOString().split('T')[0];
-              const ovIndex = updatedOverrides.findIndex(o => o.dateIso === iso);
-
-              if (ovIndex >= 0) {
-                const currentQty = updatedOverrides[ovIndex].availableQuantity ?? currentRoom.total_quantity;
-                updatedOverrides[ovIndex] = {
-                  ...updatedOverrides[ovIndex],
-                  availableQuantity: Math.max(0, currentQty - 1)
-                };
-              } else {
-                updatedOverrides.push({
-                  dateIso: iso,
-                  price: currentRoom.base_price,
-                  availableQuantity: Math.max(0, (currentRoom.total_quantity || 1) - 1),
-                  isClosed: false
-                });
-              }
-              current.setDate(current.getDate() + 1);
-            }
-            await supabase.from('room_types').update({ overrides: updatedOverrides }).eq('id', currentRoom.id);
-            console.log(`[API/Create-Reservation] Estoque decrescido para: ${currentRoom.name}`);
-          }
-        }
-      }
-    } catch (invErr) {
-      console.error('[API/Create-Reservation] Erro ao decrementar estoque:', invErr);
-    }
+    // DISABLED FOR DEBUGGING VERCEL FUNCTION INVOCATION FAILED CRASH
+    // try {
+    //   if (rooms && rooms.length > 0) {
+    // ...
+    //   }
+    // } catch (invErr) {
+    //   console.error('[API/Create-Reservation] Erro ao decrementar estoque:', invErr);
+    // }
     // --- FIM DA SINCRONIZAÇÃO ---
 
     let emailDebugInfo: any = { attempted: false, skipped_reason: 'no_api_key' };
