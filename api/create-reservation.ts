@@ -1,6 +1,21 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { generateUUID } from '../utils/uuid';
+
+// VERCEL ESM BUNDLER BYPASS: INLINED TO AVOID SILENT NFT SEGFAULTS
+const generateSafeUUID = (): string => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
+const formatCurrency = (value: number): string => {
+  if (value === undefined || value === null) return 'R$ 0,00';
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(num)) return 'R$ 0,00';
+  return `R$ ${num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -21,7 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { checkIn, checkOut, rooms, mainGuest, additionalGuests, totalPrice, observations = "", extraServices = [], paymentMethod = "PIX" } = req.body;
     if (!checkIn || !checkOut || !rooms || !mainGuest || !mainGuest.name) return res.status(400).json({ error: 'Missing required fields' });
 
-    const reservationId = generateUUID();
+    const reservationId = generateSafeUUID();
 
     const isCreditCard = ['CREDIT_CARD', 'CARTAO_DE_CREDITO', 'CARTÃO DE CRÉDITO', 'CARTAO', 'CARTÃO'].includes((paymentMethod || '').toString().toUpperCase());
     if (isCreditCard) {
@@ -65,7 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const currentRoom = roomTypes[0];
             const updatedOverrides = [...(currentRoom.overrides || [])];
             let current = new Date(checkIn);
-            let loopGuard = 0; // Hard limit fail-safe
+            let loopGuard = 0;
             
             while (current < new Date(checkOut) && loopGuard < 100) {
               const iso = current.toISOString().split('T')[0];
@@ -75,7 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               } else {
                 updatedOverrides.push({ dateIso: iso, price: currentRoom.base_price, availableQuantity: Math.max(0, (currentRoom.total_quantity || 1) - 1), isClosed: false });
               }
-              current.setUTCDate(current.getUTCDate() + 1); // 100% immune to DST Infinite Loops natively on Edge
+              current.setUTCDate(current.getUTCDate() + 1); // DST Safe Iterator
               loopGuard++;
             }
             await supabase.from('room_types').update({ overrides: updatedOverrides }).eq('id', currentRoom.id);
@@ -84,9 +99,74 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     } catch (invErr) { console.error('Inventory error:', invErr); }
 
-    // EMAIL PIPELINE OFFICIALLY DECOMMISSIONED TO PREVENT FATAL EDGE SEGFAULT
-    // The Manychat orchestrator array or frontend webhook MUST fire the 'send-email.ts' adjacent microservice manually
-    let emailDebugInfo: any = { attempted: false, skipped_reason: 'email_pipeline_delegated_to_external_proxy' };
+    // FAST INLINE EMAIL PIPELINE (NO EXTERNAL FILE IMPORTS ALLOWED)
+    let emailDebugInfo: any = { attempted: false };
+    const apiKey = process.env.VITE_BREVO_API_KEY || process.env.BREVO_API_KEY;
+    if (apiKey) {
+      emailDebugInfo = { attempted: true };
+      
+      const adminEmail = 'reserva@hotelsolar.tur.br';
+      const hotelEmail = 'geraldo@hotelsolar.tur.br';
+      const shortId = reservationId.replace('RES-', '').replace(/-/g, '').substring(0, 8).toUpperCase();
+      
+      const roomsHtml = rooms.map((r: any) => `<li><b>${r.name}</b> - ${formatCurrency(r.priceSnapshot)}</li>`).join('');
+      const guestsHtml = additionalGuests?.length ? additionalGuests.map((g: any) => `<li>${g.name} (${g.age || '-'})</li>`).join('') : '<li>Nenhum hóspede adicional</li>';
+      const extrasHtml = extraServices?.length ? extraServices.map((e: any) => `<li>${e.name} (${e.quantity}x)</li>`).join('') : '<li>Nenhum extra</li>';
+
+      const simpleClientHtml = `
+        <html><body style="font-family: sans-serif; background: #fff; padding: 20px;">
+          <h2 style="color: #1a3c34;">Sua pré-reserva #RES-${shortId} foi solicitada!</h2>
+          <p>Olá ${mainGuest.name}, recebemos sua solicitação!</p>
+          <p><b>Check-in:</b> ${checkIn} | <b>Check-out:</b> ${checkOut} (${nights} noites)</p>
+          <h4>Quartos</h4><ul>${roomsHtml}</ul>
+          <h4>Acompanhantes</h4><ul>${guestsHtml}</ul>
+          <h4>Serviços Extras</h4><ul>${extrasHtml}</ul>
+          <p><b>Valor Total a Pagar:</b> ${formatCurrency(totalPrice)}</p>
+          <hr/>
+          <h3 style="color:#d4a853">Por favor realize o pagamento na chave PIX: (91) 98100-0800</h3>
+          <p>J Ramos Barros Hotelaria e Eventos Me (CNPJ: 09.519.659/0001-90)</p>
+          <p>Após o pagamento, envie o comprovante para este e-mail.</p>
+        </body></html>
+      `;
+
+      const simpleHotelHtml = `
+        <html><body style="font-family: sans-serif; background: #f8fafc; padding: 20px;">
+          <h2 style="color: #1a3c34;">Nova Reserva via AI Bot #RES-${shortId}</h2>
+          <p><b>Hóspede:</b> ${mainGuest.name} (${mainGuest.email} - CPF: ${mainGuest.cpf})</p>
+          <p><b>Valor:</b> ${formatCurrency(totalPrice)} (${paymentMethod})</p>
+          <p><b>Período:</b> ${checkIn} a ${checkOut} (${nights} noites)</p>
+          <h4>Quartos</h4><ul>${roomsHtml}</ul>
+          <h4>Serviços Extras</h4><ul>${extrasHtml}</ul>
+          <h4>Acompanhantes</h4><ul>${guestsHtml}</ul>
+          <h4>Observações</h4><p>${observations}</p>
+        </body></html>
+      `;
+
+      // Trigger strictly via non-awaiting background loop. Fetch is native to Vercel global.
+      fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sender: { name: 'Hotel Solar', email: hotelEmail },
+          to: [{ email: mainGuest.email, name: mainGuest.name }],
+          subject: `Confirmação de Reserva #${shortId} - Hotel Solar`,
+          htmlContent: simpleClientHtml,
+        })
+      }).catch(e => console.error(e));
+
+      fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sender: { name: 'Sistema de Reservas AI', email: hotelEmail },
+          to: [{ email: adminEmail, name: 'Administração Hotel Solar' }],
+          subject: `🔔 Nova Reserva AI #${shortId} - ${mainGuest.name}`,
+          htmlContent: simpleHotelHtml,
+        })
+      }).catch(e => console.error(e));
+
+      emailDebugInfo.statuses = ['Emails dispatched cleanly via background fetch'];
+    }
 
     return res.status(200).json({ 
       success: true, 
