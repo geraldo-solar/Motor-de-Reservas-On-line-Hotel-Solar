@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import crypto from 'crypto';
+import { generateUUID } from '../utils/uuid';
 import { generateClientEmailHTML, generateHotelEmailHTML, HOTEL_CONFIG } from '../services/emailService';
 
 // Supabase setup
@@ -50,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Generate unique ID
-    const reservationId = crypto.randomUUID();
+    const reservationId = generateUUID();
 
     // If Credit Card, do NOT insert yet. Return a magic checkout link.
     const isCreditCard = ['CREDIT_CARD', 'CARTAO_DE_CREDITO', 'CARTÃO DE CRÉDITO', 'CARTAO', 'CARTÃO'].includes((paymentMethod || '').toString().toUpperCase());
