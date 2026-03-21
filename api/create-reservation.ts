@@ -146,23 +146,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
          let id: any;
          try {
            const controller = new AbortController();
-           id = setTimeout(() => controller.abort(), 3500); // Strict 3.5s timeout prevents 10s Serverless Execution Death
-           await fetch('https://api.brevo.com/v3/smtp/email', {
+           id = setTimeout(() => controller.abort(), 3500);
+           const res = await fetch('https://api.brevo.com/v3/smtp/email', {
              method: 'POST',
              headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
              body: JSON.stringify(payload),
              signal: controller.signal
            });
+           
+           const text = await res.text();
            clearTimeout(id);
-         } catch(e) {
+           
+           emailDebugInfo.statuses.push(`[Brevo API] Status: ${res.status} | Body: ${text}`);
+         } catch(e: any) {
            if (id) clearTimeout(id);
            console.error('Brevo network fail:', e);
+           emailDebugInfo.statuses.push(`[Brevo Catch] Network Fail: ${e.message}`);
          }
       };
 
+      emailDebugInfo.statuses = [];
+
       await executeBrevoStictly({
         sender: { name: 'Hotel Solar', email: hotelEmail },
-        to: [{ email: mainGuest.email, name: mainGuest.name }],
+        to: [{ email: mainGuest.email || 'geraldo@hotelsolar.tur.br', name: mainGuest.name }],
         subject: `Confirmação de Reserva #${shortId} - Hotel Solar`,
         htmlContent: simpleClientHtml,
       });
@@ -173,8 +180,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         subject: `🔔 Nova Reserva AI #${shortId} - ${mainGuest.name}`,
         htmlContent: simpleHotelHtml,
       });
-
-      emailDebugInfo.statuses = ['Emails awaited and completed successfully via AbortController fallback'];
     }
 
     return res.status(200).json({ 
