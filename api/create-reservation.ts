@@ -108,8 +108,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       status: 'PENDING'
     };
 
-    console.log('[API/Create-Reservation] Inserting:', dataToSave);
+    console.log('[API/Create-Reservation] Mocking Insert:', dataToSave);
 
+    // DISABLED TO TEST IF SUPABASE INSERT FATALLY HANGS VERCEL
+    /*
     const { data, error } = await supabase
       .from('reservations')
       .insert(dataToSave)
@@ -120,6 +122,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('[API/Create-Reservation] Supabase error:', error);
       return res.status(500).json({ error: error.message });
     }
+    */
+    const data = dataToSave;
+    const error = null;
 
     // --- SINCRONIZAÇÃO DE INVENTÁRIO (DECREMENTO) ---
     try {
