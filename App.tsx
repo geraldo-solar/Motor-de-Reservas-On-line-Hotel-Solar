@@ -168,8 +168,9 @@ export default function App() {
         setCheckOut(parseISODate(parsed.checkOut));
         setSelectedRooms(parsed.rooms);
         setCurrentView(ViewState.BOOKING);
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error parsing draft link:', err);
+        alert('Erro ao abrir link da reserva: ' + err.message + '\n\nIsso ocorre se o link do bot estiver quebrado ou incompleto. Se o link estiver cortado no meio, o WhatsApp não carregou ele inteiro.');
       }
     }
   }, []);
