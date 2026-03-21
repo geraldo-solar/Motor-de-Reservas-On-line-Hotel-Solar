@@ -113,33 +113,120 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const guestsHtml = additionalGuests?.length ? additionalGuests.map((g: any) => `<li>${g.name} (${g.age || '-'})</li>`).join('') : '<li>Nenhum hóspede adicional</li>';
       const extrasHtml = extraServices?.length ? extraServices.map((e: any) => `<li>${e.name} (${e.quantity}x)</li>`).join('') : '<li>Nenhum extra</li>';
 
-      const simpleClientHtml = `
-        <html><body style="font-family: sans-serif; background: #fff; padding: 20px;">
-          <h2 style="color: #1a3c34;">Sua pré-reserva #RES-${shortId} foi solicitada!</h2>
-          <p>Olá ${mainGuest.name}, recebemos sua solicitação!</p>
-          <p><b>Check-in:</b> ${checkIn} | <b>Check-out:</b> ${checkOut} (${nights} noites)</p>
-          <h4>Quartos</h4><ul>${roomsHtml}</ul>
-          <h4>Acompanhantes</h4><ul>${guestsHtml}</ul>
-          <h4>Serviços Extras</h4><ul>${extrasHtml}</ul>
-          <p><b>Valor Total a Pagar:</b> ${formatCurrency(totalPrice)}</p>
-          <hr/>
-          <h3 style="color:#d4a853">Por favor realize o pagamento na chave PIX: (91) 98100-0800</h3>
-          <p>J Ramos Barros Hotelaria e Eventos Me (CNPJ: 09.519.659/0001-90)</p>
-          <p>Após o pagamento, envie o comprovante para este e-mail.</p>
-        </body></html>
+      const formatCurrencyLocal = (val: number) => `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      const preCheckInUrl = `https://motor-de-reservas-on-line-hotel-sol.vercel.app/pre-checkin/${reservationId}`;
+
+      const luxuryClientHtml = `
+<!DOCTYPE html>
+<html>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+  <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+    
+    <div style="background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); padding: 40px 20px; text-align: center;">
+      <img src="https://i.ibb.co/3sBw7xY/solar-logo.png" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
+      <h1 style="color: #4ade80; margin: 0; font-size: 28px; font-weight: normal;">✅ Reserva Solicitada!</h1>
+      <p style="color: #d4a853; margin: 10px 0 0 0; font-size: 16px;">Obrigado por nos escolher!</p>
+    </div>
+    
+    <div style="background-color: #ffffff; padding: 32px 24px;">
+      <p style="color: #1e293b; font-size: 16px; margin: 0 0 24px 0;">Olá <strong>${mainGuest.name}</strong>,</p>
+      <p style="color: #475569; font-size: 14px; margin: 0 0 24px 0; line-height: 1.6;">
+        Recebemos sua solicitação de reserva no Hotel Solar através do nosso assistente virtual! Para sua comodidade, você já pode agilizar sua chegada realizando o pré-check-in digital.
+      </p>
+
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="${preCheckInUrl}" style="background-color: #1a3c34; color: #d4a853; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">AGILIZAR MEU CHECK-IN AGORA</a>
+        <p style="color: #64748b; font-size: 11px; margin-top: 12px;">Preencha seus dados agora e ganhe tempo na recepção!</p>
+      </div>
+      
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+        <p style="color: #64748b; margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">Número da Reserva</p>
+        <p style="color: #d4a853; margin: 0; font-size: 32px; font-weight: bold; letter-spacing: 4px;">${shortId}</p>
+      </div>
+      
+      <div style="margin-bottom: 24px;">
+        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">📋 Detalhes da Reserva</h3>
+        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-in:</strong> ${checkIn.split('-').reverse().join('/')}</p>
+        <p style="color: #475569; margin: 0 0 8px 0;"><strong style="color: #1e293b;">Check-out:</strong> ${checkOut.split('-').reverse().join('/')}</p>
+        <p style="color: #475569; margin: 0;"><strong style="color: #1e293b;">Noites:</strong> ${nights}</p>
+      </div>
+      
+      <div style="margin-bottom: 24px;">
+        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px;">🏨 Acomodações</h3>
+        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">${rooms.map((r: any) => `<li><b>${r.name}</b></li>`).join('')}</ul>
+      </div>
+
+      <div style="margin-bottom: 24px;">
+        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px;">👥 Acompanhantes</h3>
+        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">${guestsHtml}</ul>
+      </div>
+
+      <div style="margin-bottom: 24px;">
+        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 16px;">➕ Serviços Extras</h3>
+        <ul style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">${extrasHtml}</ul>
+      </div>
+      
+      <div style="border-top: 1px solid #e2e8f0; padding-top: 20px; margin-bottom: 24px;">
+        <p style="color: #1e293b; margin: 0; font-size: 18px;">
+          <strong>Valor Total:</strong> <span style="color: #1a3c34; font-size: 24px; font-weight: bold;">${formatCurrencyLocal(totalPrice)}</span>
+        </p>
+      </div>
+      
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px 0;">
+        <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 18px;">💠 Pagamento via PIX (50%)</h3>
+        <p style="color: #475569; margin: 0 0 12px 0;">Para garantir sua reserva, realize a transferência de 50% do valor total (<strong style="color: #1a3c34;">${formatCurrencyLocal(totalPrice / 2)}</strong>).</p>
+        <div style="background: #ffffff; border: 2px dashed #cbd5e1; padding: 16px; border-radius: 8px; text-align: center; margin-bottom: 16px;">
+          <p style="color: #1e293b; margin: 0 0 8px 0; font-weight: bold; font-size: 14px;">CHAVE PIX (CELULAR):</p>
+          <p style="color: #d4a853; margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 1px;">(91) 98100-0800</p>
+          <p style="color: #64748b; margin: 8px 0 0 0; font-size: 12px;">J Ramos Barros Hotelaria e Eventos Me</p>
+          <p style="color: #64748b; margin: 2px 0 0 0; font-size: 12px;">CNPJ: 09.519.659/0001-90</p>
+        </div>
+        <div style="padding: 16px; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
+          <p style="color: #166534; margin: 0 0 12px 0; font-weight: bold;">✅ Após realizar a transferência:</p>
+          <ol style="color: #166534; margin: 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
+            <li>Envie o comprovante para nosso WhatsApp ou E-mail.</li>
+            <li>Sua reserva será confirmada oficialmente.</li>
+          </ol>
+        </div>
+      </div>
+      
+    </div>
+  </div>
+</body>
+</html>
       `;
 
-      const simpleHotelHtml = `
-        <html><body style="font-family: sans-serif; background: #f8fafc; padding: 20px;">
-          <h2 style="color: #1a3c34;">Nova Reserva via AI Bot #RES-${shortId}</h2>
-          <p><b>Hóspede:</b> ${mainGuest.name} (${mainGuest.email} - CPF: ${mainGuest.cpf})</p>
-          <p><b>Valor:</b> ${formatCurrency(totalPrice)} (${paymentMethod})</p>
-          <p><b>Período:</b> ${checkIn} a ${checkOut} (${nights} noites)</p>
-          <h4>Quartos</h4><ul>${roomsHtml}</ul>
-          <h4>Serviços Extras</h4><ul>${extrasHtml}</ul>
-          <h4>Acompanhantes</h4><ul>${guestsHtml}</ul>
-          <h4>Observações</h4><p>${observations}</p>
-        </body></html>
+      const luxuryHotelHtml = `
+<!DOCTYPE html>
+<html>
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+  <div style="max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+        <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 30px 20px; text-align: center; border-bottom: 4px solid #d4a853;">
+          <span style="font-size: 40px; display: block; margin-bottom: 10px;">🤖</span>
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: normal;">Nova Pré-Reserva via Chatbot</h1>
+          <p style="color: #94a3b8; margin: 8px 0 0 0; font-size: 14px;">Reserva #${shortId}</p>
+        </div>
+        <div style="padding: 32px 24px;">
+          <p style="margin: 0 0 8px 0;"><strong>Hóspede:</strong> ${mainGuest.name}</p>
+          <p style="margin: 0 0 8px 0;"><strong>Email:</strong> ${mainGuest.email}</p>
+          <p style="margin: 0 0 8px 0;"><strong>Período:</strong> ${checkIn.split('-').reverse().join('/')} a ${checkOut.split('-').reverse().join('/')} (${nights} noites)</p>
+          <p style="margin: 0 0 8px 0;"><strong>Valor Total:</strong> ${formatCurrencyLocal(totalPrice)} (Aguardando PIX)</p>
+          
+          <h4 style="margin: 20px 0 10px 0; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">Quartos</h4>
+          <ul style="margin: 0; padding-left: 20px;">${rooms.map((r: any) => `<li><b>${r.name}</b></li>`).join('')}</ul>
+          
+          <h4 style="margin: 20px 0 10px 0; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">Extras</h4>
+          <ul style="margin: 0; padding-left: 20px;">${extrasHtml}</ul>
+          
+          <h4 style="margin: 20px 0 10px 0; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">Acompanhantes</h4>
+          <ul style="margin: 0; padding-left: 20px;">${guestsHtml}</ul>
+          
+          <h4 style="margin: 20px 0 10px 0; color: #1e293b; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">Observações</h4>
+          <p style="background: #f8fafc; padding: 12px; border-radius: 6px;">[CHATBOT] ${observations}</p>
+        </div>
+  </div>
+</body>
+</html>
       `;
 
       const executeBrevoStictly = async (payload: any) => {
@@ -171,14 +258,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         sender: { name: 'Hotel Solar', email: hotelEmail },
         to: [{ email: mainGuest.email || 'geraldo@hotelsolar.tur.br', name: mainGuest.name }],
         subject: `Confirmação de Reserva #${shortId} - Hotel Solar`,
-        htmlContent: simpleClientHtml,
+        htmlContent: luxuryClientHtml,
       });
 
       await executeBrevoStictly({
         sender: { name: 'Sistema de Reservas AI', email: hotelEmail },
         to: [{ email: adminEmail, name: 'Administração Hotel Solar' }],
-        subject: `🔔 Nova Reserva AI #${shortId} - ${mainGuest.name}`,
-        htmlContent: simpleHotelHtml,
+        subject: `🤖 Nova Reserva AI #${shortId} - ${mainGuest.name}`,
+        htmlContent: luxuryHotelHtml,
       });
     }
 
