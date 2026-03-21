@@ -461,6 +461,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    const generatedShortId = reservationId.split('-')[0].toUpperCase();
+
     if (isCreditCard) {
       const draftUrl = `https://motor-de-reservas-on-line-hotel-sol.vercel.app/?paymentId=${reservationId}`;
       return res.status(200).json({ 
@@ -468,6 +470,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         message: `Link seguro: ${draftUrl}`, 
         paymentLink: draftUrl, 
         isDraft: true,
+        reservationId: reservationId,
+        shortId: generatedShortId,
         emailDebug: emailDebugInfo 
       });
     }
@@ -476,6 +480,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       success: true, 
       message: 'Reserva criada com sucesso e inventário processado.',
       reservationId: reservationId, 
+      shortId: generatedShortId,
       data, 
       emailDebug: emailDebugInfo 
     });
