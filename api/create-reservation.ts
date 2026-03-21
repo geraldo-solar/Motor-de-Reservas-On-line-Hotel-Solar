@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { generateUUID } from '../utils/uuid';
-// import { generateClientEmailHTML, generateHotelEmailHTML, HOTEL_CONFIG } from '../services/emailService';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS Headers
@@ -21,12 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // TEST LEVEL 1: Check if basic handler runs despite all top-level imports existing.
-  if (req.body?.testLevel === 1) {
-    return res.status(200).json({ status: 'ok', level: 1 });
-  }
-
-  // Supabase setup moved inside handler to prevent Top-Level crashes
+  // Supabase setup moved inside handler
   const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
@@ -36,11 +30,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
-
-  // TEST LEVEL 2: Supabase client instantiated successfully without hanging Vercel
-  if (req.body?.testLevel === 2) {
-    return res.status(200).json({ status: 'ok', level: 2 });
-  }
 
   try {
     const { 
@@ -59,7 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Missing required fields (checkIn, checkOut, rooms, mainGuest)' });
     }
 
-    // Generate unique ID
+    // Generate unique ID using the valid algorithm natively imported
     const reservationId = generateUUID();
 
     // If Credit Card, do NOT insert yet. Return a magic checkout link.
@@ -67,7 +56,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     if (isCreditCard) {
       const draftPayload = {
-        id: reservationId, // Assign a pre-generated ID
+        id: reservationId,
         checkIn,
         checkOut,
         mainGuest,
@@ -131,15 +120,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: error.message });
     }
 
-    if (req.body?.testLevel === 4) {
-      return res.status(200).json({ status: 'ok', level: 4, supabaseData: data });
-    }
-
     // --- SINCRONIZAÇÃO DE INVENTÁRIO (DECREMENTO) ---
     try {
       if (rooms && rooms.length > 0) {
         for (const roomSnapshot of rooms) {
-          // Achar a categoria pelo nome (pois a IA não envia UUID)
           const { data: roomTypes } = await supabase
              .from('room_types')
              .select('*')
@@ -182,10 +166,93 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     // --- FIM DA SINCRONIZAÇÃO ---
 
-    console.log('[API/Create-Reservation] Transpiler survived up to email payload parsing.');
-    return res.status(200).json({ status: 'transpiler_passed_db_block', dataToSave });
+    let emailDebugInfo: any = { attempted: false, skipped_reason: 'no_api_key' };
+
+    // --- ENVIAR EMAILS VIA BREVO ---
+    const apiKey = process.env.VITE_BREVO_API_KEY || process.env.BREVO_API_KEY;
+    if (apiKey) {
+      emailDebugInfo = { attempted: true };
+      try {
+        console.log('[API/Create-Reservation] Enviando e-mails dinamicamente...');
+        
+        // AST Bypass - Async Module Import strictly isolating parsing at runtime
+        const { generateClientEmailHTML, generateHotelEmailHTML, HOTEL_CONFIG } = await import('../services/emailService');
+        
+        // Formatar objeto reservation para o template
+        const reservationForEmail = {
+          ...dataToSave,
+          checkIn: dataToSave.check_in,
+          checkOut: dataToSave.check_out,
+          mainGuest: dataToSave.main_guest,
+          additionalGuests: dataToSave.additional_guests,
+          totalPrice: dataToSave.total_price,
+          paymentMethod: dataToSave.payment_method
+        } as any;
+
+        const emailPromises = [
+          // Email para o Cliente
+          fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
+            body: JSON.stringify({
+              sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
+              to: [{ email: dataToSave.main_guest.email, name: dataToSave.main_guest.name }],
+              subject: `Confirmação de Reserva #${reservationId.substring(0,8).toUpperCase()} - Hotel Solar`,
+              htmlContent: generateClientEmailHTML(reservationForEmail),
+            }),
+          }),
+          // Email para o Hotel
+          fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: { 'accept': 'application/json', 'api-key': apiKey, 'content-type': 'application/json' },
+            body: JSON.stringify({
+              sender: { name: 'Sistema de Reservas AI', email: HOTEL_CONFIG.email },
+              to: [{ email: HOTEL_CONFIG.adminEmail, name: 'Administração Hotel Solar' }],
+              subject: `🔔 Nova Reserva AI #${reservationId.substring(0,8).toUpperCase()} - ${dataToSave.main_guest.name}`,
+              htmlContent: generateHotelEmailHTML(reservationForEmail),
+            }),
+          })
+        ];
+
+        const emailResponses = await Promise.allSettled(emailPromises);
+        let statuses: any[] = [];
+        
+        for (let i = 0; i < emailResponses.length; i++) {
+          const promiseResult = emailResponses[i];
+          if (promiseResult.status === 'fulfilled') {
+             const resFetch = promiseResult.value;
+             const text = await resFetch.text();
+             statuses.push({ ok: resFetch.ok, status: resFetch.status, text });
+             if (!resFetch.ok) {
+                console.error('[API/Create-Reservation] Email failed:', text);
+                await supabase.from('reservations').update({ observations: dataToSave.observations + ' | BREVO_ERROR: ' + text }).eq('id', reservationId);
+             }
+          } else {
+             statuses.push({ promise_rejected: true, reason: String(promiseResult.reason) });
+             console.error('[API/Create-Reservation] Promise rejected:', promiseResult.reason);
+             await supabase.from('reservations').update({ observations: dataToSave.observations + ' | PROMISE_ERROR: ' + String(promiseResult.reason) }).eq('id', reservationId);
+          }
+        }
+        
+        emailDebugInfo.statuses = statuses;
+        console.log('[API/Create-Reservation] E-mails enviados.');
+      } catch (err: any) {
+        emailDebugInfo.crashed = err.message;
+        console.error('[API/Create-Reservation] Erro dinâmico emails:', err);
+        await supabase.from('reservations').update({ observations: dataToSave.observations + ' | T_AST_ERROR: ' + err.message }).eq('id', reservationId);
+      }
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Reserva criada com sucesso!',
+      reservationId: reservationId,
+      data: data,
+      emailDebug: emailDebugInfo
+    });
 
   } catch (error: any) {
+    console.error('[API/Create-Reservation] Execution error:', error);
     res.statusCode = 500;
     return res.end('FATAL_SANDBOX_EJECT:' + error.stack);
   }
