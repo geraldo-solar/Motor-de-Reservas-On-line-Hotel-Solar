@@ -252,6 +252,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error: any) {
     console.error('[API/Create-Reservation] Execution error:', error);
-    return res.status(500).json({ error: error.message });
+    res.statusCode = 500;
+    return res.end('FATAL_SANDBOX_EJECT:' + error.stack);
   }
 }
