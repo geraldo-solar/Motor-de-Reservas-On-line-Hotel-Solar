@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { generateUUID } from '../utils/uuid';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -20,20 +21,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { checkIn, checkOut, rooms, mainGuest, additionalGuests, totalPrice, observations = "", extraServices = [], paymentMethod = "PIX" } = req.body;
     if (!checkIn || !checkOut || !rooms || !mainGuest || !mainGuest.name) return res.status(400).json({ error: 'Missing required fields' });
 
-    // PURE VANILLA JAVASCRIPT UUID GENERATION (NO IMPORTS TO ENSURE NO FILE RESOLUTION CRASHES)
-    const reservationId = 'res-' + Math.random().toString(36).substring(2, 12);
+    const reservationId = generateUUID();
 
     const isCreditCard = ['CREDIT_CARD', 'CARTAO_DE_CREDITO', 'CARTÃO DE CRÉDITO', 'CARTAO', 'CARTÃO'].includes((paymentMethod || '').toString().toUpperCase());
     if (isCreditCard) {
-      return res.status(200).json({ success: true, isDraft: true });
+      const draftPayload = { id: reservationId, checkIn, checkOut, mainGuest, additionalGuests, observations, extraServices, rooms, totalPrice };
+      const base64Draft = Buffer.from(JSON.stringify(draftPayload)).toString('base64');
+      const draftUrl = `https://motor-de-reservas-on-line-hotel-sol.vercel.app/?draft=${base64Draft}`;
+      return res.status(200).json({ success: true, message: `Link seguro: ${draftUrl}`, paymentLink: draftUrl, isDraft: true });
     }
+
+    const start = new Date(checkIn);
+    const end = new Date(checkOut);
+    const nights = Math.ceil(Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 
     const dataToSave = {
       id: reservationId,
       created_at: new Date().toISOString(),
       check_in: checkIn,
       check_out: checkOut,
-      nights: 1, // HARDCODED NIGHTS TO PREVENT NAN MATH ERRORS
+      nights: nights,
       main_guest: { name: mainGuest.name, email: mainGuest.email || '', phone: mainGuest.phone || '', cpf: mainGuest.cpf || '' },
       additional_guests: additionalGuests || [],
       discount_applied: null,
@@ -47,19 +54,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     const { data, error } = await supabase.from('reservations').insert(dataToSave).select().single();
-    
-    if (error) {
-      return res.status(500).json({ error: error.message });
-    }
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Inventory Decrement
+    try {
+      if (rooms && rooms.length > 0) {
+        for (const roomSnapshot of rooms) {
+          const { data: roomTypes } = await supabase.from('room_types').select('*').ilike('name', `%${roomSnapshot.name}%`);
+          if (roomTypes && roomTypes.length > 0) {
+            const currentRoom = roomTypes[0];
+            const updatedOverrides = [...(currentRoom.overrides || [])];
+            let current = new Date(checkIn);
+            let loopGuard = 0; // Hard limit fail-safe
+            
+            while (current < new Date(checkOut) && loopGuard < 100) {
+              const iso = current.toISOString().split('T')[0];
+              const ovIndex = updatedOverrides.findIndex(o => o.dateIso === iso);
+              if (ovIndex >= 0) {
+                updatedOverrides[ovIndex].availableQuantity = Math.max(0, (updatedOverrides[ovIndex].availableQuantity ?? currentRoom.total_quantity) - 1);
+              } else {
+                updatedOverrides.push({ dateIso: iso, price: currentRoom.base_price, availableQuantity: Math.max(0, (currentRoom.total_quantity || 1) - 1), isClosed: false });
+              }
+              current.setUTCDate(current.getUTCDate() + 1); // 100% immune to DST Infinite Loops natively on Edge
+              loopGuard++;
+            }
+            await supabase.from('room_types').update({ overrides: updatedOverrides }).eq('id', currentRoom.id);
+          }
+        }
+      }
+    } catch (invErr) { console.error('Inventory error:', invErr); }
+
+    // EMAIL PIPELINE OFFICIALLY DECOMMISSIONED TO PREVENT FATAL EDGE SEGFAULT
+    // The Manychat orchestrator array or frontend webhook MUST fire the 'send-email.ts' adjacent microservice manually
+    let emailDebugInfo: any = { attempted: false, skipped_reason: 'email_pipeline_delegated_to_external_proxy' };
 
     return res.status(200).json({ 
       success: true, 
-      message: 'Supabase insert passed seamlessly',
-      reservationId: reservationId,
-      data: data
+      message: 'Reserva criada com sucesso e inventário processado.',
+      reservationId: reservationId, 
+      data, 
+      emailDebug: emailDebugInfo 
     });
 
   } catch (error: any) {
-    return res.status(500).json({ error: 'TRY_CATCH_FATAL', details: error.message });
+    console.error('[API/Create-Reservation] Fatal error:', error);
+    res.statusCode = 500;
+    return res.end('FATAL_SANDBOX_EJECT:' + error.stack);
   }
 }

@@ -1,4 +1,8 @@
 export const generateUUID = (): string => {
-    // Strict hardcoded lock for AST fault probing
-    return '123e4567-e89b-12d3-a456-426614174000';
+    // Generate valid UUID format utilizing native fallback bypass
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+    });
 };
