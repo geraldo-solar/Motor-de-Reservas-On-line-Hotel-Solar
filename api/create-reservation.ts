@@ -36,6 +36,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { checkIn, checkOut, rooms, mainGuest, additionalGuests, totalPrice, observations = "", extraServices = [], paymentMethod = "PIX" } = req.body;
     if (!checkIn || !checkOut || !rooms || !mainGuest || !mainGuest.name) return res.status(400).json({ error: 'Missing required fields' });
 
+    // Normalize extras for Chatbot payloads which send { name, price } instead of { name, priceSnapshot, quantity }
+    const normalizedExtras = extraServices.map((ext: any) => ({
+      ...ext,
+      quantity: ext.quantity || 1,
+      priceSnapshot: ext.priceSnapshot !== undefined ? ext.priceSnapshot : ext.price || 0
+    }));
+
     const reservationId = generateSafeUUID();
 
     const isCreditCard = ['CREDIT_CARD', 'CARTAO_DE_CREDITO', 'CARTÃO DE CRÉDITO', 'CARTAO', 'CARTÃO'].includes((paymentMethod || '').toString().toUpperCase());
@@ -56,7 +63,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       package_discount_applied: null,
       observations: `[ORIGEM: AI CHATBOT] ${observations}`,
       rooms: rooms,
-      extras: extraServices,
+      extras: normalizedExtras,
       total_price: totalPrice,
       payment_method: isCreditCard ? 'CREDIT_CARD' : 'PIX',
       status: 'PENDING'
@@ -107,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       
       const roomsHtml = rooms.map((r: any) => `<li><b>${r.name}</b> - ${formatCurrency(r.priceSnapshot)}</li>`).join('');
       const guestsHtml = additionalGuests?.length ? additionalGuests.map((g: any) => `<li>${g.name} (${g.age || '-'})</li>`).join('') : '<li>Nenhum hóspede adicional</li>';
-      const extrasHtml = extraServices?.length ? extraServices.map((e: any) => `<li>${e.name} (${e.quantity}x)</li>`).join('') : '<li>Nenhum extra</li>';
+      const extrasHtml = normalizedExtras?.length ? normalizedExtras.map((e: any) => `<li>${e.name} (${e.quantity}x) - ${formatCurrency(e.priceSnapshot * e.quantity)}</li>`).join('') : '<li>Nenhum extra</li>';
 
       const formatCurrencyLocal = (val: number) => `R$ ${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       const preCheckInUrl = `https://motor-de-reservas-on-line-hotel-sol.vercel.app/pre-checkin/${reservationId}`;
