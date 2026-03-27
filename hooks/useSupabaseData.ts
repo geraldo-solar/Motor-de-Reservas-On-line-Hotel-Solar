@@ -197,7 +197,7 @@ export const useSupabaseData = () => {
       // Funções de busca individuais para melhor controle de erro
       const fetchRooms = () => supabase.from('room_types').select('*').order('name');
       const fetchPackages = () => supabase.from('packages').select('*');
-      const fetchReservations = () => supabase.from('reservations').select('*').order('created_at', { ascending: false }).limit(300);
+      const fetchReservations = () => supabase.from('reservations').select('*').not('status', 'in', '("maintenance","cleaning")').order('created_at', { ascending: false }).limit(300);
       const fetchExtras = () => supabase.from('extras').select('*');
       const fetchDiscounts = () => supabase.from('discount_codes').select('*');
 
