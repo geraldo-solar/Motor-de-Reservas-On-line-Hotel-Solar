@@ -86,7 +86,8 @@ const html = `
         <div class="benefits-banner">
             <div class="benefits-title">🐰 DESTAQUES DA EXPERIÊNCIA 🐰</div>
             <div class="benefits-text">
-                <span class="highlight">Caça aos Ovos</span> • <span class="highlight">Menu Especial de Páscoa</span> • <span class="highlight">Clubinho Solar</span> (Atividades Infantis)
+                <span class="highlight">Caça aos Ovos</span> • <span class="highlight">Menu Especial de Páscoa</span>* • <span class="highlight">Clubinho Solar</span> (Atividades Infantis)<br>
+                <span style="font-size: 14px; font-style: italic; color: rgba(226,194,117,0.8); display: inline-block; margin-top: 8px;">*Consumação à parte</span>
             </div>
         </div>
         <div class="footer">www.hotelsolar.tur.br | @hotelsolar</div>

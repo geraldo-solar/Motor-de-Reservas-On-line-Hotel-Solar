@@ -146,4 +146,6 @@ export interface Reservation {
   amountPaid?: number;
   paymentHistory?: { date: string; amount: number; user?: string }[];
   isSupabaseDraft?: boolean;
+  id_empresa?: string | null;
+  companyName?: string | null;
 }

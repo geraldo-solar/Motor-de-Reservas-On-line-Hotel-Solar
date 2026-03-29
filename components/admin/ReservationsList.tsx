@@ -31,8 +31,9 @@ export const ReservationsList: React.FC<ReservationsListProps> = ({ reservations
         const name = (res.mainGuest?.name || '').toLowerCase();
         const email = (res.mainGuest?.email || '').toLowerCase();
         const id = (res.id || '').toLowerCase();
+        const company = (res.companyName || '').toLowerCase();
         const term = searchTerm.toLowerCase();
-        return name.includes(term) || email.includes(term) || id.includes(term);
+        return name.includes(term) || email.includes(term) || id.includes(term) || company.includes(term);
     });
 
     return (
@@ -72,7 +73,14 @@ export const ReservationsList: React.FC<ReservationsListProps> = ({ reservations
                                     <span className="text-[10px] text-slate-300 ml-auto md:ml-0">{formatDisplayDate(res.createdAt)}</span>
                                 </div>
 
-                                <h3 className="text-lg font-serif font-bold text-solar-green truncate mb-1">{res.mainGuest.name}</h3>
+                                <h3 className="text-lg font-serif font-bold text-solar-green mb-1 flex items-center gap-2 flex-wrap">
+                                    <span className="truncate max-w-full">{res.mainGuest.name || "Hóspede Não Informado"}</span>
+                                    {res.companyName && (
+                                        <span className="text-[10px] font-sans font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 uppercase tracking-widest flex items-center gap-1 truncate max-w-[200px]">
+                                            🏢 {res.companyName}
+                                        </span>
+                                    )}
+                                </h3>
 
                                 <div className="flex flex-wrap items-center gap-y-2 gap-x-6 text-[11px] text-slate-500 font-medium">
                                     <div className="flex items-center gap-1.5"><Calendar size={14} className="text-solar-gold/60" /> {formatDisplayDate(res.checkIn)} — {formatDisplayDate(res.checkOut)}</div>

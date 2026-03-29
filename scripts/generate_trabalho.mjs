@@ -85,7 +85,8 @@ const html = `
         <div class="benefits-banner">
             <div class="benefits-title">✨ PROGRAMAÇÃO EXCLUSIVA ✨</div>
             <div class="benefits-text">
-                Comemore seu merecido descanso no Hotel Solar!<br>O Feriadão conta com um incrível e saboroso <span class="highlight">Almoço Especial do Trabalhador</span> para toda a sua família!
+                Comemore seu merecido descanso no Hotel Solar!<br>O Feriadão conta com um incrível e saboroso <span class="highlight">Almoço Especial do Trabalhador</span> para toda a sua família!*<br>
+                <span style="font-size: 14px; font-style: italic; margin-top: 8px; display: inline-block; color: rgba(255,255,255,0.7);">*Consumação à parte</span>
             </div>
         </div>
         <div class="footer">www.hotelsolar.tur.br | @hotelsolar</div>

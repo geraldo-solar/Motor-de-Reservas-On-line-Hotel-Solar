@@ -112,8 +112,13 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-4">
                             <h4 className="text-[10px] font-bold text-gray-400 uppercase border-b pb-1 tracking-widest">Dados do Hóspede</h4>
-                            <p className="text-sm font-bold text-[#0F2820]">{reservation.mainGuest.name}</p>
-                            <div className="space-y-2">
+                            <p className="text-sm font-bold text-[#0F2820]">{reservation.mainGuest.name || "Não Informado"}</p>
+                            {reservation.companyName && (
+                                <p className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200 uppercase tracking-widest inline-flex items-center gap-1 mt-1">
+                                    🏢 EMPRESA: {reservation.companyName}
+                                </p>
+                            )}
+                            <div className="space-y-2 mt-2">
                                 <p className="text-xs text-slate-500 flex items-center gap-2 bg-slate-50 p-2 rounded-lg"><Mail size={12} className="text-solar-gold" /> {reservation.mainGuest.email}</p>
                                 <p className="text-xs text-slate-500 flex items-center gap-2 bg-slate-50 p-2 rounded-lg"><Send size={12} className="text-solar-gold" /> {reservation.mainGuest.phone}</p>
                                 <p className="text-xs text-slate-500 flex items-center gap-2 bg-slate-50 p-2 rounded-lg"><Type size={12} className="text-solar-gold" /> CPF: {reservation.mainGuest.cpf}</p>

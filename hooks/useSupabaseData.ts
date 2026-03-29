@@ -149,7 +149,7 @@ export const useSupabaseData = () => {
         } : undefined,
         paymentMethod: (r.payment_method || r.paymentMethod || 'PIX') as 'PIX' | 'CREDIT_CARD',
         cardDetails: r.card_details || r.cardDetails ? safeObject(r.card_details || r.cardDetails, undefined) : undefined,
-        status: (r.status || 'PENDING') as any,
+        status: (r.status === 'CANCELLED' ? 'CANCELED' : (r.status || 'PENDING')) as any,
         cancellationReason: r.cancellation_reason || r.cancellationReason || '',
         packageDiscountApplied: (r.package_discount_applied || r.packageDiscountApplied) ? {
           percentage: Number((r.package_discount_applied || r.packageDiscountApplied).percentage || 0),
@@ -157,6 +157,8 @@ export const useSupabaseData = () => {
         } : undefined,
         amountPaid: r.amount_paid !== undefined ? Number(r.amount_paid) : (r.amountPaid !== undefined ? Number(r.amountPaid) : undefined),
         paymentHistory: safeArray(r.payment_history),
+        id_empresa: r.id_empresa || null,
+        companyName: r.companies?.trade_name || null,
       };
     } catch (e) {
       console.error('[Mapper] Erro ao mapear reserva individual:', e, r);
@@ -197,7 +199,7 @@ export const useSupabaseData = () => {
       // Funções de busca individuais para melhor controle de erro
       const fetchRooms = () => supabase.from('room_types').select('*').order('name');
       const fetchPackages = () => supabase.from('packages').select('*');
-      const fetchReservations = () => supabase.from('reservations').select('*').not('status', 'in', '("maintenance","cleaning")').order('created_at', { ascending: false }).limit(300);
+      const fetchReservations = () => supabase.from('reservations').select('*, companies(trade_name)').not('status', 'in', '("maintenance","cleaning")').order('created_at', { ascending: false }).limit(300);
       const fetchExtras = () => supabase.from('extras').select('*');
       const fetchDiscounts = () => supabase.from('discount_codes').select('*');
 

@@ -74,7 +74,8 @@ const html = `
                 <div class="price-item"><span class="room-name">LOFT</span><span class="room-price">R$ 2.640</span></div>
             </div>
         </div>
-        <div class="benefits">❤️ Jantar Especial dos Namorados • Momentos a dois inesquecíveis ❤️</div>
+        <div class="benefits">❤️ Jantar Especial dos Namorados* • Momentos a dois inesquecíveis ❤️<br>
+        <span style="font-size: 14px; font-style: italic; color: rgba(229,169,169,0.8); display: block; margin-top: 8px;">*Consumação à parte</span></div>
         <div class="footer">www.hotelsolar.tur.br | @hotelsolar</div>
     </div>
 </body>
