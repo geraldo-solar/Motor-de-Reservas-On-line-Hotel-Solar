@@ -3,6 +3,7 @@ import { ArrowLeft, Check, AlertCircle } from 'lucide-react';
 import { Reservation } from '../types';
 import { formatDisplayDate, toLocalISO } from '../utils/dateUtils';
 import { sendPreCheckinAdminEmail, getShortReservationId } from '../services/emailService';
+import { supabase } from '../lib/supabase';
 
 interface PreCheckinPageProps {
     reservationId: string;
@@ -192,14 +193,99 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
         try {
             if (!reservation) throw new Error("Reserva não encontrada");
 
-            // Send email
+            // 1. Send email to admin
             const result = await sendPreCheckinAdminEmail(reservation, formData);
 
-            if (result.success) {
-                setSuccess(true);
-            } else {
-                throw new Error(result.error || "Erro ao enviar dados");
+            if (!result.success) {
+                throw new Error(result.error || "Erro ao enviar dados por e-mail");
             }
+
+            // 2. Salvar FNRH e os hóspedes no Banco de Dados do Hotel (Tabela 'guests')
+            const mainAddress = `${formData.endereco.logradouro}, ${formData.endereco.numero} ${formData.endereco.complemento ? '- ' + formData.endereco.complemento : ''} - ${formData.endereco.bairro}`.trim();
+
+            const guestPayload = {
+                name: formData.nomeCompleto,
+                full_name: formData.nomeCompleto,
+                email: formData.email,
+                phone: formData.telefone,
+                cpf_cnpj: formData.cpf,
+                document: formData.cpf,
+                rg: formData.rg + (formData.orgaoEmissor ? ' - ' + formData.orgaoEmissor : ''),
+                birthdate: formData.dataNascimento,
+                nationality: formData.nacionalidade,
+                profession: formData.profissao,
+                gender: formData.genero,
+                zip_code: formData.endereco.cep,
+                address: mainAddress,
+                city_state: `${formData.endereco.cidade} - ${formData.endereco.estado}`
+            };
+
+            const cleanCpf = formData.cpf.replace(/\D/g, '');
+            if (cleanCpf) {
+                const { data: existingGuest } = await supabase
+                    .from('guests')
+                    .select('id')
+                    .or(`document.ilike.%${cleanCpf}%,cpf_cnpj.ilike.%${cleanCpf}%`)
+                    .limit(1)
+                    .maybeSingle();
+
+                if (existingGuest) {
+                    await supabase.from('guests').update(guestPayload).eq('id', existingGuest.id);
+                } else {
+                    await supabase.from('guests').insert([guestPayload]);
+                }
+            }
+
+            // 3. Salvar Acompanhantes no CRM, se houver
+            if (formData.acompanhantes.length > 0) {
+                for (const acomp of formData.acompanhantes) {
+                    const acompCleanCpf = (acomp.cpf || '').replace(/\D/g, '');
+                    if (acomp.nome && acompCleanCpf) {
+                        const acompAddress = acomp.mesmoEndereco ? mainAddress : `${acomp.endereco?.logradouro || ''}, ${acomp.endereco?.numero || ''} ${acomp.endereco?.complemento ? '- ' + acomp.endereco?.complemento : ''} - ${acomp.endereco?.bairro || ''}`.trim();
+                        const acompPayload = {
+                            name: acomp.nome,
+                            full_name: acomp.nome,
+                            email: acomp.email || '',
+                            phone: acomp.telefone || '',
+                            cpf_cnpj: acomp.cpf,
+                            document: acomp.cpf,
+                            birthdate: acomp.dataNascimento || '',
+                            zip_code: acomp.mesmoEndereco ? formData.endereco.cep : acomp.endereco?.cep || '',
+                            address: acompAddress,
+                            city_state: acomp.mesmoEndereco ? `${formData.endereco.cidade} - ${formData.endereco.estado}` : `${acomp.endereco?.cidade || ''} - ${acomp.endereco?.estado || ''}`
+                        };
+
+                        const { data: extAcomp } = await supabase.from('guests').select('id').or(`document.ilike.%${acompCleanCpf}%,cpf_cnpj.ilike.%${acompCleanCpf}%`).limit(1).maybeSingle();
+                        if (extAcomp) {
+                            await supabase.from('guests').update(acompPayload).eq('id', extAcomp.id);
+                        } else {
+                            await supabase.from('guests').insert([acompPayload]);
+                        }
+                    }
+                }
+            }
+
+            // 4. Update the reservation globally so the system knows FNRH was filled
+            try {
+               await supabase.from('reservations').update({
+                   pre_checkin_sent: true,
+                   main_guest: {
+                       ...reservation.mainGuest,
+                       cpf: formData.cpf,
+                       name: formData.nomeCompleto,
+                       email: formData.email,
+                       phone: formData.telefone,
+                       rg: formData.rg,
+                       profession: formData.profissao,
+                       nationality: formData.nacionalidade,
+                       address: mainAddress
+                   }
+               }).eq('id', reservation.id);
+            } catch (err) {
+               console.error("Erro secundário ao atualizar reservation: ", err);
+            }
+
+            setSuccess(true);
         } catch (err: any) {
             console.error(err);
             setError(err.message || "Ocorreu um erro ao enviar o pré-check-in.");

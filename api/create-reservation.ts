@@ -43,6 +43,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       priceSnapshot: ext.priceSnapshot !== undefined ? ext.priceSnapshot : ext.price || 0
     }));
 
+    // Normalize room slugs to UUIDs so PostgreSQL triggers won't crash when receiving 'suite-casal'
+    const mapSlugToUUID: Record<string, string> = {
+      'suite-sacada-vista-mar': '310811f4-54eb-476c-a0b4-f8cc8574ae79',
+      'suite-casal': '835b8136-77a7-499a-b40e-40f61ddd10d8',
+      'suite-triplo': '7b27b1f2-c298-45c0-9c31-16cf0096b8ae',
+      'suite-quadruplo': '460d8067-58c0-4c02-8adf-a1fc0fe234f7',
+      'loft': '4325def4-f1e1-45b2-a653-52a9ba20928b',
+      'suite-varanda-terreo': 'd070d42f-5ee0-46a0-9e3b-8f4e8eced9a3'
+    };
+    
+    const normalizedRooms = rooms.map((room: any) => {
+      // If the incoming room has an ID that matches the slug, swap it to the UUID
+      if (room.id && mapSlugToUUID[room.id]) {
+        return { ...room, id: mapSlugToUUID[room.id] };
+      }
+      return room;
+    });
+
     const reservationId = generateSafeUUID();
 
     const isCreditCard = ['CREDIT_CARD', 'CARTAO_DE_CREDITO', 'CARTÃO DE CRÉDITO', 'CARTAO', 'CARTÃO'].includes((paymentMethod || '').toString().toUpperCase());
@@ -62,7 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       discount_applied: null,
       package_discount_applied: null,
       observations: `[ORIGEM: AI CHATBOT] ${observations}`,
-      rooms: rooms,
+      rooms: normalizedRooms,
       extras: normalizedExtras,
       total_price: totalPrice,
       payment_method: isCreditCard ? 'CREDIT_CARD' : 'PIX',

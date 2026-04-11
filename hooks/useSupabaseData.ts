@@ -618,6 +618,7 @@ export const useSupabaseData = () => {
         card_details: reservation.cardDetails || null,
         status: reservation.status,
         cancellation_reason: reservation.cancellationReason || null,
+        created_by: 'Motor de Reservas'
       };
 
       // Tenta salvar no Supabase

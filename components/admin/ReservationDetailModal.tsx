@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Check, Edit2, MessageSquare, Mail, Phone, Calendar, Clock, CreditCard, ChevronRight, User, AlertTriangle, ArrowRight, Send, Type, QrCode, Plus } from 'lucide-react';
+import { X, Check, Edit2, MessageSquare, Mail, Phone, Calendar, Clock, CreditCard, ChevronRight, User, AlertTriangle, ArrowRight, Send, Type, QrCode, Plus, Users } from 'lucide-react';
 import { Reservation, ReservationStatus } from '../../types';
 import { sendPaymentConfirmedEmail, sendReservationCanceledEmail } from '../../services/emailService';
 import { formatDisplayDate, formatDisplayDateTime } from '../../utils/dateUtils';
@@ -123,6 +123,25 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                 <p className="text-xs text-slate-500 flex items-center gap-2 bg-slate-50 p-2 rounded-lg"><Send size={12} className="text-solar-gold" /> {reservation.mainGuest.phone}</p>
                                 <p className="text-xs text-slate-500 flex items-center gap-2 bg-slate-50 p-2 rounded-lg"><Type size={12} className="text-solar-gold" /> CPF: {reservation.mainGuest.cpf}</p>
                             </div>
+                            
+                            {reservation.additionalGuests && reservation.additionalGuests.length > 0 && (
+                                <div className="mt-4 border-t border-slate-100 pt-3">
+                                    <h5 className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1"><Users size={10} /> Acompanhantes</h5>
+                                    <div className="flex flex-col gap-1.5">
+                                        {reservation.additionalGuests.map((guest, i) => {
+                                            const guestType = (guest as any).type || (guest as any).age || '';
+                                            return (
+                                                <div key={i} className="flex justify-between items-center bg-slate-50 border border-slate-100 p-2 rounded-md text-xs">
+                                                    <span className="font-bold text-slate-700">{guest.name || "Sem nome"}</span>
+                                                    {guestType && (
+                                                        <span className="text-[9px] font-bold bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded uppercase">{String(guestType)}</span>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         <div className="space-y-4">
                             <h4 className="text-[10px] font-bold text-gray-400 uppercase border-b pb-1 tracking-widest">Período de Estadia</h4>
