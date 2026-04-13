@@ -103,7 +103,9 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
         fetch('https://servicodados.ibge.gov.br/api/v1/localidades/municipios')
             .then(res => res.json())
             .then(data => {
-                const names = data.map((d: any) => `${d.nome} - ${d.microrregiao.mesorregiao.UF.sigla}`);
+                const names = data
+                    .filter((d: any) => d && d.nome && d.microrregiao?.mesorregiao?.UF?.sigla)
+                    .map((d: any) => `${d.nome} - ${d.microrregiao.mesorregiao.UF.sigla}`);
                 setCitiesList(names.sort());
             })
             .catch(err => console.error(err));
