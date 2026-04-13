@@ -161,7 +161,7 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
         }
     }, [accompanyingGuestCount]);
 
-    const handleAcompanhanteChange = (index: number, field: string, value: any, nestedField?: string) => {
+    const handleAcompanhanteChange = async (index: number, field: string, value: any, nestedField?: string) => {
         const newAcompanhantes = [...formData.acompanhantes];
         if (nestedField && field === 'endereco') {
             newAcompanhantes[index] = {
@@ -172,17 +172,71 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
             newAcompanhantes[index] = { ...newAcompanhantes[index], [field]: value };
         }
         setFormData(prev => ({ ...prev, acompanhantes: newAcompanhantes }));
+
+        if (nestedField === 'cep' && field === 'endereco') {
+            const cleanCep = value.replace(/\D/g, '');
+            if (cleanCep.length === 8) {
+                try {
+                    const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+                    const data = await res.json();
+                    if (!data.erro) {
+                        setFormData(prev => {
+                            const st = [...prev.acompanhantes];
+                            if (st[index] && st[index].endereco) {
+                                st[index] = {
+                                    ...st[index],
+                                    endereco: {
+                                        ...st[index].endereco!,
+                                        logradouro: data.logradouro || st[index].endereco!.logradouro,
+                                        bairro: data.bairro || st[index].endereco!.bairro,
+                                        cidade: data.localidade || st[index].endereco!.cidade,
+                                        estado: data.uf || st[index].endereco!.estado,
+                                    }
+                                };
+                            }
+                            return { ...prev, acompanhantes: st };
+                        });
+                    }
+                } catch (err) {
+                    console.error("Erro viaCEP acompanhante:", err);
+                }
+            }
+        }
     };
 
     const handleChange = (field: string, value: string) => {
         setFormData(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleAddressChange = (field: string, value: string) => {
+    const handleAddressChange = async (field: string, value: string) => {
         setFormData(prev => ({
             ...prev,
             endereco: { ...prev.endereco, [field]: value }
         }));
+        
+        if (field === 'cep') {
+            const cleanCep = value.replace(/\D/g, '');
+            if (cleanCep.length === 8) {
+                try {
+                    const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+                    const data = await res.json();
+                    if (!data.erro) {
+                        setFormData(prev => ({
+                            ...prev,
+                            endereco: {
+                                ...prev.endereco,
+                                logradouro: data.logradouro || prev.endereco.logradouro,
+                                bairro: data.bairro || prev.endereco.bairro,
+                                cidade: data.localidade || prev.endereco.cidade,
+                                estado: data.uf || prev.endereco.estado,
+                            }
+                        }));
+                    }
+                } catch (err) {
+                    console.error("Erro viaCEP:", err);
+                }
+            }
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
