@@ -11,6 +11,10 @@ interface PreCheckinPageProps {
     reservations: Reservation[];
 }
 
+const BRAZIL_STATES = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
+const COUNTRIES = ["Brasil", "Argentina", "Uruguai", "Paraguai", "Chile", "Colômbia", "Peru", "Bolívia", "Portugal", "Espanha", "Estados Unidos", "Canadá", "França", "Itália", "Alemanha", "Reino Unido"];
+const NATIONALITIES = ["Brasileira", "Argentina", "Uruguaia", "Paraguaia", "Chilena", "Colombiana", "Peruana", "Boliviana", "Portuguesa", "Espanhola", "Americana", "Canadense", "Francesa", "Italiana", "Alemã", "Britânica"];
+
 interface FNRHData {
     nomeCompleto: string;
     email: string;
@@ -529,6 +533,7 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                                     <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Nacionalidade</label>
                                     <input
                                         value={formData.nacionalidade}
+                                        list="nationalities-list"
                                         onChange={e => handleChange('nacionalidade', e.target.value)}
                                         className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
                                     />
@@ -612,6 +617,7 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                                     <input
                                         required
                                         value={formData.endereco.estado}
+                                        list="brazil-states-list"
                                         onChange={e => handleAddressChange('estado', e.target.value)}
                                         className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
                                         maxLength={2}
@@ -622,6 +628,7 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                                     <input
                                         required
                                         value={formData.endereco.pais}
+                                        list="countries-list"
                                         onChange={e => handleAddressChange('pais', e.target.value)}
                                         className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
                                     />
@@ -859,6 +866,15 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                         </p>
                         <datalist id="brazil-cities">
                             {citiesList.map(city => <option key={city} value={city} />)}
+                        </datalist>
+                        <datalist id="nationalities-list">
+                            {NATIONALITIES.map(n => <option key={n} value={n} />)}
+                        </datalist>
+                        <datalist id="brazil-states-list">
+                            {BRAZIL_STATES.map(n => <option key={n} value={n} />)}
+                        </datalist>
+                        <datalist id="countries-list">
+                            {COUNTRIES.map(n => <option key={n} value={n} />)}
                         </datalist>
                     </form>
                 </div>
