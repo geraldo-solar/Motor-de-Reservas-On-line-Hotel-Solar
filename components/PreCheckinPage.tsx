@@ -93,6 +93,17 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
     const [submitting, setSubmitting] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [citiesList, setCitiesList] = useState<string[]>([]);
+
+    useEffect(() => {
+        fetch('https://servicodados.ibge.gov.br/api/v1/localidades/municipios')
+            .then(res => res.json())
+            .then(data => {
+                const names = data.map((d: any) => `${d.nome} - ${d.microrregiao.mesorregiao.UF.sigla}`);
+                setCitiesList(names.sort());
+            })
+            .catch(err => console.error(err));
+    }, []);
 
     useEffect(() => {
         // Find reservation (Supports Full ID or Short ID)
@@ -807,6 +818,7 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                                     <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Última Procedência (Cidade/UF)</label>
                                     <input
                                         required
+                                        list="brazil-cities"
                                         value={formData.ultimaProcedencia}
                                         onChange={e => handleChange('ultimaProcedencia', e.target.value)}
                                         className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
@@ -817,6 +829,7 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                                     <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Próximo Destino (Cidade/UF)</label>
                                     <input
                                         required
+                                        list="brazil-cities"
                                         value={formData.proximoDestino}
                                         onChange={e => handleChange('proximoDestino', e.target.value)}
                                         className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-solar-gold focus:outline-none transition-colors"
@@ -844,6 +857,9 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                         <p className="text-center text-xs text-slate-400">
                             Ao enviar, declaramos que os dados são verdadeiros e concordamos com a política de privacidade.
                         </p>
+                        <datalist id="brazil-cities">
+                            {citiesList.map(city => <option key={city} value={city} />)}
+                        </datalist>
                     </form>
                 </div>
             </div >
