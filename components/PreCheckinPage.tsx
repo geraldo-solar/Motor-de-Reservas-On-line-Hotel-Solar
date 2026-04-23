@@ -292,7 +292,25 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
             };
 
             const cleanCpf = formData.cpf.replace(/\D/g, '');
-            if (cleanCpf) {
+            let guestTargetId = null;
+
+            // Tenta buscar o guest_id atrelado à reserva (criado pelo ERP)
+            try {
+                const { data: resDb } = await supabase
+                    .from('reservations')
+                    .select('guest_id')
+                    .eq('id', reservation.id)
+                    .single();
+                
+                if (resDb && resDb.guest_id) {
+                    guestTargetId = resDb.guest_id;
+                }
+            } catch (err) {
+                console.error("Erro ao buscar guest da reserva:", err);
+            }
+
+            // Se a reserva não tiver guest_id vinculado, tenta buscar por CPF
+            if (!guestTargetId && cleanCpf) {
                 const { data: existingGuest } = await supabase
                     .from('guests')
                     .select('id')
@@ -301,10 +319,26 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                     .maybeSingle();
 
                 if (existingGuest) {
-                    await supabase.from('guests').update(guestPayload).eq('id', existingGuest.id);
-                } else {
-                    await supabase.from('guests').insert([guestPayload]);
+                    guestTargetId = existingGuest.id;
                 }
+            }
+
+            if (guestTargetId) {
+                // Atualiza o cadastro existente (criado pelo ERP ou achado por CPF)
+                await supabase.from('guests').update(guestPayload).eq('id', guestTargetId);
+            } else {
+                // Cria novo se não achar em nenhum lugar
+                const { data: newGuest } = await supabase.from('guests').insert([guestPayload]).select().single();
+                if (newGuest) {
+                    guestTargetId = newGuest.id;
+                }
+            }
+            
+            // Se achou ou criou um hóspede e ele não estava na reserva, vincula na reserva
+            if (guestTargetId) {
+                try {
+                    await supabase.from('reservations').update({ guest_id: guestTargetId }).eq('id', reservation.id);
+                } catch(e) {}
             }
 
             // 3. Salvar Acompanhantes no CRM, se houver
