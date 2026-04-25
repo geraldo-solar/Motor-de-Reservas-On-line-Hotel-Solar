@@ -131,13 +131,8 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
         setLoading(false);
     }, [reservationId, reservations]);
 
-    // Calcular capacidade total e acompanhantes
-    const totalCapacity = reservation
-        ? reservation.rooms.reduce((acc, room) => acc + (room.capacity || 2), 0) // Assume 2 se não tiver cap
-        : 1;
-
-    // -1 pois o titular já preenche a ficha principal
-    const accompanyingGuestCount = Math.max(0, totalCapacity - 1);
+    // Quantidade de acompanhantes baseada nos hóspedes adicionais da reserva
+    const accompanyingGuestCount = reservation?.additionalGuests?.length || 0;
 
     // Ajustar array de acompanhantes quando a capacidade mudar (ou ao carregar)
     useEffect(() => {
@@ -150,23 +145,27 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                         ...prev,
                         acompanhantes: [
                             ...current,
-                            ...Array(accompanyingGuestCount - current.length).fill({
-                                nome: '',
-                                email: '',
-                                telefone: '',
-                                cpf: '',
-                                dataNascimento: '',
-                                mesmoEndereco: true,
-                                endereco: {
-                                    cep: '',
-                                    logradouro: '',
-                                    numero: '',
-                                    complemento: '',
-                                    bairro: '',
-                                    cidade: '',
-                                    estado: '',
-                                    pais: 'Brasil'
-                                }
+                            ...Array(accompanyingGuestCount - current.length).fill(null).map((_, i) => {
+                                const guestIndex = current.length + i;
+                                const defaultName = reservation?.additionalGuests?.[guestIndex]?.name || '';
+                                return {
+                                    nome: defaultName,
+                                    email: '',
+                                    telefone: '',
+                                    cpf: '',
+                                    dataNascimento: '',
+                                    mesmoEndereco: true,
+                                    endereco: {
+                                        cep: '',
+                                        logradouro: '',
+                                        numero: '',
+                                        complemento: '',
+                                        bairro: '',
+                                        cidade: '',
+                                        estado: '',
+                                        pais: 'Brasil'
+                                    }
+                                };
                             })
                         ]
                     };
@@ -176,7 +175,7 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                 return prev;
             });
         }
-    }, [accompanyingGuestCount]);
+    }, [accompanyingGuestCount, reservation]);
 
     const handleAcompanhanteChange = async (index: number, field: string, value: any, nestedField?: string) => {
         const newAcompanhantes = [...formData.acompanhantes];
@@ -323,6 +322,20 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                 }
             }
 
+            // Se ainda não achou, tenta buscar pelo nome exato (caso o ERP tenha criado a ficha fantasma sem CPF)
+            if (!guestTargetId && formData.nomeCompleto) {
+                const { data: existingByName } = await supabase
+                    .from('guests')
+                    .select('id')
+                    .ilike('full_name', formData.nomeCompleto.trim())
+                    .limit(1)
+                    .maybeSingle();
+                
+                if (existingByName) {
+                    guestTargetId = existingByName.id;
+                }
+            }
+
             if (guestTargetId) {
                 // Atualiza o cadastro existente (criado pelo ERP ou achado por CPF)
                 await supabase.from('guests').update(guestPayload).eq('id', guestTargetId);
@@ -360,7 +373,16 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                             city_state: acomp.mesmoEndereco ? `${formData.endereco.cidade} - ${formData.endereco.estado}` : `${acomp.endereco?.cidade || ''} - ${acomp.endereco?.estado || ''}`
                         };
 
-                        const { data: extAcomp } = await supabase.from('guests').select('id').or(`document.ilike.%${acompCleanCpf}%,cpf_cnpj.ilike.%${acompCleanCpf}%`).limit(1).maybeSingle();
+                        let extAcomp = null;
+                        
+                        const { data: extByCpf } = await supabase.from('guests').select('id').or(`document.ilike.%${acompCleanCpf}%,cpf_cnpj.ilike.%${acompCleanCpf}%`).limit(1).maybeSingle();
+                        if (extByCpf) {
+                            extAcomp = extByCpf;
+                        } else if (acomp.nome) {
+                            const { data: extByName } = await supabase.from('guests').select('id').ilike('full_name', acomp.nome.trim()).limit(1).maybeSingle();
+                            if (extByName) extAcomp = extByName;
+                        }
+
                         if (extAcomp) {
                             await supabase.from('guests').update(acompPayload).eq('id', extAcomp.id);
                         } else {
@@ -369,6 +391,17 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                     }
                 }
             }
+
+            const updatedAdditionalGuests = formData.acompanhantes.map((acomp, index) => {
+                const existingGuest = reservation.additionalGuests?.[index] || {} as any;
+                return {
+                    ...existingGuest,
+                    name: acomp.nome,
+                    cpf: acomp.cpf,
+                    email: acomp.email,
+                    phone: acomp.telefone
+                };
+            });
 
             // 4. Update the reservation globally so the system knows FNRH was filled
             try {
@@ -384,7 +417,8 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                        profession: formData.profissao,
                        nationality: formData.nacionalidade,
                        address: mainAddress
-                   }
+                   },
+                   additional_guests: updatedAdditionalGuests
                }).eq('id', reservation.id);
             } catch (err) {
                console.error("Erro secundário ao atualizar reservation: ", err);
