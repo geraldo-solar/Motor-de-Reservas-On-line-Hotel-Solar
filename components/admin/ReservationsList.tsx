@@ -31,9 +31,16 @@ export const ReservationsList: React.FC<ReservationsListProps> = ({ reservations
         const name = (res.mainGuest?.name || '').toLowerCase();
         const email = (res.mainGuest?.email || '').toLowerCase();
         const id = (res.id || '').toLowerCase();
+        const cleanId = id.replace(/-/g, '').replace(/^res/, '');
         const company = (res.companyName || '').toLowerCase();
-        const term = searchTerm.toLowerCase();
-        return name.includes(term) || email.includes(term) || id.includes(term) || company.includes(term);
+        const term = searchTerm.toLowerCase().trim();
+        const cleanTerm = term.replace(/-/g, '').replace(/^res/, '');
+        
+        return name.includes(term) || 
+               email.includes(term) || 
+               id.includes(term) || 
+               (cleanTerm.length > 0 && cleanId.includes(cleanTerm)) || 
+               company.includes(term);
     });
 
     return (
@@ -68,7 +75,7 @@ export const ReservationsList: React.FC<ReservationsListProps> = ({ reservations
 
                             <div className="flex-1 min-w-0">
                                 <div className="flex flex-wrap items-center gap-3 mb-3">
-                                    <span className="text-[10px] font-black text-solar-gold bg-solar-gold/5 px-2 py-1 rounded uppercase tracking-[0.2em]">#{getShortReservationId(res.id)}</span>
+                                    <span className="text-[10px] font-black text-solar-gold bg-solar-gold/5 px-2 py-1 rounded uppercase tracking-[0.2em]">{getShortReservationId(res.id)}</span>
                                     <StatusBadge status={res.status} />
                                     <span className="text-[10px] text-slate-300 ml-auto md:ml-0">{formatDisplayDate(res.createdAt)}</span>
                                 </div>

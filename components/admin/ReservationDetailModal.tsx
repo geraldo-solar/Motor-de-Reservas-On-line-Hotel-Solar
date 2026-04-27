@@ -293,12 +293,22 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                                         const newTotal = currentPaid + val;
                                                         const newHistory = [
                                                             ...(reservation.paymentHistory || []),
-                                                            { date: new Date().toISOString(), amount: val }
+                                                            { 
+                                                                date: new Date().toISOString(), 
+                                                                amount: val,
+                                                                method: reservation.paymentMethod === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX',
+                                                                transaction_info: reservation.paymentMethod === 'CREDIT_CARD' && reservation.cardDetails ? `Aprovado via Motor de Reservas (${reservation.cardDetails.installments}x)` : 'Confirmado via Motor de Reservas'
+                                                            }
                                                         ];
 
                                                         // Se não tinha histórico mas tinha valor, adiciona o valor antigo como entrada inicial
                                                         if ((!reservation.paymentHistory || reservation.paymentHistory.length === 0) && currentPaid > 0) {
-                                                            newHistory.unshift({ date: reservation.createdAt.toISOString(), amount: currentPaid });
+                                                            newHistory.unshift({ 
+                                                                date: reservation.createdAt.toISOString(), 
+                                                                amount: currentPaid,
+                                                                method: reservation.paymentMethod === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX',
+                                                                transaction_info: 'Pagamento Inicial'
+                                                            });
                                                         }
 
                                                         // 1. Update Amount & History
