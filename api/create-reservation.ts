@@ -62,12 +62,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     const reservationId = generateSafeUUID();
-
     const isCreditCard = ['CREDIT_CARD', 'CARTAO_DE_CREDITO', 'CARTÃO DE CRÉDITO', 'CARTAO', 'CARTÃO'].includes((paymentMethod || '').toString().toUpperCase());
+
+    const extrasTotal = normalizedExtras.reduce((sum: number, ex: any) => sum + (ex.priceSnapshot * ex.quantity), 0);
+    const totalPrice = rooms.reduce((sum: number, r: any) => sum + (r.priceSnapshot || 0), 0) + extrasTotal;
 
     const start = new Date(checkIn);
     const end = new Date(checkOut);
     const nights = Math.ceil(Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+
+    const accommodationTotal = totalPrice - extrasTotal;
+    const ratePerNight = nights > 0 ? accommodationTotal / nights : accommodationTotal;
+    const stayDays = [];
+    let current = new Date(start);
+    while (current < end) {
+       stayDays.push({ date: current.toISOString().split('T')[0], price: ratePerNight });
+       current.setUTCDate(current.getUTCDate() + 1); // DST Safe Iterator
+    }
+
+    if (stayDays.length > 0) {
+       normalizedExtras.push({
+           id: "daily_breakdown",
+           name: "daily_breakdown",
+           isBreakdown: true,
+           days: stayDays,
+           quantity: 1,
+           priceSnapshot: 0
+       });
+    }
 
     const dataToSave = {
       id: reservationId,

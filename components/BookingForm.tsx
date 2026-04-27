@@ -267,6 +267,71 @@ const BookingForm: React.FC<BookingFormProps> = ({
         return;
       }
 
+      // NOVO: Construir o daily_breakdown igual o ERP para o Motor de Reservas
+      const stayDays = [];
+      if (initialCheckIn && initialCheckOut) {
+        let current = new Date(initialCheckIn);
+        const end = new Date(initialCheckOut);
+        
+        while (current < end) {
+          const iso = toLocalISO(current);
+          let dayPrice = 0;
+          
+          selectedRooms.forEach(room => {
+            if (activePackage) {
+              const pkgPrice = activePackage.roomPrices.find(rp => rp.roomId === room.id);
+              if (pkgPrice && pkgPrice.price > 0 && nights > 0) {
+                dayPrice += (pkgPrice.price / nights);
+              }
+            } else if (room.priceSnapshot !== undefined) {
+              // Quando recupera de um draft do chatbot (valor consolidado)
+              if (nights > 0) dayPrice += (room.priceSnapshot / nights);
+            } else {
+              const override = room.overrides?.find(o => o.dateIso === iso);
+              let dp = override?.price !== undefined ? override.price : room.price;
+              if (override?.price === undefined) {
+                const day = current.getDay();
+                if (day === 5 || day === 6) {
+                  dp = WEEKEND_PRICES[room.name] || (room.price * 1.15);
+                }
+              }
+              dayPrice += dp;
+            }
+          });
+          
+          if (isFullPackagePeriod && activePackage?.fullPeriodDiscountPct) {
+             dayPrice = dayPrice * (1 - (activePackage.fullPeriodDiscountPct / 100));
+          }
+          
+          stayDays.push({ date: iso, price: Math.round(dayPrice) });
+          current.setDate(current.getDate() + 1);
+        }
+        
+        // Se houver desconto aplicado de cupom, diluir o desconto nas diárias
+        if (appliedDiscount && stayDays.length > 0 && nights > 0) {
+            const discountPerNight = appliedDiscount.amount / nights;
+            stayDays.forEach(day => {
+               day.price = Math.max(0, day.price - discountPerNight);
+            });
+        }
+      }
+
+      const builtExtras = Object.entries(selectedExtras).map(([id, qty]) => {
+          const extra = extras.find(e => e.id === id);
+          return { id, name: extra?.name || id, quantity: qty as number, priceSnapshot: extra?.price || 0 };
+      });
+      
+      if (stayDays.length > 0) {
+          builtExtras.push({
+             id: "daily_breakdown",
+             name: "daily_breakdown",
+             isBreakdown: true,
+             days: stayDays,
+             quantity: 1,
+             priceSnapshot: 0
+          } as any);
+      }
+
       const reservation: Reservation = {
         id: persistentId,
         createdAt: new Date(),
@@ -277,10 +342,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
         additionalGuests: additionalGuests.map(g => ({ name: g.name, cpf: '', age: g.age, roomId: g.roomId, roomName: g.roomName })),
         observations,
         rooms: selectedRooms.map(r => ({ id: r.id, name: r.name, priceSnapshot: calculateRoomTotal(r) })),
-        extras: Object.entries(selectedExtras).map(([id, qty]) => {
-          const extra = extras.find(e => e.id === id);
-          return { name: extra?.name || id, quantity: qty as number, priceSnapshot: extra?.price || 0 };
-        }),
+        extras: builtExtras,
         totalPrice: total,
         discountApplied: appliedDiscount || undefined,
         packageDiscountApplied: packageDiscountAmount > 0 ? { percentage: activePackage!.fullPeriodDiscountPct!, amount: packageDiscountAmount } : undefined,
