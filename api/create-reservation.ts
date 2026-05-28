@@ -33,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
-    const { checkIn, checkOut, rooms, mainGuest, additionalGuests, totalPrice, observations = "", extraServices = [], paymentMethod = "PIX" } = req.body;
+    const { checkIn, checkOut, rooms, mainGuest, additionalGuests, observations = "", extraServices = [], paymentMethod = "PIX" } = req.body;
     if (!checkIn || !checkOut || !rooms || !mainGuest || !mainGuest.name) return res.status(400).json({ error: 'Missing required fields' });
 
     // Normalize extras for Chatbot payloads which send { name, price } instead of { name, priceSnapshot, quantity }
@@ -71,46 +71,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const end = new Date(checkOut);
     const nights = Math.ceil(Math.abs(end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 
-    const accommodationTotal = totalPrice - extrasTotal;
-    const ratePerNight = nights > 0 ? accommodationTotal / nights : accommodationTotal;
-    const stayDays = [];
-    let current = new Date(start);
-    while (current < end) {
-       stayDays.push({ date: current.toISOString().split('T')[0], price: ratePerNight });
-       current.setUTCDate(current.getUTCDate() + 1); // DST Safe Iterator
+    const groupId = normalizedRooms.length > 1 ? generateSafeUUID() : null;
+    const payloads = [];
+
+    for (let i = 0; i < normalizedRooms.length; i++) {
+      const room = normalizedRooms[i];
+      const subReservationId = (i === 0) ? reservationId : generateSafeUUID();
+
+      const roomPrice = room.priceSnapshot || 0;
+      const roomRatePerNight = nights > 0 ? roomPrice / nights : roomPrice;
+      const roomStayDays = [];
+      let current = new Date(start);
+      while (current < end) {
+        roomStayDays.push({ date: current.toISOString().split('T')[0], price: roomRatePerNight });
+        current.setUTCDate(current.getUTCDate() + 1); // DST Safe Iterator
+      }
+
+      const roomExtras = [];
+      if (roomStayDays.length > 0) {
+        roomExtras.push({
+          id: "daily_breakdown",
+          name: "daily_breakdown",
+          isBreakdown: true,
+          days: roomStayDays,
+          quantity: 1,
+          priceSnapshot: 0
+        });
+      }
+
+      // Add other extra services (e.g. transfers, breakfast) ONLY to the first reservation in the group
+      if (i === 0) {
+        roomExtras.push(...normalizedExtras);
+      }
+
+      const roomTotalPrice = roomPrice + (i === 0 ? extrasTotal : 0);
+
+      payloads.push({
+        id: subReservationId,
+        created_at: new Date().toISOString(),
+        check_in: checkIn,
+        check_out: checkOut,
+        nights: nights,
+        main_guest: { name: mainGuest.name, email: mainGuest.email || '', phone: mainGuest.phone || '', cpf: mainGuest.cpf || '' },
+        additional_guests: i === 0 ? (additionalGuests || []) : [],
+        discount_applied: null,
+        package_discount_applied: null,
+        observations: `[ORIGEM: AI CHATBOT] ${observations}`,
+        rooms: [room],
+        extras: roomExtras,
+        total_price: roomTotalPrice,
+        payment_method: isCreditCard ? 'CREDIT_CARD' : 'PIX',
+        status: 'PENDING',
+        group_id: groupId
+      });
     }
 
-    if (stayDays.length > 0) {
-       normalizedExtras.push({
-           id: "daily_breakdown",
-           name: "daily_breakdown",
-           isBreakdown: true,
-           days: stayDays,
-           quantity: 1,
-           priceSnapshot: 0
-       });
-    }
-
-    const dataToSave = {
-      id: reservationId,
-      created_at: new Date().toISOString(),
-      check_in: checkIn,
-      check_out: checkOut,
-      nights: nights,
-      main_guest: { name: mainGuest.name, email: mainGuest.email || '', phone: mainGuest.phone || '', cpf: mainGuest.cpf || '' },
-      additional_guests: additionalGuests || [],
-      discount_applied: null,
-      package_discount_applied: null,
-      observations: `[ORIGEM: AI CHATBOT] ${observations}`,
-      rooms: normalizedRooms,
-      extras: normalizedExtras,
-      total_price: totalPrice,
-      payment_method: isCreditCard ? 'CREDIT_CARD' : 'PIX',
-      status: 'PENDING'
-    };
-
-    const { data, error } = await supabase.from('reservations').insert(dataToSave).select().single();
+    const { data: insertedData, error } = await supabase.from('reservations').insert(payloads).select();
     if (error) return res.status(500).json({ error: error.message });
+
+    const data = insertedData && insertedData.length > 0 ? insertedData[0] : null;
 
 
 
