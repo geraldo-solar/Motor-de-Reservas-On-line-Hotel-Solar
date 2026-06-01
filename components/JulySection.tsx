@@ -37,8 +37,6 @@ export const JulySection: React.FC<JulySectionProps> = ({
         fullPeriodDiscountPct: (p as any).full_period_discount_pct || 0
     }));
 
-    const [activeTabId, setActiveTabId] = React.useState<string>(julyPackages[0]?.id || '');
-
     const isCurrentWeek = (weekCheckIn: Date, weekCheckOut: Date) => {
         return checkIn && checkOut &&
             toLocalISO(checkIn) === toLocalISO(weekCheckIn) &&
@@ -77,29 +75,8 @@ export const JulySection: React.FC<JulySectionProps> = ({
                     </div>
                 </div>
 
-                {/* Abas Interativas */}
-                <div className="mt-12 flex gap-3 overflow-x-auto pb-4 justify-start md:justify-center border-b border-white/10 scrollbar-hide relative z-20">
-                    {julyPackages.map((pkg) => {
-                        const isActive = activeTabId === pkg.id;
-                        const shortName = pkg.id === 'jul-family' ? 'Semana da Família' : pkg.name.split(':')[0];
-                        return (
-                            <button
-                                key={pkg.id}
-                                onClick={() => setActiveTabId(pkg.id)}
-                                className={`whitespace-nowrap px-6 py-3 rounded-full text-xs font-black uppercase tracking-wider transition-all cursor-pointer active:scale-95 ${
-                                    isActive
-                                        ? 'bg-solar-summer-sun text-solar-green shadow-xl font-bold border-2 border-white'
-                                        : 'bg-white/10 text-white hover:bg-white/20 border border-white/10'
-                                }`}
-                            >
-                                {shortName}
-                            </button>
-                        );
-                    })}
-                </div>
-
-                <div className="mt-12 relative z-20">
-                    {julyPackages.filter(p => p.id === activeTabId).map((pkg) => (
+                <div className="mt-20 space-y-12 relative z-20">
+                    {julyPackages.map((pkg) => (
                         <div
                             key={pkg.id}
                             className={`group rounded-[3rem] shadow-2xl border transition-all duration-500 hover:-translate-y-2 p-8 md:p-12 space-y-10 ${pkg.isPromotional ? 'bg-white border-orange-100 shadow-orange-900/10 ring-1 ring-orange-100' : 'bg-white border-white/20 shadow-solar-gold/20'}`}
