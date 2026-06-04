@@ -79,7 +79,8 @@ export const JulySection: React.FC<JulySectionProps> = ({
                     {julyPackages.map((pkg) => (
                         <div
                             key={pkg.id}
-                            className={`group rounded-[3rem] shadow-2xl border transition-all duration-500 hover:-translate-y-2 p-8 md:p-12 space-y-10 ${pkg.isPromotional ? 'bg-white border-orange-100 shadow-orange-900/10 ring-1 ring-orange-100' : 'bg-white border-white/20 shadow-solar-gold/20'}`}
+                            id={`pacote-${pkg.id}`}
+                            className={`group rounded-[3rem] shadow-2xl border transition-all duration-500 hover:-translate-y-2 p-8 md:p-12 space-y-10 scroll-mt-24 ${pkg.isPromotional ? 'bg-white border-orange-100 shadow-orange-900/10 ring-1 ring-orange-100' : 'bg-white border-white/20 shadow-solar-gold/20'}`}
                         >
                             {/* Top Section: Image + Info */}
                             <div className="flex flex-col md:flex-row items-start gap-10 md:gap-14">
