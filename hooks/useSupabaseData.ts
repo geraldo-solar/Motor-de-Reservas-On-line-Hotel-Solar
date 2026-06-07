@@ -199,7 +199,7 @@ export const useSupabaseData = () => {
       // Funções de busca individuais para melhor controle de erro
       const fetchRooms = () => supabase.from('room_types').select('*').order('name');
       const fetchPackages = () => supabase.from('packages').select('*');
-      const fetchReservations = () => supabase.from('reservations').select('*, companies(trade_name)').not('status', 'in', '("maintenance","cleaning")').order('created_at', { ascending: false }).limit(300);
+      const fetchReservations = () => supabase.from('reservations').select('*, companies(trade_name)').not('status', 'in', '("maintenance","cleaning")').order('created_at', { ascending: false }).limit(1000);
       const fetchExtras = () => supabase.from('extras').select('*');
       const fetchDiscounts = () => supabase.from('discount_codes').select('*');
 
@@ -644,8 +644,8 @@ export const useSupabaseData = () => {
           });
 
           // Atualiza estado local otimista
-          setReservationsState(prev => [reservation, ...prev.filter(r => r.id !== reservation.id)].slice(0, 500));
-          saveToStorage(STORAGE_KEYS.reservations, [reservation, ...reservations.filter(r => r.id !== reservation.id)].slice(0, 500));
+          setReservationsState(prev => [reservation, ...prev.filter(r => r.id !== reservation.id)].slice(0, 1000));
+          saveToStorage(STORAGE_KEYS.reservations, [reservation, ...reservations.filter(r => r.id !== reservation.id)].slice(0, 1000));
           return { success: true };
         }
 
@@ -709,7 +709,7 @@ export const useSupabaseData = () => {
       // Adiciona apenas se ainda não estiver na lista (evita duplicação por fetch rápido)
       setReservationsState(prev => {
         if (prev.some(r => r.id === reservation.id)) return prev;
-        const updated = [reservation, ...prev].slice(0, 500);
+        const updated = [reservation, ...prev].slice(0, 1000);
         saveToStorage(STORAGE_KEYS.reservations, updated);
         return updated;
       });
@@ -755,7 +755,7 @@ export const useSupabaseData = () => {
         // Adiciona ao estado local apenas se ainda não existir (prevenção contra duplicidade na UI)
         setReservationsState(prev => {
           if (prev.some(r => r.id === reservation.id)) return prev;
-          const updated = [reservation, ...prev].slice(0, 500);
+          const updated = [reservation, ...prev].slice(0, 1000);
           saveToStorage(STORAGE_KEYS.reservations, updated);
           return updated;
         });
