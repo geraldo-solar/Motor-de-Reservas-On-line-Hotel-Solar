@@ -9,7 +9,7 @@ const packages = [
         id: '1',
         title: 'Celebração Solar',
         dates: '02 a 05/07 (3 Noites - Abertura & Aniversário)',
-        bg: 'celebracao-solar-afonso.png',
+        bg: 'celebracao-solar-afonso.jpg',
         prices: [
             { n: 'Suíte Casal', v: 'R$ 2.422' },
             { n: 'Suíte Triplo', v: 'R$ 2.686' },
