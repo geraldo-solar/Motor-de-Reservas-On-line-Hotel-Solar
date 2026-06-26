@@ -50,6 +50,7 @@ interface AdminPanelProps {
   onDeleteDiscount: (code: string) => Promise<boolean>;
   isSaving: boolean;
   onLogout: () => void;
+  onRefreshData?: () => Promise<boolean>;
 }
 
 type AdminTab = 'MAP' | 'ROOMS' | 'PACKAGES' | 'RESERVATIONS' | 'EXTRAS' | 'DISCOUNTS' | 'SETTINGS';
@@ -62,7 +63,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
     onUpdateRooms, onUpdatePackages, onUpdateDiscounts, onUpdateExtras, onUpdateConfig,
     onUpdateReservationStatus, onUpdateReservation, onUpsertRoom, onUpsertRooms, onDeleteRoom,
     onUpsertPackage, onDeletePackage, onUpsertExtra, onDeleteExtra,
-    onUpsertDiscount, onDeleteDiscount, isSaving, onLogout
+    onUpsertDiscount, onDeleteDiscount, isSaving, onLogout, onRefreshData
   } = props;
 
   const [activeTab, setActiveTab] = useState<AdminTab>('RESERVATIONS');
@@ -246,7 +247,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
       {/* Main Content Area */}
       <main ref={mainScrollRef} className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-12">
         <div className="max-w-[1600px] mx-auto min-h-full">
-          {activeTab === 'MAP' && <InventoryMap rooms={rooms} onUpdateRoomOverride={handleUpdateRoomOverride} onBulkUpdate={handleBulkUpdate} isSaving={isSaving} />}
+          {activeTab === 'MAP' && <InventoryMap rooms={rooms} onUpdateRoomOverride={handleUpdateRoomOverride} onBulkUpdate={handleBulkUpdate} isSaving={isSaving} onRefreshData={onRefreshData} />}
           {activeTab === 'ROOMS' && <RoomsManagement rooms={rooms} onEditRoom={(r) => { setSelectedRoom(r); setIsRoomModalOpen(true); }} onNewRoom={() => { setSelectedRoom(null); setIsRoomModalOpen(true); }} onDeleteRoom={onDeleteRoom} onUpdateRooms={onUpdateRooms} />}
           {activeTab === 'PACKAGES' && <PackagesManagement packages={packages} onEditPackage={(pkg) => { setSelectedPackage(pkg); setIsPackageModalOpen(true); }} onNewPackage={() => { setSelectedPackage(null); setIsPackageModalOpen(true); }} />}
           {activeTab === 'EXTRAS' && <ExtrasManagement extras={extras} onEditExtra={(e) => { setSelectedExtra(e); setIsExtraModalOpen(true); }} onNewExtra={() => { setSelectedExtra(null); setIsExtraModalOpen(true); }} onDeleteExtra={onDeleteExtra} onUpdateExtras={onUpdateExtras} />}

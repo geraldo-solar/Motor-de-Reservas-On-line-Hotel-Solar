@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Grid, ChevronLeft, ChevronRight, Eye, EyeOff, Layers, Calendar as CalendarIcon, LogIn as LoginIcon, LogOut as LogoutIcon } from 'lucide-react';
+import { Grid, ChevronLeft, ChevronRight, Eye, EyeOff, Layers, Calendar as CalendarIcon, LogIn as LoginIcon, LogOut as LogoutIcon, RefreshCw } from 'lucide-react';
 import { Room, RoomDateOverride } from '../../types';
 import { DateRangePickerModal } from './DateRangePickerModal';
 import { toLocalISO, parseISODate, formatDisplayDate } from '../../utils/dateUtils';
@@ -11,6 +11,7 @@ interface InventoryMapProps {
     onUpdateRoomOverride: (roomId: string, override: RoomDateOverride) => void;
     onBulkUpdate: (startIso: string, endIso: string, roomId: string, selectedDays: number[], updates: Partial<RoomDateOverride> | null, priceOp?: any) => void;
     isSaving?: boolean;
+    onRefreshData?: () => Promise<boolean>;
 }
 
 const MapCell: React.FC<{
@@ -63,7 +64,7 @@ const MapCell: React.FC<{
     );
 };
 
-export const InventoryMap: React.FC<InventoryMapProps> = ({ rooms, onUpdateRoomOverride, onBulkUpdate, isSaving }) => {
+export const InventoryMap: React.FC<InventoryMapProps> = ({ rooms, onUpdateRoomOverride, onBulkUpdate, isSaving, onRefreshData }) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -79,6 +80,34 @@ export const InventoryMap: React.FC<InventoryMapProps> = ({ rooms, onUpdateRoomO
     const [bulkIsClosed, setBulkIsClosed] = useState<boolean | null>(null);
     const [bulkNoCheckIn, setBulkNoCheckIn] = useState<boolean | null>(null);
     const [bulkNoCheckOut, setBulkNoCheckOut] = useState<boolean | null>(null);
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    const handleSyncAvailability = async () => {
+        if (isSyncing) return;
+        setIsSyncing(true);
+        try {
+            const response = await fetch('/api/sync-availability', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                alert(`Sincronização com ERP realizada com sucesso!\n\nReservas ativas processadas: ${data.activeReservations}`);
+                if (onRefreshData) {
+                    await onRefreshData();
+                }
+            } else {
+                alert(`Erro na sincronização: ${data.error || 'Erro desconhecido'}`);
+            }
+        } catch (err: any) {
+            console.error('Error during availability sync:', err);
+            alert(`Erro de conexão ao sincronizar com o ERP: ${err.message}`);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
 
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -272,16 +301,29 @@ export const InventoryMap: React.FC<InventoryMapProps> = ({ rooms, onUpdateRoomO
                         </div>
                         <span className="font-serif font-bold uppercase tracking-widest text-xs md:text-sm">Mapa de Disponibilidade & Tarifas</span>
                     </div>
-                    <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl border border-white/20 ml-auto md:ml-0">
+                    <div className="flex flex-wrap items-center gap-3 ml-auto md:ml-0">
                         <button
-                            onClick={() => setCurrentDate(new Date(year, month - 1, 1))}
-                            disabled={!canGoPrev}
-                            className={`p-1.5 rounded-full transition ${canGoPrev ? 'hover:bg-white/10 opacity-100' : 'opacity-30 cursor-not-allowed'}`}
+                            onClick={handleSyncAvailability}
+                            disabled={isSyncing}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest border transition-all ${isSyncing 
+                                ? 'bg-white/10 text-white/40 border-white/10 cursor-not-allowed'
+                                : 'bg-[#D4AF37] text-[#0F2820] border-[#D4AF37] hover:bg-[#c39e26] hover:border-[#c39e26] active:scale-95 shadow-md shadow-black/20'
+                            }`}
                         >
-                            <ChevronLeft size={18} />
+                            <RefreshCw size={12} className={isSyncing ? 'animate-spin' : ''} />
+                            {isSyncing ? 'Sincronizando...' : 'Sincronizar ERP'}
                         </button>
-                        <span className="font-bold uppercase tracking-widest text-[10px] md:text-[11px] min-w-[140px] text-center">{currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</span>
-                        <button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="hover:bg-white/10 p-1.5 rounded-full transition"><ChevronRight size={18} /></button>
+                        <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl border border-white/20">
+                            <button
+                                onClick={() => setCurrentDate(new Date(year, month - 1, 1))}
+                                disabled={!canGoPrev}
+                                className={`p-1.5 rounded-full transition ${canGoPrev ? 'hover:bg-white/10 opacity-100' : 'opacity-30 cursor-not-allowed'}`}
+                            >
+                                <ChevronLeft size={18} />
+                            </button>
+                            <span className="font-bold uppercase tracking-widest text-[10px] md:text-[11px] min-w-[140px] text-center">{currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</span>
+                            <button onClick={() => setCurrentDate(new Date(year, month + 1, 1))} className="hover:bg-white/10 p-1.5 rounded-full transition"><ChevronRight size={18} /></button>
+                        </div>
                     </div>
                 </div>
 

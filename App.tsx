@@ -39,7 +39,8 @@ export default function App() {
     upsertRoom, upsertRooms, deleteRoom,
     upsertPackage, deletePackage,
     upsertExtra, deleteExtra,
-    upsertDiscount, deleteDiscount
+    upsertDiscount, deleteDiscount,
+    refreshData
   } = useSupabaseData();
 
   const [selectedRooms, setSelectedRooms] = useState<Room[]>([]);
@@ -875,6 +876,7 @@ export default function App() {
                   onDeleteExtra={deleteExtra}
                   onUpsertDiscount={upsertDiscount}
                   onDeleteDiscount={deleteDiscount}
+                  onRefreshData={refreshData}
                   isSaving={isSaving}
                   onLogout={async () => {
                     await logout();
