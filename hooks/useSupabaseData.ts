@@ -159,6 +159,7 @@ export const useSupabaseData = () => {
         paymentHistory: safeArray(r.payment_history),
         id_empresa: r.id_empresa || null,
         companyName: r.companies?.trade_name || null,
+        groupId: r.group_id || null,
       };
     } catch (e) {
       console.error('[Mapper] Erro ao mapear reserva individual:', e, r);

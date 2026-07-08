@@ -148,4 +148,5 @@ export interface Reservation {
   isSupabaseDraft?: boolean;
   id_empresa?: string | null;
   companyName?: string | null;
+  groupId?: string | null;
 }

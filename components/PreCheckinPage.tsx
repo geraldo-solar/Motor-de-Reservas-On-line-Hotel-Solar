@@ -92,6 +92,8 @@ const INITIAL_DATA: FNRHData = {
 
 export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, onBack, reservations }) => {
     const [reservation, setReservation] = useState<Reservation | null>(null);
+    const [groupRooms, setGroupRooms] = useState<Reservation[]>([]);
+    const [roomAssignments, setRoomAssignments] = useState<{ titular: string; acompanhantes: string[] }[]>([]);
     const [loading, setLoading] = useState(true);
     const [formData, setFormData] = useState<FNRHData>(INITIAL_DATA);
     const [submitting, setSubmitting] = useState(false);
@@ -120,6 +122,7 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
 
         if (found) {
             setReservation(found);
+            setGroupRooms(found.groupId ? reservations.filter(r => r.groupId === found.groupId) : []);
             setFormData(prev => ({
                 ...prev,
                 nomeCompleto: found.mainGuest.name,
@@ -127,9 +130,58 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                 telefone: found.mainGuest.phone,
                 cpf: found.mainGuest.cpf
             }));
+            setLoading(false);
+            return;
+        }
+
+        // Link pode ter sido gerado com o ID do GRUPO (reservas com múltiplos quartos)
+        const matchedGroup = reservations.filter(r =>
+            r.groupId && (r.groupId === reservationId || getShortReservationId(r.groupId).toUpperCase() === reservationId.toUpperCase())
+        );
+
+        if (matchedGroup.length > 0) {
+            const sorted = [...matchedGroup].sort((a, b) => (a.rooms[0]?.name || '').localeCompare(b.rooms[0]?.name || ''));
+            const primary = sorted[0];
+            setReservation(primary);
+            setGroupRooms(sorted);
+            setFormData(prev => ({
+                ...prev,
+                nomeCompleto: primary.mainGuest.name,
+                email: primary.mainGuest.email,
+                telefone: primary.mainGuest.phone,
+                cpf: primary.mainGuest.cpf
+            }));
         }
         setLoading(false);
     }, [reservationId, reservations]);
+
+    // Inicializa a distribuição de hóspedes por quarto (apenas nomes) quando é uma reserva de grupo
+    useEffect(() => {
+        if (groupRooms.length > 1) {
+            setRoomAssignments(groupRooms.map((room) => ({
+                titular: room.mainGuest?.name && room.mainGuest.name !== 'Hóspede' ? room.mainGuest.name : '',
+                acompanhantes: (room.additionalGuests || []).map(g => g.name || '')
+            })));
+        }
+    }, [groupRooms]);
+
+    const handleRoomTitularChange = (roomIdx: number, value: string) => {
+        setRoomAssignments(prev => {
+            const next = [...prev];
+            next[roomIdx] = { ...next[roomIdx], titular: value };
+            return next;
+        });
+    };
+
+    const handleRoomAcompanhanteChange = (roomIdx: number, guestIdx: number, value: string) => {
+        setRoomAssignments(prev => {
+            const next = [...prev];
+            const acompanhantes = [...(next[roomIdx]?.acompanhantes || [])];
+            acompanhantes[guestIdx] = value;
+            next[roomIdx] = { ...next[roomIdx], acompanhantes };
+            return next;
+        });
+    };
 
     // Quantidade de acompanhantes baseada nos hóspedes adicionais da reserva
     const accompanyingGuestCount = reservation?.additionalGuests?.length || 0;
@@ -354,8 +406,9 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                 } catch(e) {}
             }
 
-            // 3. Salvar Acompanhantes no CRM, se houver
-            if (formData.acompanhantes.length > 0) {
+            // 3. Salvar Acompanhantes no CRM, se houver (não se aplica ao fluxo de reserva de grupo,
+            // que coleta apenas nomes por quarto, sem CPF, e é persistido no bloco de grupo abaixo)
+            if (groupRooms.length <= 1 && formData.acompanhantes.length > 0) {
                 for (const acomp of formData.acompanhantes) {
                     const acompCleanCpf = (acomp.cpf || '').replace(/\D/g, '');
                     if (acomp.nome && acompCleanCpf) {
@@ -392,36 +445,78 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                 }
             }
 
-            const updatedAdditionalGuests = formData.acompanhantes.map((acomp, index) => {
-                const existingGuest = reservation.additionalGuests?.[index] || {} as any;
-                return {
-                    ...existingGuest,
-                    name: acomp.nome,
-                    cpf: acomp.cpf,
-                    email: acomp.email,
-                    phone: acomp.telefone
-                };
-            });
+            // 4. Update the reservation(s) globally so the system knows FNRH was filled
+            if (groupRooms.length > 1) {
+                // Reserva de grupo: persiste apenas nomes (titular + acompanhantes) por quarto.
+                // O quarto do preenchedor do formulário (o "primary") recebe também os dados completos da FNRH.
+                try {
+                    for (let i = 0; i < groupRooms.length; i++) {
+                        const room = groupRooms[i];
+                        const assignment = roomAssignments[i] || { titular: '', acompanhantes: [] };
+                        const isPrimaryRoom = room.id === reservation.id;
 
-            // 4. Update the reservation globally so the system knows FNRH was filled
-            try {
-               await supabase.from('reservations').update({
-                   pre_checkin_sent: true,
-                   main_guest: {
-                       ...reservation.mainGuest,
-                       cpf: formData.cpf,
-                       name: formData.nomeCompleto,
-                       email: formData.email,
-                       phone: formData.telefone,
-                       rg: formData.rg,
-                       profession: formData.profissao,
-                       nationality: formData.nacionalidade,
-                       address: mainAddress
-                   },
-                   additional_guests: updatedAdditionalGuests
-               }).eq('id', reservation.id);
-            } catch (err) {
-               console.error("Erro secundário ao atualizar reservation: ", err);
+                        const roomAdditionalGuests = (room.additionalGuests || []).map((g, gIdx) => ({
+                            ...g,
+                            name: assignment.acompanhantes[gIdx] || g.name
+                        }));
+
+                        const roomMainGuest = isPrimaryRoom
+                            ? {
+                                ...room.mainGuest,
+                                cpf: formData.cpf,
+                                name: assignment.titular || formData.nomeCompleto,
+                                email: formData.email,
+                                phone: formData.telefone,
+                                rg: formData.rg,
+                                profession: formData.profissao,
+                                nationality: formData.nacionalidade,
+                                address: mainAddress
+                            }
+                            : {
+                                ...room.mainGuest,
+                                name: assignment.titular || room.mainGuest.name
+                            };
+
+                        await supabase.from('reservations').update({
+                            pre_checkin_sent: true,
+                            main_guest: roomMainGuest,
+                            additional_guests: roomAdditionalGuests
+                        }).eq('id', room.id);
+                    }
+                } catch (err) {
+                    console.error("Erro secundário ao atualizar reservations do grupo: ", err);
+                }
+            } else {
+                const updatedAdditionalGuests = formData.acompanhantes.map((acomp, index) => {
+                    const existingGuest = reservation.additionalGuests?.[index] || {} as any;
+                    return {
+                        ...existingGuest,
+                        name: acomp.nome,
+                        cpf: acomp.cpf,
+                        email: acomp.email,
+                        phone: acomp.telefone
+                    };
+                });
+
+                try {
+                   await supabase.from('reservations').update({
+                       pre_checkin_sent: true,
+                       main_guest: {
+                           ...reservation.mainGuest,
+                           cpf: formData.cpf,
+                           name: formData.nomeCompleto,
+                           email: formData.email,
+                           phone: formData.telefone,
+                           rg: formData.rg,
+                           profession: formData.profissao,
+                           nationality: formData.nacionalidade,
+                           address: mainAddress
+                       },
+                       additional_guests: updatedAdditionalGuests
+                   }).eq('id', reservation.id);
+                } catch (err) {
+                   console.error("Erro secundário ao atualizar reservation: ", err);
+                }
             }
 
             setSuccess(true);
@@ -710,7 +805,7 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
 
 
                         {/* Acompanhantes (Se houver capacidade extra) */}
-                        {accompanyingGuestCount > 0 && (
+                        {groupRooms.length <= 1 && accompanyingGuestCount > 0 && (
                             <div>
                                 <h3 className="flex items-center gap-2 font-bold text-solar-green border-b border-slate-100 pb-2 mb-6">
                                     <span className="w-1.5 h-6 bg-solar-gold rounded-full"></span>
@@ -823,6 +918,61 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                                                         </div>
                                                     </div>
                                                 )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Distribuição de Hóspedes por Quarto (Reserva de Grupo) */}
+                        {groupRooms.length > 1 && (
+                            <div>
+                                <h3 className="flex items-center gap-2 font-bold text-solar-green border-b border-slate-100 pb-2 mb-6">
+                                    <span className="w-1.5 h-6 bg-solar-gold rounded-full"></span>
+                                    Distribuição de Hóspedes por Quarto
+                                </h3>
+                                <p className="text-sm text-slate-500 mb-6 -mt-4">
+                                    Sua reserva possui {groupRooms.length} quartos. Informe abaixo o nome do titular e dos acompanhantes de cada quarto.
+                                </p>
+                                <div className="grid grid-cols-1 gap-6">
+                                    {groupRooms.map((room, roomIdx) => (
+                                        <div key={room.id} className="bg-slate-50 p-6 rounded-xl border border-slate-100">
+                                            <h4 className="font-bold text-solar-green text-sm mb-4 border-b border-slate-200 pb-2">
+                                                Quarto {roomIdx + 1}
+                                            </h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
+                                                        Titular do Quarto {roomIdx + 1}
+                                                    </label>
+                                                    <input
+                                                        required
+                                                        value={roomIdx === 0 ? formData.nomeCompleto : (roomAssignments[roomIdx]?.titular || '')}
+                                                        onChange={e => {
+                                                            if (roomIdx === 0) {
+                                                                handleChange('nomeCompleto', e.target.value);
+                                                            } else {
+                                                                handleRoomTitularChange(roomIdx, e.target.value);
+                                                            }
+                                                        }}
+                                                        className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:border-solar-gold focus:outline-none transition-colors"
+                                                        placeholder="Nome completo do titular"
+                                                    />
+                                                </div>
+                                                {(room.additionalGuests || []).map((_, guestIdx) => (
+                                                    <div key={guestIdx} className="md:col-span-2">
+                                                        <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
+                                                            Acompanhante {guestIdx + 1}
+                                                        </label>
+                                                        <input
+                                                            value={roomAssignments[roomIdx]?.acompanhantes[guestIdx] || ''}
+                                                            onChange={e => handleRoomAcompanhanteChange(roomIdx, guestIdx, e.target.value)}
+                                                            className="w-full p-3 bg-white border border-slate-200 rounded-lg focus:border-solar-gold focus:outline-none transition-colors"
+                                                            placeholder="Nome completo do acompanhante"
+                                                        />
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     ))}
