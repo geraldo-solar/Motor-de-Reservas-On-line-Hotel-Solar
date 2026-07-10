@@ -6,6 +6,86 @@ import { offlineQueue } from '../lib/offlineQueue';
 import { getPublicImageUrl } from '../utils/imageUtils';
 import { toLocalISO, parseISODate } from '../utils/dateUtils';
 import { safeArray, safeObject } from '../utils/dataSafety';
+import { generateUUID } from '../utils/uuid';
+
+// Transforma uma Reservation "combinada" (todos os quartos numa única lista, total somado)
+// em uma linha por quarto para o banco (mesmo padrão usado pelo ERP e pela API do chatbot),
+// evitando que uma reserva multi-apto chegue ao ERP como se fosse 1 apto só com diária somada.
+const buildReservationRowsPerRoom = (reservation: Reservation, createdBy: string) => {
+  const rooms = safeArray<any>(reservation.rooms);
+
+  const baseFields = {
+    check_in: reservation.checkIn,
+    check_out: reservation.checkOut,
+    nights: reservation.nights,
+    main_guest: reservation.mainGuest,
+    observations: reservation.observations || '',
+    discount_applied: reservation.discountApplied || null,
+    package_discount_applied: reservation.packageDiscountApplied || null,
+    payment_method: reservation.paymentMethod,
+    card_details: reservation.cardDetails || null,
+    status: reservation.status,
+    cancellation_reason: reservation.cancellationReason || null,
+    created_by: createdBy,
+  };
+
+  if (rooms.length <= 1) {
+    return [{
+      id: reservation.id,
+      created_at: reservation.createdAt instanceof Date ? reservation.createdAt.toISOString() : reservation.createdAt,
+      ...baseFields,
+      additional_guests: reservation.additionalGuests,
+      rooms: reservation.rooms,
+      extras: reservation.extras,
+      total_price: reservation.totalPrice,
+      group_id: null,
+    }];
+  }
+
+  const accommodationTotal = rooms.reduce((sum, r: any) => sum + (r.priceSnapshot || 0), 0);
+  const couponDiscount = reservation.discountApplied?.amount || 0;
+  const packageDiscount = reservation.packageDiscountApplied?.amount || 0;
+  // Deriva o total de extras (serviços adicionais, ex: transfer) a partir do total já calculado
+  const extrasTotal = reservation.totalPrice - accommodationTotal + couponDiscount + packageDiscount;
+
+  const combinedBreakdown: any = safeArray<any>(reservation.extras).find((e: any) => e.id === 'daily_breakdown' && e.isBreakdown);
+  const otherExtras = safeArray<any>(reservation.extras).filter((e: any) => e.id !== 'daily_breakdown');
+
+  const groupId = generateUUID();
+
+  return rooms.map((room: any, index: number) => {
+    const roomShare = accommodationTotal > 0 ? (room.priceSnapshot || 0) / accommodationTotal : 1 / rooms.length;
+    const roomDiscount = (couponDiscount + packageDiscount) * roomShare;
+    const roomAccommodation = (room.priceSnapshot || 0) - roomDiscount;
+    const roomTotal = Math.round(roomAccommodation + (index === 0 ? extrasTotal : 0));
+
+    const roomExtras: any[] = index === 0 ? [...otherExtras] : [];
+    if (combinedBreakdown) {
+      roomExtras.push({
+        id: 'daily_breakdown',
+        name: 'daily_breakdown',
+        isBreakdown: true,
+        quantity: 1,
+        priceSnapshot: 0,
+        days: combinedBreakdown.days.map((d: any) => ({ date: d.date, price: Math.round(d.price * roomShare) })),
+      });
+    }
+
+    // Hóspedes adicionais já vêm com roomId associado; cada linha fica só com os seus
+    const roomGuests = safeArray<any>(reservation.additionalGuests).filter((g: any) => g.roomId === room.id);
+
+    return {
+      id: index === 0 ? reservation.id : generateUUID(),
+      created_at: reservation.createdAt instanceof Date ? reservation.createdAt.toISOString() : reservation.createdAt,
+      ...baseFields,
+      additional_guests: roomGuests,
+      rooms: [room],
+      extras: roomExtras,
+      total_price: roomTotal,
+      group_id: groupId,
+    };
+  });
+};
 
 // Chaves para localStorage (cache)
 const STORAGE_KEYS = {
@@ -601,26 +681,9 @@ export const useSupabaseData = () => {
     console.log('[Supabase] Tentando salvar reserva:', reservation.id);
 
     try {
-      const dataToSave = {
-        id: reservation.id,
-        created_at: reservation.createdAt instanceof Date ? reservation.createdAt.toISOString() : reservation.createdAt,
-        check_in: reservation.checkIn,
-        check_out: reservation.checkOut,
-        nights: reservation.nights,
-        main_guest: reservation.mainGuest,
-        additional_guests: reservation.additionalGuests,
-        observations: reservation.observations || '',
-        rooms: reservation.rooms,
-        extras: reservation.extras,
-        total_price: reservation.totalPrice,
-        discount_applied: reservation.discountApplied || null,
-        package_discount_applied: reservation.packageDiscountApplied || null,
-        payment_method: reservation.paymentMethod,
-        card_details: reservation.cardDetails || null,
-        status: reservation.status,
-        cancellation_reason: reservation.cancellationReason || null,
-        created_by: 'Motor de Reservas'
-      };
+      // Uma linha por quarto (rooms.length > 1 vira N linhas com group_id compartilhado),
+      // para o ERP não receber uma reserva multi-apto como se fosse 1 apto só com diária somada.
+      const dataToSave = buildReservationRowsPerRoom(reservation, 'Motor de Reservas');
 
       // Tenta salvar no Supabase
       let insertError = null;
@@ -728,24 +791,9 @@ export const useSupabaseData = () => {
         console.warn('[Offline] Erro detectado no catch. Enfileirando reserva de segurança...');
 
         // Dados para salvar (repetindo a estrutura se necessário ou criando uma variável acima)
-        // Como o reservationId agora é persistente no BookingForm, isso evita duplicatas mesmo se o 
+        // Como o reservationId agora é persistente no BookingForm, isso evita duplicatas mesmo se o
         // primeiro request "quase" deu certo.
-        const dataToSave = {
-          id: reservation.id,
-          created_at: reservation.createdAt instanceof Date ? reservation.createdAt.toISOString() : reservation.createdAt,
-          check_in: reservation.checkIn,
-          check_out: reservation.checkOut,
-          nights: reservation.nights,
-          main_guest: reservation.mainGuest,
-          additional_guests: reservation.additionalGuests,
-          observations: reservation.observations || '',
-          rooms: reservation.rooms,
-          extras: reservation.extras,
-          total_price: reservation.totalPrice,
-          discount_applied: reservation.discountApplied || null,
-          payment_method: reservation.paymentMethod,
-          status: reservation.status
-        };
+        const dataToSave = buildReservationRowsPerRoom(reservation, 'Motor de Reservas');
 
         await offlineQueue.enqueue({
           table: 'reservations',
