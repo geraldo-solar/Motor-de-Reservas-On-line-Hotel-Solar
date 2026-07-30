@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Share2, LogIn, LogOut, EyeOff, Calendar, ChevronDown, CheckCircle2 } from 'lucide-react';
 import { HolidayPackage, Room } from '../types';
 import { parseISODate, toLocalISO, formatDisplayDate } from '../utils/dateUtils';
+import { getNightlyPrice } from '../utils/pricing';
 
 interface DateSelectorBarProps {
     currentCalendarDate: Date;
@@ -26,6 +27,46 @@ export const DateSelectorBar: React.FC<DateSelectorBarProps> = ({
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const activeRooms = rooms.filter(r => r.active);
+
+    // Menor diária disponível por data do mês exibido ("a partir de").
+    // Datas dentro de um pacote ficam de fora: o pacote tem valor fechado para o
+    // período todo, então um valor por diária ali seria enganoso.
+    const monthPrices = React.useMemo<Map<string, number>>(() => {
+        const year = currentCalendarDate.getFullYear();
+        const month = currentCalendarDate.getMonth();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const todayTs = new Date().setHours(0, 0, 0, 0);
+        const prices = new Map<string, number>();
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const date = new Date(year, month, d);
+            if (date.getTime() < todayTs) continue;
+
+            const dateIso = toLocalISO(date);
+            const inPackage = packages.some(p => p.active && dateIso >= p.startIsoDate && dateIso <= p.endIsoDate);
+            if (inPackage) continue;
+
+            const available = activeRooms.filter(room => {
+                const ov = room.overrides?.find(o => o.dateIso === dateIso);
+                if (ov?.isClosed === true || (ov?.isClosed as any) === 'true') return false;
+                return (ov?.availableQuantity ?? room.totalQuantity) > 0;
+            });
+
+            if (available.length > 0) {
+                prices.set(dateIso, Math.min(...available.map(room => getNightlyPrice(room, date))));
+            }
+        }
+
+        return prices;
+    }, [currentCalendarDate, rooms, packages]);
+
+    const lowestOfMonth = React.useMemo(() => {
+        let lowest: number | null = null;
+        for (const price of monthPrices.values()) {
+            if (lowest === null || price < lowest) lowest = price;
+        }
+        return lowest;
+    }, [monthPrices]);
 
     React.useEffect(() => {
         if (isOpen) {
@@ -150,6 +191,9 @@ export const DateSelectorBar: React.FC<DateSelectorBarProps> = ({
                                         });
                                         const hasPackage = !!packageForDate;
 
+                                        const dayPrice = monthPrices.get(dateIso);
+                                        const isCheapest = dayPrice !== undefined && dayPrice === lowestOfMonth;
+
                                         let isDisabled = isPast || (isClosedGlobal && activeRooms.length > 0);
                                         if (!checkIn || (checkIn && checkOut)) {
                                             if (noCheckInGlobal && activeRooms.length > 0) isDisabled = true;
@@ -162,7 +206,7 @@ export const DateSelectorBar: React.FC<DateSelectorBarProps> = ({
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); onDateClick(d); if (checkIn && !checkOut && date > checkIn) setIsOpen(false); }}
                                                     disabled={isDisabled}
-                                                    className={`w-full h-11 md:h-16 text-xs md:text-sm rounded-xl border transition-all duration-300 relative overflow-hidden flex flex-col items-center justify-center gap-0.5
+                                                    className={`w-full h-14 md:h-16 text-xs md:text-sm rounded-xl border transition-all duration-300 relative overflow-hidden flex flex-col items-center justify-center gap-0.5
                                                         ${isDisabled
                                                             ? 'bg-slate-50 border-transparent text-slate-300 cursor-not-allowed opacity-60'
                                                             : isSelected
@@ -177,8 +221,13 @@ export const DateSelectorBar: React.FC<DateSelectorBarProps> = ({
                                                         }`}
                                                 >
                                                     <span className={(hasPackage && !isPast && !isSelected) ? 'font-semibold' : ''}>{d}</span>
+                                                    {dayPrice !== undefined && !isSelected && !inRange && !isDisabled && !isSoldOutGlobal && (
+                                                        <span className={`text-[9px] md:text-[10px] leading-none font-bold ${isCheapest ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                            {dayPrice.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                                                        </span>
+                                                    )}
                                                     {!isSelected && !inRange && !isPast && (
-                                                        <div className="flex gap-0.5">
+                                                        <div className="hidden md:flex gap-0.5">
                                                             {noCheckInAny && <LogIn size={8} className={`${noCheckInGlobal ? 'text-orange-500' : 'text-orange-400/50'}`} title={noCheckInGlobal ? "Chegada Restrita" : "Algumas Acomodações Restritas"} />}
                                                             {noCheckOutAny && <LogOut size={8} className={`${noCheckOutGlobal ? 'text-red-500' : 'text-red-400/50'}`} title={noCheckOutGlobal ? "Saída Restrita" : "Algumas Acomodações Restritas"} />}
                                                             {isClosedAny && <EyeOff size={8} className={`${isClosedGlobal ? 'text-gray-500' : 'text-gray-400/50'}`} title={isClosedGlobal ? "Vendas Suspensas" : "Vendas Parciais Sustensas"} />}
@@ -212,6 +261,20 @@ export const DateSelectorBar: React.FC<DateSelectorBarProps> = ({
                                         );
                                     })}
                                 </div>
+
+                                {monthPrices.size > 0 && (
+                                    <div className="mt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[9px] md:text-[10px] text-slate-400 font-medium">
+                                        <span>Valores por diária, a partir de — acomodação mais econômica disponível.</span>
+                                        {lowestOfMonth !== null && (
+                                            <span className="flex items-center gap-1.5">
+                                                <span className="text-emerald-600 font-bold">
+                                                    {lowestOfMonth.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                                                </span>
+                                                Menor valor do mês
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
 
                                 {checkIn && checkOut && (
                                     <div className="mt-10 flex flex-col items-center animate-in fade-in slide-in-from-top-4 duration-500 gap-4">

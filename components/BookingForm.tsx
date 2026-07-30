@@ -4,6 +4,7 @@ import { Room, DiscountCode, ExtraService, Reservation, HolidayPackage } from '.
 import { toLocalISO } from '../utils/dateUtils';
 import { getPublicImageUrl } from '../utils/imageUtils';
 import { validateDiscount } from '../utils/pricingRules';
+import { getNightlyPrice } from '../utils/pricing';
 
 interface BookingFormProps {
   selectedRooms: Room[];
@@ -136,15 +137,6 @@ const BookingForm: React.FC<BookingFormProps> = ({
     ? Math.max(1, Math.ceil((initialCheckOut.getTime() - initialCheckIn.getTime()) / (1000 * 60 * 60 * 24)))
     : 0;
 
-  const WEEKEND_PRICES: Record<string, number> = {
-    "Suíte Casal": 610,
-    "Suíte Triplo": 710,
-    "Suíte Sacada Vista Mar": 810,
-    "Suíte Quádruplo": 810,
-    "Suíte Varanda Térreo": 920,
-    "LOFT": 1450
-  };
-
   const calculateRoomTotal = (room: Room) => {
     // Bypass iterative database math if the room is a static quotation snapshot from the Chatbot Draft API
     if (room.priceSnapshot !== undefined) return room.priceSnapshot;
@@ -160,16 +152,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
     let tempDate = new Date(initialCheckIn);
     const endDate = new Date(initialCheckOut);
     while (tempDate < endDate) {
-      const iso = tempDate.toISOString().split('T')[0];
-      const override = room.overrides?.find(o => o.dateIso === iso);
-      let dailyPrice = override?.price !== undefined ? override.price : room.price;
-      if (override?.price === undefined) {
-        const day = tempDate.getDay();
-        if (day === 5 || day === 6) {
-          dailyPrice = WEEKEND_PRICES[room.name] || (room.price * 1.15);
-        }
-      }
-      total += dailyPrice;
+      total += getNightlyPrice(room, tempDate);
       tempDate.setDate(tempDate.getDate() + 1);
     }
     return Math.round(total);
@@ -287,15 +270,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
               // Quando recupera de um draft do chatbot (valor consolidado)
               if (nights > 0) dayPrice += (room.priceSnapshot / nights);
             } else {
-              const override = room.overrides?.find(o => o.dateIso === iso);
-              let dp = override?.price !== undefined ? override.price : room.price;
-              if (override?.price === undefined) {
-                const day = current.getDay();
-                if (day === 5 || day === 6) {
-                  dp = WEEKEND_PRICES[room.name] || (room.price * 1.15);
-                }
-              }
-              dayPrice += dp;
+              dayPrice += getNightlyPrice(room, current);
             }
           });
           

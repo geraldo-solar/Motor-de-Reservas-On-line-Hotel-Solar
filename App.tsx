@@ -6,13 +6,13 @@ import AdminPanel, { AdminLogin } from './components/AdminPanel';
 import { ViewState, Room, HolidayPackage, DiscountCode, HotelConfig, ExtraService, Reservation, ReservationStatus } from './types';
 import { toLocalISO, parseISODate, formatDisplayDate, calculateNights } from './utils/dateUtils';
 import { getPublicImageUrl } from './utils/imageUtils';
+import { getNightlyPrice } from './utils/pricing';
 import { INITIAL_CONFIG, INITIAL_ROOMS } from './constants';
 import { sortRoomsByPriority } from './utils/roomUtils';
 import { useSupabaseData } from './hooks/useSupabaseData';
 import { offlineQueue } from './lib/offlineQueue';
 import { sendReservationEmails } from './services/emailService';
 
-import { JulySection } from './components/JulySection';
 import { Lightbox } from './components/Lightbox';
 import { Share2, Zap, ArrowRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Info, Luggage, MapPin, Search, Star, User, X, Ticket, Plus, Minus, Users, AlertCircle, ShoppingCart } from 'lucide-react';
 import { SuccessPage } from './components/SuccessPage';
@@ -399,12 +399,10 @@ export default function App() {
     let total = 0;
     let current = new Date(checkIn);
     while (current < checkOut) {
-      const iso = toLocalISO(current);
-      const override = room.overrides?.find(o => o.dateIso === iso);
-      total += override?.price ?? room.price;
+      total += getNightlyPrice(room, current);
       current.setDate(current.getDate() + 1);
     }
-    return total;
+    return Math.round(total);
   };
 
   const isRoomAvailable = (room: Room) => {
@@ -556,20 +554,6 @@ export default function App() {
                 ))}
               </div>
             </div>
-
-            {/* SEÇÃO ESPECIAL: FÉRIAS DE JULHO */}
-            <JulySection
-              onSelectPackage={(ci, co) => {
-                setCheckIn(ci);
-                setCheckOut(co);
-                setCurrentCalendarDate(ci);
-                setTimeout(() => {
-                  document.getElementById('quartos-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }, 150);
-              }}
-              checkIn={checkIn}
-              checkOut={checkOut}
-            />
 
             {/* SEÇÃO DE ACOMODAÇÕES - REVELADA APENAS APÓS SELEÇÃO DE DATAS */}
 
