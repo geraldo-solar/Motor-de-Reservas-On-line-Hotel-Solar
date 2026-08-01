@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { Room, HolidayPackage, DiscountCode, ExtraService, Reservation } from '../types';
+import { Room, HolidayPackage, DiscountCode, ExtraService, Reservation, DEFAULT_MAX_INSTALLMENTS } from '../types';
 import { supabase } from '../lib/supabase';
 import { offlineQueue } from '../lib/offlineQueue';
 import { getPublicImageUrl } from '../utils/imageUtils';
@@ -196,6 +196,7 @@ export const useSupabaseData = () => {
     noCheckoutDates: safeArray(p.no_checkout_dates || p.noCheckoutDates),
     noCheckInDates: safeArray(p.no_checkin_dates || p.noCheckInDates),
     fullPeriodDiscountPct: p.full_period_discount_pct || p.fullPeriodDiscountPct || 0,
+    maxInstallments: p.max_installments || p.maxInstallments || DEFAULT_MAX_INSTALLMENTS,
     category: p.category || 'SPECIAL',
     isPromotional: p.is_promotional || p.isPromotional || false,
   }));
@@ -531,11 +532,21 @@ export const useSupabaseData = () => {
         no_checkout_dates: pkg.noCheckoutDates || [],
         no_checkin_dates: pkg.noCheckInDates || [],
         full_period_discount_pct: pkg.fullPeriodDiscountPct || 0,
-        // Mantemos category e is_promotional fora do upsert por enquanto 
+        max_installments: pkg.maxInstallments || DEFAULT_MAX_INSTALLMENTS,
+        // Mantemos category e is_promotional fora do upsert por enquanto
         // para evitar erros se as colunas não existirem no schema do cliente.
       };
 
-      const { error } = await supabase.from('packages').upsert(dataToSave);
+      let { error } = await supabase.from('packages').upsert(dataToSave);
+
+      // max_installments é uma coluna recente; em bases ainda não migradas o upsert
+      // falha por ela. Nesse caso salvamos o resto normalmente em vez de perder a edição.
+      if (error && /max_installments/.test(error.message || '')) {
+        console.warn('[Supabase] Coluna max_installments ausente. Salvando pacote sem o limite de parcelas.');
+        const { max_installments, ...semParcelas } = dataToSave;
+        ({ error } = await supabase.from('packages').upsert(semParcelas));
+      }
+
       if (error) throw error;
 
       setPackagesState(prev => {

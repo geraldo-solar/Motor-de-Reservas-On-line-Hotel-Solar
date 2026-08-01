@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Ticket, Plus, Trash2, Calendar, Gift, Image as ImageIcon, Check, ChevronDown, ChevronUp } from 'lucide-react';
-import { Room, HolidayPackage } from '../../types';
+import { Room, HolidayPackage, DEFAULT_MAX_INSTALLMENTS } from '../../types';
 import { DateRangePickerModal } from './DateRangePickerModal';
 import { formatDisplayDate } from '../../utils/dateUtils';
 import { getPublicImageUrl } from '../../utils/imageUtils';
@@ -62,7 +62,8 @@ export const PackageEditorModal: React.FC<PackageEditorModalProps> = ({ isOpen, 
         roomPrices: rooms.map(r => ({ roomId: r.id, price: 0 })),
         noCheckoutDates: [],
         noCheckInDates: [],
-        fullPeriodDiscountPct: 0
+        fullPeriodDiscountPct: 0,
+        maxInstallments: DEFAULT_MAX_INSTALLMENTS
     };
 
     const [formData, setFormData] = useState<HolidayPackage>(pkg || emptyPackage);
@@ -339,6 +340,24 @@ export const PackageEditorModal: React.FC<PackageEditorModalProps> = ({ isOpen, 
                                                 max="100"
                                             />
                                             <span className="text-xs font-bold text-solar-gold">%</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between bg-solar-gold/5 p-4 rounded-xl border border-solar-gold/20 mt-4">
+                                        <div className="flex-1">
+                                            <span className="block text-xs font-bold text-solar-green uppercase tracking-tight">Máximo de Parcelas</span>
+                                            <span className="text-[9px] text-slate-500 uppercase tracking-widest">No cartão, para este pacote. Padrão: {DEFAULT_MAX_INSTALLMENTS}x</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                type="number"
+                                                value={formData.maxInstallments ?? DEFAULT_MAX_INSTALLMENTS}
+                                                onChange={e => setFormData({ ...formData, maxInstallments: Math.max(1, Number(e.target.value)) })}
+                                                className="w-20 border-2 border-solar-gold/10 p-2 rounded-lg text-sm bg-white focus:border-solar-gold outline-none font-black text-center transition-all"
+                                                min="1"
+                                                max="12"
+                                            />
+                                            <span className="text-xs font-bold text-solar-gold">x</span>
                                         </div>
                                     </div>
                                 </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Users, ArrowRight, CheckCircle, Tag, Lock, ShoppingBag, CreditCard, MessageSquare, QrCode, Copy, User, Mail, Phone, FileText, ChevronLeft, ShieldCheck, BedDouble, Trash2, Plus, Minus, AlertCircle, ChevronDown, ChevronUp, Layers, Loader2 } from 'lucide-react';
-import { Room, DiscountCode, ExtraService, Reservation, HolidayPackage } from '../types';
+import { Room, DiscountCode, ExtraService, Reservation, HolidayPackage, DEFAULT_MAX_INSTALLMENTS } from '../types';
 import { toLocalISO } from '../utils/dateUtils';
 import { getPublicImageUrl } from '../utils/imageUtils';
 import { validateDiscount } from '../utils/pricingRules';
@@ -171,6 +171,10 @@ const BookingForm: React.FC<BookingFormProps> = ({
   const packageDiscountAmount = isFullPackagePeriod && activePackage.fullPeriodDiscountPct
     ? Math.round((accommodationTotal * activePackage.fullPeriodDiscountPct) / 100)
     : 0;
+
+  // O limite de parcelas vem do pacote escolhido; reservas sem pacote usam o padrão.
+  const maxInstallments = Math.max(1, activePackage?.maxInstallments || DEFAULT_MAX_INSTALLMENTS);
+  const installmentOptions = Array.from({ length: maxInstallments }, (_, i) => i + 1);
 
   const subtotal = accommodationTotal + extrasTotal;
   const total = subtotal - (appliedDiscount?.amount || 0) - packageDiscountAmount;
@@ -724,7 +728,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
                       onChange={e => setInstallments(Number(e.target.value))}
                       className="w-full p-4 pl-12 bg-white border border-slate-200 rounded-lg outline-none text-sm focus:border-solar-gold appearance-none cursor-pointer"
                     >
-                      {[1, 2, 3].map(num => (
+                      {installmentOptions.map(num => (
                         <option key={num} value={num}>
                           {num}x de R$ {(total / num).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sem juros
                         </option>

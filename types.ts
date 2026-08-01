@@ -40,9 +40,14 @@ export interface HolidayPackage {
   noCheckoutDates: string[];
   noCheckInDates: string[];
   fullPeriodDiscountPct?: number;
+  /** Máximo de parcelas no cartão para este pacote. Sem valor, vale DEFAULT_MAX_INSTALLMENTS. */
+  maxInstallments?: number;
   category?: 'SPECIAL' | 'JULY';
   isPromotional?: boolean;
 }
+
+/** Limite de parcelas para reservas sem pacote associado. */
+export const DEFAULT_MAX_INSTALLMENTS = 3;
 
 export interface ExtraService {
   id: string;
