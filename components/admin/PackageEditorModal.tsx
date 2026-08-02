@@ -41,7 +41,9 @@ const fileToBase64 = (file: File, maxWidth = 800, quality = 0.7): Promise<string
                     resolve(reader.result as string);
                 }
             };
-            img.onerror = () => resolve(reader.result as string);
+            // Navegadores não decodificam HEIC/HEIF, o formato padrão do iPhone. Antes o
+            // arquivo cru era salvo assim mesmo e a capa do pacote ficava em branco, sem aviso.
+            img.onerror = () => reject(new Error('IMAGEM_NAO_SUPORTADA'));
         };
         reader.onerror = error => reject(error);
     });
@@ -96,7 +98,9 @@ export const PackageEditorModal: React.FC<PackageEditorModalProps> = ({ isOpen, 
                 const base64 = await fileToBase64(file);
                 setFormData({ ...formData, imageUrl: base64 });
             } catch (err) {
-                alert("Erro ao carregar imagem.");
+                alert(err instanceof Error && err.message === 'IMAGEM_NAO_SUPORTADA'
+                    ? "Este formato de imagem não é exibido por navegadores — provavelmente HEIC, o padrão do iPhone.\n\nConverta a foto para JPG ou PNG e envie novamente.\n\nNo Mac: abra a foto no Visualizar, vá em Arquivo > Exportar e escolha JPEG.\nNo iPhone: Ajustes > Câmera > Formatos > Mais Compatível."
+                    : "Erro ao carregar imagem.");
             }
         }
     };
