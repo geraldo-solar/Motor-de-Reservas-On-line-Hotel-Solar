@@ -440,8 +440,11 @@ export default function App() {
   }, [rooms]);
 
   const sortedActivePackages = useMemo(() => {
+    // Pacote encerrado sai de cartaz sozinho: oferta com data vencida ao lado de
+    // "Garantir minha vaga" passa a impressão de site abandonado.
+    const hoje = toLocalISO(new Date());
     return [...packages]
-      .filter(p => p.active)
+      .filter(p => p.active && (!p.endIsoDate || p.endIsoDate >= hoje))
       .sort((a, b) => a.startIsoDate.localeCompare(b.startIsoDate));
   }, [packages]);
 
