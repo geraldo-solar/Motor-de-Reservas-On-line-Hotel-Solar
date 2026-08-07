@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Check, AlertCircle } from 'lucide-react';
 import { Reservation } from '../types';
 import { formatDisplayDate } from '../utils/dateUtils';
+import { mapReservationRow, mapReservations } from '../utils/mapReservation';
 import { sendPreCheckinAdminEmail, getShortReservationId } from '../services/emailService';
 import { supabase } from '../lib/supabase';
 
@@ -114,23 +115,34 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
     }, []);
 
     useEffect(() => {
-        // Find reservation (Supports Full ID or Short ID)
+        let cancelado = false;
+        let timerDesistencia: ReturnType<typeof setTimeout> | undefined;
+
+        const aplicar = (principal: Reservation, doGrupo: Reservation[]) => {
+            if (cancelado) return;
+            setReservation(principal);
+            setGroupRooms(doGrupo);
+            setFormData(prev => ({
+                ...prev,
+                nomeCompleto: principal.mainGuest.name,
+                email: principal.mainGuest.email,
+                telefone: principal.mainGuest.phone,
+                cpf: principal.mainGuest.cpf
+            }));
+            setLoading(false);
+        };
+
+        const ordenarPorQuarto = (lista: Reservation[]) =>
+            [...lista].sort((a, b) => (a.rooms[0]?.name || '').localeCompare(b.rooms[0]?.name || ''));
+
+        // 1. Caminho rápido: a reserva já está na lista que o app carregou.
         const found = reservations.find(r =>
             r.id === reservationId ||
             getShortReservationId(r.id) === reservationId.toUpperCase()
         );
 
         if (found) {
-            setReservation(found);
-            setGroupRooms(found.groupId ? reservations.filter(r => r.groupId === found.groupId) : []);
-            setFormData(prev => ({
-                ...prev,
-                nomeCompleto: found.mainGuest.name,
-                email: found.mainGuest.email,
-                telefone: found.mainGuest.phone,
-                cpf: found.mainGuest.cpf
-            }));
-            setLoading(false);
+            aplicar(found, found.groupId ? reservations.filter(r => r.groupId === found.groupId) : []);
             return;
         }
 
@@ -140,19 +152,68 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
         );
 
         if (matchedGroup.length > 0) {
-            const sorted = [...matchedGroup].sort((a, b) => (a.rooms[0]?.name || '').localeCompare(b.rooms[0]?.name || ''));
-            const primary = sorted[0];
-            setReservation(primary);
-            setGroupRooms(sorted);
-            setFormData(prev => ({
-                ...prev,
-                nomeCompleto: primary.mainGuest.name,
-                email: primary.mainGuest.email,
-                telefone: primary.mainGuest.phone,
-                cpf: primary.mainGuest.cpf
-            }));
+            const sorted = ordenarPorQuarto(matchedGroup);
+            aplicar(sorted[0], sorted);
+            return;
         }
-        setLoading(false);
+
+        // 2. Fallback: busca direto no banco pelo ID.
+        //
+        // A lista em memória não serve como fonte única: ela chega alguns segundos
+        // depois da primeira renderização e é truncada nas reservas mais recentes,
+        // então links legítimos caíam em "Reserva não encontrada". A consulta por ID
+        // não depende de nenhuma das duas coisas.
+        setLoading(true);
+        (async () => {
+            try {
+                const ehUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reservationId);
+                if (!ehUuid) {
+                    // ID curto (8 primeiros caracteres) não dá para consultar no banco;
+                    // depende da lista, que ainda pode estar carregando. Se a lista já
+                    // chegou (ou nunca chega), desiste em vez de girar para sempre.
+                    if (reservations.length > 0) {
+                        if (!cancelado) setLoading(false);
+                        return;
+                    }
+                    timerDesistencia = setTimeout(() => { if (!cancelado) setLoading(false); }, 12000);
+                    return;
+                }
+
+                // A reserva pode ser a própria linha ou o titular de um grupo.
+                const [porId, porGrupo] = await Promise.all([
+                    supabase.from('reservations').select('*, companies(trade_name)').eq('id', reservationId).maybeSingle(),
+                    supabase.from('reservations').select('*, companies(trade_name)').eq('group_id', reservationId)
+                ]);
+
+                if (cancelado) return;
+
+                const linhaPrincipal = porId.data;
+                const grupoId = linhaPrincipal?.group_id || (porGrupo.data?.length ? reservationId : null);
+
+                let irmas: any[] = porGrupo.data || [];
+                if (linhaPrincipal?.group_id) {
+                    const { data } = await supabase
+                        .from('reservations').select('*, companies(trade_name)').eq('group_id', linhaPrincipal.group_id);
+                    irmas = data || [];
+                }
+                if (cancelado) return;
+
+                const mapeadas = ordenarPorQuarto(mapReservations(irmas));
+
+                if (linhaPrincipal) {
+                    aplicar(mapReservationRow(linhaPrincipal), grupoId ? mapeadas : []);
+                } else if (mapeadas.length > 0) {
+                    aplicar(mapeadas[0], mapeadas);
+                } else {
+                    setLoading(false);
+                }
+            } catch (err) {
+                console.error('[PreCheckin] Falha ao buscar a reserva pelo ID:', err);
+                if (!cancelado) setLoading(false);
+            }
+        })();
+
+        return () => { cancelado = true; if (timerDesistencia) clearTimeout(timerDesistencia); };
     }, [reservationId, reservations]);
 
     // Inicializa a distribuição de hóspedes por quarto (apenas nomes) quando é uma reserva de grupo
