@@ -1,4 +1,5 @@
 import { Reservation } from '../types';
+import { formatDisplayDate } from '../utils/dateUtils';
 
 const MANYCHAT_TOKEN = import.meta.env.MANYCHAT_API_KEY || 'managed-on-server'; // Apenas para verificação não-nula, a chave real está no servidor
 
@@ -153,8 +154,8 @@ export const sendManychatNotification = async (reservation: Reservation, type: '
     const reservationFields = {
         reservation_id: reservation.id.slice(0, 8).toUpperCase(),
         reservation_status: type,
-        reservation_checkin: new Date(reservation.checkIn).toLocaleDateString('pt-BR'),
-        reservation_checkout: new Date(reservation.checkOut).toLocaleDateString('pt-BR'),
+        reservation_checkin: formatDisplayDate(reservation.checkIn),
+        reservation_checkout: formatDisplayDate(reservation.checkOut),
         reservation_total: reservation.totalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
         reservation_link: `https://motor-de-reservas-on-line-hotel-sol.vercel.app/pre-checkin/${reservation.id}`,
         reservation_uuid: reservation.id

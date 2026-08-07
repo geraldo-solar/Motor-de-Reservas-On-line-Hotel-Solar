@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Check, AlertCircle } from 'lucide-react';
 import { Reservation } from '../types';
-import { formatDisplayDate, toLocalISO } from '../utils/dateUtils';
+import { formatDisplayDate } from '../utils/dateUtils';
 import { sendPreCheckinAdminEmail, getShortReservationId } from '../services/emailService';
 import { supabase } from '../lib/supabase';
 
@@ -562,7 +562,7 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                     <div className="bg-slate-50 p-6 rounded-xl border border-slate-100 mb-8 text-sm text-slate-600">
                         <p className="mb-2 uppercase text-[10px] font-bold tracking-widest text-slate-400">Sua Reserva</p>
                         <p className="font-bold text-lg text-solar-green">#{reservationId.slice(0, 8).toUpperCase()}</p>
-                        <p>{formatDisplayDate(toLocalISO(new Date(reservation!.checkIn)))}</p>
+                        <p>{formatDisplayDate(reservation!.checkIn)}</p>
                     </div>
                     <button
                         onClick={onBack}
@@ -595,7 +595,7 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                         </div>
                         <div>
                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Chegada</span>
-                            <span className="text-xl font-bold text-slate-700">{formatDisplayDate(toLocalISO(new Date(reservation!.checkIn)))}</span>
+                            <span className="text-xl font-bold text-slate-700">{formatDisplayDate(reservation!.checkIn)}</span>
                         </div>
                     </div>
 
