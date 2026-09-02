@@ -36,6 +36,13 @@ const getExtraCode = (name: string) => {
   return null;
 };
 
+const periodsOverlap = (
+  requestedCheckIn: string,
+  requestedCheckOut: string,
+  packageCheckIn: string,
+  packageCheckOut: string
+) => requestedCheckIn < packageCheckOut && requestedCheckOut > packageCheckIn;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed. Use POST.' });
@@ -110,6 +117,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Failed to fetch rooms from Supabase.' });
     }
 
+    // Todos os pacotes aceitam diárias avulsas pelos preços cadastrados no
+    // motor. A única exceção comercial é o Réveillon, vendido obrigatoriamente
+    // no período completo de 31/12 a 03/01.
+    const reveillonPackage = packages?.find(pkg =>
+      normalize(pkg.name || '').includes('reveillon') &&
+      String(pkg.start_iso_date || '').endsWith('-12-31')
+    );
+    if (
+      reveillonPackage &&
+      periodsOverlap(checkIn, checkOut, reveillonPackage.start_iso_date, reveillonPackage.end_iso_date) &&
+      (checkIn !== reveillonPackage.start_iso_date || checkOut !== reveillonPackage.end_iso_date)
+    ) {
+      const reveillonText = `🎆 O pacote ${reveillonPackage.name} é vendido somente no período completo, de ${formatDate(reveillonPackage.start_iso_date)} a ${formatDate(reveillonPackage.end_iso_date)} (${Math.round((new Date(`${reveillonPackage.end_iso_date}T12:00:00Z`).getTime() - new Date(`${reveillonPackage.start_iso_date}T12:00:00Z`).getTime()) / (1000 * 60 * 60 * 24))} diárias). Não fazemos simulação parcial dentro desse período. Para calcular o pacote completo ou esclarecer alguma condição, fale com a recepção: (91) 98100-0800.`;
+
+      return res.status(200).json({
+        message: 'Restricted package period',
+        whatsapp_text: reveillonText,
+        prices_summary: reveillonText,
+        availability_checked: false,
+        requires_human_confirmation: true,
+        policy_restriction: 'reveillon_full_period_only',
+        required_check_in: reveillonPackage.start_iso_date,
+        required_check_out: reveillonPackage.end_iso_date,
+      });
+    }
+
     // Verifica se algum pacote ativo casa exatamente com as datas pesquisadas
     const activePackage = packages?.find(p => p.start_iso_date === checkIn && p.end_iso_date === checkOut);
 
@@ -129,6 +162,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       whatsappText += `🎉 Pacote especial: ${activePackage.name}\n\n`;
     }
 
+    const activePackageItems = [
+      ...(activePackage?.includes || []),
+      ...(activePackage?.benefits || []),
+      activePackage?.description || '',
+    ].map((item: string) => normalize(item));
+    const packageIncludesBoat = activePackageItems.some((item: string) =>
+      item.includes('barco') || item.includes('catamara')
+    );
+
     const configuredExtras = FALLBACK_EXTRAS.map(fallback => {
       const databaseExtra = extras?.find(extra => getExtraCode(extra.name || '') === fallback.code);
       return databaseExtra
@@ -144,7 +186,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const selectedExtras = configuredExtras.filter(extra => requestedExtraCodes.includes(extra.code));
     const extrasTotal = selectedExtras.reduce((total, extra) => (
-      total + extra.price
+      total + (extra.code === 'BARCO' && packageIncludesBoat ? 0 : extra.price)
     ), 0);
 
     const allRoomQuotes: Array<{ name: string; capacity: number; finalPrice: number }> = [];
@@ -250,18 +292,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (selectedExtras.length > 0) {
       whatsappText += `✨ *Extras escolhidos*\n`;
       selectedExtras.forEach(extra => {
+        if (extra.code === 'BARCO' && packageIncludesBoat) {
+          whatsappText += `• ${extra.name}: já incluído no pacote, sem cobrança adicional\n`;
+          return;
+        }
         const unit = extra.pricing === 'fixed_up_to_4'
           ? ' por grupo de até 4 pessoas; acima disso, consulte a recepção'
           : '';
         whatsappText += `• ${extra.name}: R$ ${money(extra.price)}${unit}\n`;
       });
-      whatsappText += `*Total dos extras: R$ ${money(extrasTotal)}*\n\n`;
+      whatsappText += extrasTotal > 0
+        ? `*Total dos extras: R$ ${money(extrasTotal)}*\n\n`
+        : '*Nenhuma cobrança adicional de extras.*\n\n';
     } else {
       whatsappText += `✨ Para tornar a experiência ainda mais especial, você pode acrescentar:\n`;
-      configuredExtras.forEach(extra => {
+      configuredExtras
+        .filter(extra => !(extra.code === 'BARCO' && packageIncludesBoat))
+        .forEach(extra => {
         const unit = extra.pricing === 'fixed_up_to_4' ? ' por grupo de até 4 pessoas' : '';
         whatsappText += `• ${extra.name}: R$ ${money(extra.price)}${unit}\n`;
       });
+      if (packageIncludesBoat) {
+        whatsappText += '• Passeio de Barco: já incluído no pacote\n';
+      }
       whatsappText += '\n';
     }
 
