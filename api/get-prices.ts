@@ -10,6 +10,32 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+const FALLBACK_EXTRAS = [
+  { code: 'BARCO', name: 'Passeio de Barco', price: 75, pricing: 'per_person' },
+  { code: 'MESA', name: 'Mesa Posta', price: 180, pricing: 'fixed' },
+  { code: 'LUA', name: 'Kit Lua de Mel/Celebração', price: 350, pricing: 'fixed' },
+] as const;
+
+const money = (value: number) => Math.round(value).toLocaleString('pt-BR');
+
+const formatDate = (isoDate: string) => {
+  const [year, month, day] = isoDate.split('-');
+  return `${day}/${month}/${year}`;
+};
+
+const normalize = (value: string) => value
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase();
+
+const getExtraCode = (name: string) => {
+  const normalized = normalize(name);
+  if (normalized.includes('barco')) return 'BARCO';
+  if (normalized.includes('mesa')) return 'MESA';
+  if (normalized.includes('lua') || normalized.includes('romantic')) return 'LUA';
+  return null;
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed. Use POST.' });
@@ -17,26 +43,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const body = req.body || {};
   let { checkIn, checkOut, guests } = body;
+  let requestedExtraCodes: string[] = [];
 
   // O ManyChat envia a extração da IA em um único campo para evitar que o
   // modelo tenha qualquer participação no cálculo das tarifas.
-  // Formato aceito: QUOTE|2026-09-20|2026-09-25|2
+  // Formato aceito: QUOTE|2026-09-20|2026-09-25|2|BARCO,MESA
   if ((!checkIn || !checkOut || !guests) && typeof body.quote_request === 'string') {
     const parsed = body.quote_request.match(
-      /QUOTE\s*\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(\d{1,2})/i
+      /QUOTE\s*\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(\d{1,2})(?:\s*\|\s*([A-Z,]+))?/i
     );
 
     if (parsed) {
       checkIn = parsed[1];
       checkOut = parsed[2];
       guests = Number(parsed[3]);
+      requestedExtraCodes = (parsed[4] || 'NONE')
+        .split(',')
+        .map(code => code.trim().toUpperCase())
+        .filter(code => ['BARCO', 'MESA', 'LUA'].includes(code));
     }
+  }
+
+  if (Array.isArray(body.extras)) {
+    requestedExtraCodes = body.extras
+      .map((code: unknown) => String(code).trim().toUpperCase())
+      .filter((code: string) => ['BARCO', 'MESA', 'LUA'].includes(code));
   }
 
   if (!checkIn || !checkOut || !guests) {
     return res.status(400).json({
       error: 'Missing or invalid quote data.',
-      expected_format: 'QUOTE|YYYY-MM-DD|YYYY-MM-DD|GUESTS'
+      expected_format: 'QUOTE|YYYY-MM-DD|YYYY-MM-DD|GUESTS|BARCO,MESA,LUA or NONE'
     });
   }
 
@@ -63,9 +100,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'Check-out date must be after check-in date.' });
     }
 
-    // Busca quartos e pacotes do Supabase
+    // Busca preços do Supabase. O orçamento é uma simulação comercial e não
+    // consulta estoque, bloqueios, restrições de check-in ou disponibilidade.
     const { data: rooms } = await supabase.from('room_types').select('*').eq('active', true);
     const { data: packages } = await supabase.from('packages').select('*').eq('active', true);
+    const { data: extras } = await supabase.from('extras').select('*').eq('active', true);
 
     if (!rooms) {
       return res.status(500).json({ error: 'Failed to fetch rooms from Supabase.' });
@@ -74,8 +113,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Verifica se algum pacote ativo casa exatamente com as datas pesquisadas
     const activePackage = packages?.find(p => p.start_iso_date === checkIn && p.end_iso_date === checkOut);
 
-    let summaryText = `Orçamento para ${nights} ${nights === 1 ? 'diária' : 'diárias'} (${checkIn} a ${checkOut}), ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}:\n\n`;
-    let whatsappText = `☀️ Encontrei estas tarifas para ${nights} ${nights === 1 ? 'diária' : 'diárias'}, de ${checkIn} a ${checkOut}, para ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}:\n\n`;
+    let summaryText = `Simulação para ${nights} ${nights === 1 ? 'diária' : 'diárias'} (${formatDate(checkIn)} a ${formatDate(checkOut)}), ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}:\n\n`;
+    let whatsappText = `☀️ Fiz uma simulação para ${nights} ${nights === 1 ? 'diária' : 'diárias'}, de ${formatDate(checkIn)} a ${formatDate(checkOut)}, para ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}:\n\n`;
 
     if (activePackage) {
       let pkgInfo = `\n🎉 PACOTE ESPECIAL ATIVO: ${activePackage.name}\n`;
@@ -90,86 +129,138 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       whatsappText += `🎉 Pacote especial: ${activePackage.name}\n\n`;
     }
 
-    let availableCount = 0;
+    const configuredExtras = FALLBACK_EXTRAS.map(fallback => {
+      const databaseExtra = extras?.find(extra => getExtraCode(extra.name || '') === fallback.code);
+      return databaseExtra
+        ? { ...fallback, name: databaseExtra.name, price: Number(databaseExtra.price) }
+        : fallback;
+    });
+
+    const selectedExtras = configuredExtras.filter(extra => requestedExtraCodes.includes(extra.code));
+    const extrasTotal = selectedExtras.reduce((total, extra) => (
+      total + (extra.pricing === 'per_person' ? extra.price * guestCount : extra.price)
+    ), 0);
+
+    const allRoomQuotes: Array<{ name: string; capacity: number; finalPrice: number }> = [];
 
     for (const room of rooms) {
       const capacity = Number(room.capacity || 0);
-      if (!capacity || guestCount > capacity) continue;
+      if (!capacity) continue;
 
       let total = 0;
-      let isAvailable = true;
-      let reason = '';
-      
-      let minRemainingQty = 9999;
-      
       const current = new Date(ci);
-      
-      // Checa restrição de checkin (no primeiro dia)
-      const ciIso = current.toISOString().split('T')[0];
-      const ciOverride = room.overrides?.find((o: any) => o.dateIso === ciIso);
-      if (ciOverride?.noCheckIn || ciOverride?.isClosed) {
-          isAvailable = false;
-          reason = 'Fechado para Check-in nessa data';
-      }
 
       for (let i = 0; i < nights; i++) {
         const iso = current.toISOString().split('T')[0];
         const override = room.overrides?.find((o: any) => o.dateIso === iso);
-        
-        if (override?.isClosed) {
-          isAvailable = false;
-          reason = 'Esgotado em uma das datas';
-          break;
-        }
-
-        const availableQty = override?.availableQuantity !== undefined ? override.availableQuantity : room.totalQuantity;
-        const remainingQty = availableQty;
-
-        if (remainingQty < minRemainingQty) {
-          minRemainingQty = remainingQty;
-        }
-
-        if (remainingQty <= 0) {
-          isAvailable = false;
-          reason = 'Esgotado em uma das datas';
-          break;
-        }
-
         total += override?.price !== undefined ? override.price : room.base_price;
-        
-        // avança o dia
         current.setDate(current.getDate() + 1);
       }
 
-      if (isAvailable) {
-        // Aplica o desconto do pacote se houver
-        let finalPrice = total;
-        if (activePackage && activePackage.discount_percentage) {
-            finalPrice = total * (1 - (activePackage.discount_percentage / 100));
-        }
-        
-        // Verifica restrição de checkout no último dia
-        const coIso = co.toISOString().split('T')[0];
-        const coOverride = room.overrides?.find((o: any) => o.dateIso === coIso);
-        if (coOverride?.noCheckOut) {
-            isAvailable = false;
-            reason = 'Check-out restrito nessa data';
-        }
-
-        if (isAvailable) {
-            summaryText += `- **${room.name}** (Até ${room.capacity} pessoas): R$ ${Math.round(finalPrice).toLocaleString('pt-BR')} total por quarto. (Restam apenas ${minRemainingQty} unidades)\n`;
-            whatsappText += `• ${room.name} (até ${room.capacity} pessoas): R$ ${Math.round(finalPrice).toLocaleString('pt-BR')} no total por quarto.\n`;
-            availableCount++;
-        }
+      let finalPrice = total;
+      if (activePackage && activePackage.discount_percentage) {
+        finalPrice = total * (1 - (activePackage.discount_percentage / 100));
       }
+
+      allRoomQuotes.push({ name: room.name, capacity, finalPrice });
     }
 
-    if (availableCount === 0) {
-      summaryText += "Não há quartos disponíveis para este período.";
-      whatsappText = `Não encontrei quartos com tarifa e disponibilidade cadastradas para ${checkIn} a ${checkOut}, para ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}. Você pode tentar outras datas no motor de reservas ou falar com nossa recepção.`;
+    // Acomodação premium primeiro: entre as opções compatíveis, apresenta os
+    // maiores valores antes das opções econômicas para favorecer o upsell.
+    const roomQuotes = allRoomQuotes.filter(room => guestCount <= room.capacity);
+    roomQuotes.sort((a, b) => b.finalPrice - a.finalPrice);
+
+    if (roomQuotes.length === 0) {
+      const maxCapacity = Math.max(...allRoomQuotes.map(room => room.capacity));
+      const roomsNeeded = Math.ceil(guestCount / maxCapacity);
+      const combinations: Array<{
+        rooms: typeof allRoomQuotes;
+        capacity: number;
+        finalPrice: number;
+      }> = [];
+
+      const buildCombinations = (startIndex: number, selected: typeof allRoomQuotes) => {
+        if (selected.length === roomsNeeded) {
+          const capacity = selected.reduce((sum, room) => sum + room.capacity, 0);
+          if (capacity >= guestCount) {
+            combinations.push({
+              rooms: [...selected],
+              capacity,
+              finalPrice: selected.reduce((sum, room) => sum + room.finalPrice, 0),
+            });
+          }
+          return;
+        }
+
+        for (let index = startIndex; index < allRoomQuotes.length; index++) {
+          buildCombinations(index, [...selected, allRoomQuotes[index]]);
+        }
+      };
+
+      buildCombinations(0, []);
+
+      const minimumSpareBeds = Math.min(
+        ...combinations.map(combination => combination.capacity - guestCount)
+      );
+      const recommendedCombinations = combinations
+        .filter(combination => combination.capacity - guestCount === minimumSpareBeds)
+        .sort((a, b) => b.finalPrice - a.finalPrice)
+        .slice(0, 3);
+
+      whatsappText += `Para acomodar bem ${guestCount} hóspedes, estas são as combinações com melhor aproveitamento dos apartamentos:\n\n`;
+      recommendedCombinations.forEach((combination, index) => {
+        const roomCounts = combination.rooms.reduce<Record<string, number>>((counts, room) => {
+          counts[room.name] = (counts[room.name] || 0) + 1;
+          return counts;
+        }, {});
+        const description = Object.entries(roomCounts)
+          .map(([name, quantity]) => `${quantity}x ${name}`)
+          .join(' + ');
+        const combinedTotal = combination.finalPrice + extrasTotal;
+
+        summaryText += `- ${index === 0 ? '⭐ Recomendação premium — ' : ''}${description}: R$ ${money(combination.finalPrice)} em hospedagem`;
+        whatsappText += `${index === 0 ? '⭐ *Recomendação premium*\n' : ''}• ${description}: *R$ ${money(combination.finalPrice)}* em hospedagem`;
+        if (extrasTotal > 0) {
+          summaryText += `; R$ ${money(combinedTotal)} com os extras escolhidos`;
+          whatsappText += ` — *R$ ${money(combinedTotal)}* com os extras escolhidos`;
+        }
+        summaryText += '.\n';
+        whatsappText += '.\n\n';
+      });
     } else {
-      whatsappText += `\nOs valores são totais por quarto e podem mudar até a conclusão da reserva. Consulte e reserve em: https://reservas.hotelsolar.tur.br/`;
+      roomQuotes.forEach((room, index) => {
+        const premiumLabel = index === 0 ? '⭐ Recomendação premium — ' : '';
+        summaryText += `- ${premiumLabel}${room.name} (até ${room.capacity} pessoas): R$ ${money(room.finalPrice)} em hospedagem`;
+        whatsappText += `${index === 0 ? '⭐ *Recomendação premium*\n' : ''}• ${room.name} (até ${room.capacity} pessoas): *R$ ${money(room.finalPrice)}* em hospedagem`;
+        if (extrasTotal > 0) {
+          summaryText += `; R$ ${money(room.finalPrice + extrasTotal)} com os extras escolhidos`;
+          whatsappText += ` — *R$ ${money(room.finalPrice + extrasTotal)}* com os extras escolhidos`;
+        }
+        summaryText += '.\n';
+        whatsappText += '.\n\n';
+      });
     }
+
+    if (selectedExtras.length > 0) {
+      whatsappText += `✨ *Extras escolhidos*\n`;
+      selectedExtras.forEach(extra => {
+        const total = extra.pricing === 'per_person' ? extra.price * guestCount : extra.price;
+        const unit = extra.pricing === 'per_person' ? ` (R$ ${money(extra.price)} por pessoa)` : '';
+        whatsappText += `• ${extra.name}: R$ ${money(total)}${unit}\n`;
+      });
+      whatsappText += `*Total dos extras: R$ ${money(extrasTotal)}*\n\n`;
+    } else {
+      whatsappText += `✨ Para tornar a experiência ainda mais especial, você pode acrescentar:\n`;
+      configuredExtras.forEach(extra => {
+        const unit = extra.pricing === 'per_person' ? ' por pessoa' : '';
+        whatsappText += `• ${extra.name}: R$ ${money(extra.price)}${unit}\n`;
+      });
+      whatsappText += '\n';
+    }
+
+    const handoffText = 'Esta é uma simulação de valores e não confirma disponibilidade. Para consultar vagas e finalizar a reserva, fale com a recepção pelo WhatsApp: (91) 98100-0800.';
+    summaryText += `\n${handoffText}`;
+    whatsappText += `⚠️ ${handoffText}`;
 
     const safeSummary = summaryText.replace(/\n/g, " ||| ");
 
@@ -182,7 +273,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         check_in: checkIn,
         check_out: checkOut,
         guests: guestCount,
-        nights
+        nights,
+        availability_checked: false,
+        requires_human_confirmation: true,
+        extras_total: extrasTotal,
+        selected_extras: selectedExtras.map(extra => extra.code),
+        recommendation_order: 'highest_compatible_price_first'
     });
 
   } catch (error: any) {
