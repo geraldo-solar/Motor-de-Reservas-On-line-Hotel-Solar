@@ -55,6 +55,10 @@ export default function App() {
   const [preCheckinReservationId, setPreCheckinReservationId] = useState<string>('');
   const [draftPayload, setDraftPayload] = useState<any>(null);
 
+  // Pacote pedido por link (?pacote=<id> ou #pacote-<id>), aguardando o scroll.
+  const [pacoteAlvoScroll, setPacoteAlvoScroll] = useState<string | null>(null);
+  const pacoteScrollFeito = useRef(false);
+
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [offlineCount, setOfflineCount] = useState(offlineQueue.getPendingCount());
   const [config, setConfig] = useState<HotelConfig>(INITIAL_CONFIG);
@@ -131,15 +135,10 @@ export default function App() {
 
     const pacoteParam = params.get('pacote');
     if (pacoteParam || hash.startsWith('#pacote-')) {
-      const pacoteId = pacoteParam || hash.replace('#pacote-', '');
-      setTimeout(() => {
-        const element = document.getElementById(`pacote-${pacoteId}`);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } else {
-          document.getElementById('pacotes-section')?.scrollIntoView({ behavior: 'smooth' });
-        }
-      }, 500);
+      // Os pacotes chegam do Supabase depois desta montagem, então aqui só
+      // guardamos o alvo. O scroll acontece no efeito lá embaixo, quando o
+      // card realmente existir no DOM.
+      setPacoteAlvoScroll(pacoteParam || hash.replace('#pacote-', ''));
     }
 
     // New Routing for Pre-Checkin
@@ -447,6 +446,39 @@ export default function App() {
       .filter(p => p.active && (!p.endIsoDate || p.endIsoDate >= hoje))
       .sort((a, b) => a.startIsoDate.localeCompare(b.startIsoDate));
   }, [packages]);
+
+  // Leva o visitante direto ao pacote que o link pediu. Roda a cada render até
+  // o card aparecer: enquanto a lista não chega, não há o que rolar. Se o
+  // pacote não estiver mais em cartaz, cai na seção de pacotes.
+  useEffect(() => {
+    if (!pacoteAlvoScroll || loading || pacoteScrollFeito.current) return;
+
+    const alvo = document.getElementById(`pacote-${pacoteAlvoScroll}`);
+    const destino = alvo || document.getElementById('pacotes-section');
+    if (!destino) return;
+
+    pacoteScrollFeito.current = true;
+    const bloco = alvo ? 'center' : 'start';
+    // setTimeout em vez de requestAnimationFrame: o rAF fica suspenso enquanto a
+    // página não está visível — link aberto em aba de segundo plano ou dentro do
+    // webview de um app — e o visitante ficaria parado no topo. O timer roda de
+    // qualquer jeito, e o zero garante que o DOM já pintou.
+    setTimeout(() => {
+      destino.scrollIntoView({ behavior: 'smooth', block: bloco });
+
+      // Uma conferida depois que tudo assenta, por dois motivos: o salto nativo
+      // do "#" da URL e as imagens dos cards mudam a altura da página logo
+      // depois do scroll; e navegador nenhum anima scroll suave em aba oculta
+      // (link aberto em segundo plano, webview), onde o suave acima vira nada.
+      // O scroll instantâneo funciona nos dois casos. Se o destino já está à
+      // vista, não faz nada e o visitante não vê pulo nenhum.
+      setTimeout(() => {
+        const r = destino.getBoundingClientRect();
+        const foraDaTela = r.bottom < 0 || r.top > window.innerHeight * 0.9;
+        if (foraDaTela) destino.scrollIntoView({ behavior: 'auto', block: bloco });
+      }, 800);
+    }, 0);
+  }, [pacoteAlvoScroll, loading, sortedActivePackages, currentView]);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F9F8F6]">
