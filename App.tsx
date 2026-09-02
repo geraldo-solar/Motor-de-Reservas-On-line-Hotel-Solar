@@ -466,17 +466,27 @@ export default function App() {
     setTimeout(() => {
       destino.scrollIntoView({ behavior: 'smooth', block: bloco });
 
-      // Uma conferida depois que tudo assenta, por dois motivos: o salto nativo
-      // do "#" da URL e as imagens dos cards mudam a altura da página logo
-      // depois do scroll; e navegador nenhum anima scroll suave em aba oculta
-      // (link aberto em segundo plano, webview), onde o suave acima vira nada.
-      // O scroll instantâneo funciona nos dois casos. Se o destino já está à
-      // vista, não faz nada e o visitante não vê pulo nenhum.
-      setTimeout(() => {
+      // A página continua mudando de altura depois do scroll: as imagens dos
+      // cards carregam e o salto nativo do "#" entra no meio. Conferir uma vez
+      // só, num tempo fixo, é o mesmo chute que causava o bug — às vezes o card
+      // ainda está no lugar certo naquele instante e sai de cena depois. Então
+      // reconfere por alguns segundos. O scroll instantâneo também cobre a aba
+      // oculta (link aberto em segundo plano, webview de app), onde o suave
+      // acima não anima. Se o destino já está à vista, nada acontece.
+      let tentativas = 0;
+      const conferir = window.setInterval(() => {
         const r = destino.getBoundingClientRect();
         const foraDaTela = r.bottom < 0 || r.top > window.innerHeight * 0.9;
         if (foraDaTela) destino.scrollIntoView({ behavior: 'auto', block: bloco });
-      }, 800);
+        if (++tentativas >= 12) window.clearInterval(conferir);
+      }, 250);
+
+      // Se o visitante começar a navegar por conta própria, sai da frente na
+      // hora: nada pior que a página puxar a rolagem de volta na mão dele.
+      const desistir = () => window.clearInterval(conferir);
+      ['wheel', 'touchstart', 'keydown'].forEach(evento =>
+        window.addEventListener(evento, desistir, { once: true, passive: true })
+      );
     }, 0);
   }, [pacoteAlvoScroll, loading, sortedActivePackages, currentView]);
 
