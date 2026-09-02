@@ -15,21 +15,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method Not Allowed. Use POST.' });
   }
 
-  const { checkIn, checkOut, guests } = req.body;
+  const body = req.body || {};
+  let { checkIn, checkOut, guests } = body;
 
-  if (!checkIn || !checkOut) {
-    return res.status(400).json({ error: 'Missing checkIn or checkOut dates.' });
+  // O ManyChat envia a extração da IA em um único campo para evitar que o
+  // modelo tenha qualquer participação no cálculo das tarifas.
+  // Formato aceito: QUOTE|2026-09-20|2026-09-25|2
+  if ((!checkIn || !checkOut || !guests) && typeof body.quote_request === 'string') {
+    const parsed = body.quote_request.match(
+      /QUOTE\s*\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(\d{1,2})/i
+    );
+
+    if (parsed) {
+      checkIn = parsed[1];
+      checkOut = parsed[2];
+      guests = Number(parsed[3]);
+    }
+  }
+
+  if (!checkIn || !checkOut || !guests) {
+    return res.status(400).json({
+      error: 'Missing or invalid quote data.',
+      expected_format: 'QUOTE|YYYY-MM-DD|YYYY-MM-DD|GUESTS'
+    });
   }
 
   try {
-    const ci = new Date(checkIn);
-    const co = new Date(checkOut);
+    const ci = new Date(`${checkIn}T12:00:00Z`);
+    const co = new Date(`${checkOut}T12:00:00Z`);
+    const guestCount = Number(guests);
+
+    if (
+      Number.isNaN(ci.getTime()) ||
+      Number.isNaN(co.getTime()) ||
+      !Number.isInteger(guestCount) ||
+      guestCount < 1 ||
+      guestCount > 20
+    ) {
+      return res.status(400).json({ error: 'Invalid dates or guest count.' });
+    }
     
     // Calcula o número de diárias
     const diffTime = Math.abs(co.getTime() - ci.getTime());
     const nights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
-    if (nights <= 0) {
+    if (nights <= 0 || nights > 30) {
       return res.status(400).json({ error: 'Check-out date must be after check-in date.' });
     }
 
@@ -44,7 +74,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Verifica se algum pacote ativo casa exatamente com as datas pesquisadas
     const activePackage = packages?.find(p => p.start_iso_date === checkIn && p.end_iso_date === checkOut);
 
-    let summaryText = `Orçamento para ${nights} ${nights === 1 ? 'diária' : 'diárias'} (${checkIn} a ${checkOut}):\n\n`;
+    let summaryText = `Orçamento para ${nights} ${nights === 1 ? 'diária' : 'diárias'} (${checkIn} a ${checkOut}), ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}:\n\n`;
+    let whatsappText = `☀️ Encontrei estas tarifas para ${nights} ${nights === 1 ? 'diária' : 'diárias'}, de ${checkIn} a ${checkOut}, para ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}:\n\n`;
 
     if (activePackage) {
       let pkgInfo = `\n🎉 PACOTE ESPECIAL ATIVO: ${activePackage.name}\n`;
@@ -56,14 +87,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         pkgInfo += `Programação/Inclusos:\n- ${activePackage.includes.join('\n- ')}\n`;
       }
       summaryText = pkgInfo + '\n' + summaryText;
+      whatsappText += `🎉 Pacote especial: ${activePackage.name}\n\n`;
     }
 
     let availableCount = 0;
 
     for (const room of rooms) {
-      // Filtragem por capacidade se quiser restrição forte, mas como o Assistente já sabe, ele pode lidar com isso.
-      // let capacity = room.capacity || 2;
-      // if (guests && guests > capacity) continue;
+      const capacity = Number(room.capacity || 0);
+      if (!capacity || guestCount > capacity) continue;
 
       let total = 0;
       let isAvailable = true;
@@ -127,6 +158,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         if (isAvailable) {
             summaryText += `- **${room.name}** (Até ${room.capacity} pessoas): R$ ${Math.round(finalPrice).toLocaleString('pt-BR')} total por quarto. (Restam apenas ${minRemainingQty} unidades)\n`;
+            whatsappText += `• ${room.name} (até ${room.capacity} pessoas): R$ ${Math.round(finalPrice).toLocaleString('pt-BR')} no total por quarto.\n`;
             availableCount++;
         }
       }
@@ -134,6 +166,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (availableCount === 0) {
       summaryText += "Não há quartos disponíveis para este período.";
+      whatsappText = `Não encontrei quartos com tarifa e disponibilidade cadastradas para ${checkIn} a ${checkOut}, para ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}. Você pode tentar outras datas no motor de reservas ou falar com nossa recepção.`;
+    } else {
+      whatsappText += `\nOs valores são totais por quarto e podem mudar até a conclusão da reserva. Consulte e reserve em: https://reservas.hotelsolar.tur.br/`;
     }
 
     const safeSummary = summaryText.replace(/\n/g, " ||| ");
@@ -141,8 +176,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ 
         message: 'Success', 
         prices_summary: safeSummary,
+        whatsapp_text: whatsappText,
         discount_applied: activePackage ? true : false,
-        package_name: activePackage ? activePackage.name : null
+        package_name: activePackage ? activePackage.name : null,
+        check_in: checkIn,
+        check_out: checkOut,
+        guests: guestCount,
+        nights
     });
 
   } catch (error: any) {
