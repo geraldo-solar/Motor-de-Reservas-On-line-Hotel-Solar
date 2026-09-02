@@ -11,7 +11,7 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const FALLBACK_EXTRAS = [
-  { code: 'BARCO', name: 'Passeio de Barco', price: 75, pricing: 'per_person' },
+  { code: 'BARCO', name: 'Passeio de Barco', price: 350, pricing: 'fixed_up_to_4' },
   { code: 'MESA', name: 'Mesa Posta', price: 180, pricing: 'fixed' },
   { code: 'LUA', name: 'Kit Lua de Mel/Celebração', price: 350, pricing: 'fixed' },
 ] as const;
@@ -132,13 +132,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const configuredExtras = FALLBACK_EXTRAS.map(fallback => {
       const databaseExtra = extras?.find(extra => getExtraCode(extra.name || '') === fallback.code);
       return databaseExtra
-        ? { ...fallback, name: databaseExtra.name, price: Number(databaseExtra.price) }
+        ? {
+            ...fallback,
+            name: databaseExtra.name,
+            // O valor do barco é uma regra comercial por grupo e prevalece
+            // sobre cadastros antigos por pessoa que ainda possam existir.
+            price: fallback.code === 'BARCO' ? fallback.price : Number(databaseExtra.price),
+          }
         : fallback;
     });
 
     const selectedExtras = configuredExtras.filter(extra => requestedExtraCodes.includes(extra.code));
     const extrasTotal = selectedExtras.reduce((total, extra) => (
-      total + (extra.pricing === 'per_person' ? extra.price * guestCount : extra.price)
+      total + extra.price
     ), 0);
 
     const allRoomQuotes: Array<{ name: string; capacity: number; finalPrice: number }> = [];
@@ -244,19 +250,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (selectedExtras.length > 0) {
       whatsappText += `✨ *Extras escolhidos*\n`;
       selectedExtras.forEach(extra => {
-        const total = extra.pricing === 'per_person' ? extra.price * guestCount : extra.price;
-        const unit = extra.pricing === 'per_person' ? ` (R$ ${money(extra.price)} por pessoa)` : '';
-        whatsappText += `• ${extra.name}: R$ ${money(total)}${unit}\n`;
+        const unit = extra.pricing === 'fixed_up_to_4'
+          ? ' por grupo de até 4 pessoas; acima disso, consulte a recepção'
+          : '';
+        whatsappText += `• ${extra.name}: R$ ${money(extra.price)}${unit}\n`;
       });
       whatsappText += `*Total dos extras: R$ ${money(extrasTotal)}*\n\n`;
     } else {
       whatsappText += `✨ Para tornar a experiência ainda mais especial, você pode acrescentar:\n`;
       configuredExtras.forEach(extra => {
-        const unit = extra.pricing === 'per_person' ? ' por pessoa' : '';
+        const unit = extra.pricing === 'fixed_up_to_4' ? ' por grupo de até 4 pessoas' : '';
         whatsappText += `• ${extra.name}: R$ ${money(extra.price)}${unit}\n`;
       });
       whatsappText += '\n';
     }
+
+    whatsappText += '🚲 Bicicletas: cortesia da Cia. Marítima e do Hotel Solar, exclusiva para hóspedes. Retirada na recepção.\n\n';
 
     const handoffText = 'Esta é uma simulação de valores e não confirma disponibilidade. Para consultar vagas e finalizar a reserva, fale com a recepção pelo WhatsApp: (91) 98100-0800.';
     summaryText += `\n${handoffText}`;
