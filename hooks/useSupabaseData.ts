@@ -182,7 +182,14 @@ export const useSupabaseData = () => {
     overrides: safeArray(r.overrides || []),
   }));
 
-  const mapPackages = (data: any[]): HolidayPackage[] => safeArray(data).map((p: any) => ({
+  const mapPackages = (data: any[]): HolidayPackage[] => safeArray(data).map((p: any) => {
+    const packageRules = safeArray<string>(p.no_checkin_dates || p.noCheckInDates);
+    const storedFullPeriodRule = packageRules.includes('__FULL_PERIOD_REQUIRED__');
+    const storedFreePeriodRule = packageRules.includes('__FULL_PERIOD_FREE__');
+    const legacyNewYearRule = String(p.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes('reveillon')
+      && String(p.start_iso_date || p.startIsoDate || '').endsWith('-12-31');
+
+    return ({
     id: String(p.id || ''),
     name: p.name || '',
     description: p.description || '',
@@ -195,12 +202,20 @@ export const useSupabaseData = () => {
     endIsoDate: p.end_iso_date || p.end_date || p.endIsoDate || '',
     roomPrices: safeArray(p.room_prices || p.roomPrices),
     noCheckoutDates: safeArray(p.no_checkout_dates || p.noCheckoutDates),
-    noCheckInDates: safeArray(p.no_checkin_dates || p.noCheckInDates),
+    noCheckInDates: packageRules
+      .filter((date: string) => !['__FULL_PERIOD_REQUIRED__', '__FULL_PERIOD_FREE__'].includes(date)),
     fullPeriodDiscountPct: p.full_period_discount_pct || p.fullPeriodDiscountPct || 0,
+    fullPeriodRequired: !storedFreePeriodRule && (
+      p.full_period_required === true
+      || p.fullPeriodRequired === true
+      || storedFullPeriodRule
+      || legacyNewYearRule
+    ),
     maxInstallments: p.max_installments || p.maxInstallments || DEFAULT_MAX_INSTALLMENTS,
     category: p.category || 'SPECIAL',
     isPromotional: p.is_promotional || p.isPromotional || false,
-  }));
+    });
+  });
 
   const mapExtras = (data: any[]): ExtraService[] => safeArray(data).map((e: any) => ({
     id: String(e.id || ''),
@@ -483,7 +498,12 @@ export const useSupabaseData = () => {
         end_iso_date: pkg.endIsoDate,
         room_prices: pkg.roomPrices || [],
         no_checkout_dates: pkg.noCheckoutDates || [],
-        no_checkin_dates: pkg.noCheckInDates || [],
+        // O marcador mantém a regra compatível com o schema atual sem exigir
+        // uma migração de banco para uma nova coluna.
+        no_checkin_dates: [
+          ...(pkg.noCheckInDates || []).filter(date => !['__FULL_PERIOD_REQUIRED__', '__FULL_PERIOD_FREE__'].includes(date)),
+          pkg.fullPeriodRequired ? '__FULL_PERIOD_REQUIRED__' : '__FULL_PERIOD_FREE__',
+        ],
         full_period_discount_pct: pkg.fullPeriodDiscountPct || 0,
         max_installments: pkg.maxInstallments || DEFAULT_MAX_INSTALLMENTS,
         // Mantemos category e is_promotional fora do upsert por enquanto

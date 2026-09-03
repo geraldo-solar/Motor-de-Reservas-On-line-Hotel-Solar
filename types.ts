@@ -40,6 +40,8 @@ export interface HolidayPackage {
   noCheckoutDates: string[];
   noCheckInDates: string[];
   fullPeriodDiscountPct?: number;
+  /** Quando ativo, o pacote só pode ser cotado do início ao fim do período cadastrado. */
+  fullPeriodRequired?: boolean;
   /** Máximo de parcelas no cartão para este pacote. Sem valor, vale DEFAULT_MAX_INSTALLMENTS. */
   maxInstallments?: number;
   category?: 'SPECIAL' | 'JULY';

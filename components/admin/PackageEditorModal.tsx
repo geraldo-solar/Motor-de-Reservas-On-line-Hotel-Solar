@@ -65,6 +65,7 @@ export const PackageEditorModal: React.FC<PackageEditorModalProps> = ({ isOpen, 
         noCheckoutDates: [],
         noCheckInDates: [],
         fullPeriodDiscountPct: 0,
+        fullPeriodRequired: false,
         maxInstallments: DEFAULT_MAX_INSTALLMENTS
     };
 
@@ -363,6 +364,20 @@ export const PackageEditorModal: React.FC<PackageEditorModalProps> = ({ isOpen, 
                                             />
                                             <span className="text-xs font-bold text-solar-gold">x</span>
                                         </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between bg-solar-gold/5 p-4 rounded-xl border border-solar-gold/20 mt-4">
+                                        <div className="flex-1 pr-4">
+                                            <span className="block text-xs font-bold text-solar-green uppercase tracking-tight">Exigir período completo</span>
+                                            <span className="text-[9px] text-slate-500 uppercase tracking-widest">Impede orçamento com entrada posterior ou saída antecipada</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData(prev => ({ ...prev, fullPeriodRequired: !prev.fullPeriodRequired }))}
+                                            className={`h-11 px-5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border-2 ${formData.fullPeriodRequired ? 'bg-solar-green border-solar-green text-solar-gold' : 'bg-white border-slate-200 text-slate-400'}`}
+                                        >
+                                            {formData.fullPeriodRequired ? 'Obrigatório' : 'Livre'}
+                                        </button>
                                     </div>
                                 </div>
                             </div>

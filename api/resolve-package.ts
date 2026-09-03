@@ -196,7 +196,11 @@ const formatPackageDetails = (
 
   const legacyNewYearRule = normalize(pkg.name || '').includes('reveillon')
     && String(pkg.start_iso_date || '').endsWith('-12-31');
-  if (pkg.full_period_required === true || legacyNewYearRule) {
+  const storedFullPeriodRule = (pkg.no_checkin_dates || []).includes('__FULL_PERIOD_REQUIRED__');
+  const storedFreePeriodRule = (pkg.no_checkin_dates || []).includes('__FULL_PERIOD_FREE__');
+  const fullPeriodRequired = !storedFreePeriodRule
+    && (pkg.full_period_required === true || storedFullPeriodRule || legacyNewYearRule);
+  if (fullPeriodRequired) {
     text.push('', `📌 *Regra de permanência:* este pacote é vendido somente no período completo de ${period}.`);
   } else {
     text.push('', '📌 *Regra de permanência:* pode ser solicitado por uma ou mais diárias dentro do período, conforme as tarifas cadastradas para as datas escolhidas.');
@@ -207,7 +211,9 @@ const formatPackageDetails = (
   if (Number(pkg.max_installments || 0) > 0) {
     text.push(`• Parcelamento: em até ${Number(pkg.max_installments)}x no cartão.`);
   }
-  if ((pkg.no_checkin_dates || []).length || (pkg.no_checkout_dates || []).length) {
+  const restrictedCheckInDates = (pkg.no_checkin_dates || [])
+    .filter(date => !['__FULL_PERIOD_REQUIRED__', '__FULL_PERIOD_FREE__'].includes(date));
+  if (restrictedCheckInDates.length || (pkg.no_checkout_dates || []).length) {
     text.push('• Existem restrições de entrada ou saída cadastradas para algumas datas; a recepção confirma a combinação escolhida.');
   }
 

@@ -117,29 +117,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Failed to fetch rooms from Supabase.' });
     }
 
-    // Todos os pacotes aceitam diárias avulsas pelos preços cadastrados no
-    // motor. A única exceção comercial é o Réveillon, vendido obrigatoriamente
-    // no período completo de 31/12 a 03/01.
-    const reveillonPackage = packages?.find(pkg =>
-      normalize(pkg.name || '').includes('reveillon') &&
-      String(pkg.start_iso_date || '').endsWith('-12-31')
-    );
+    // A regra de período completo é lida do próprio cadastro do pacote. O
+    // fallback do Réveillon preserva a regra atual até o pacote ser salvo uma
+    // vez no editor novo, que passa a gravar explicitamente Obrigatório/Livre.
+    const fullPeriodPackage = packages?.find(pkg => {
+      const storedRule = Array.isArray(pkg.no_checkin_dates)
+        && pkg.no_checkin_dates.includes('__FULL_PERIOD_REQUIRED__');
+      const storedFreeRule = Array.isArray(pkg.no_checkin_dates)
+        && pkg.no_checkin_dates.includes('__FULL_PERIOD_FREE__');
+      const legacyNewYearRule = normalize(pkg.name || '').includes('reveillon')
+        && String(pkg.start_iso_date || '').endsWith('-12-31');
+      const requiresFullPeriod = !storedFreeRule
+        && (pkg.full_period_required === true || storedRule || legacyNewYearRule);
+      return requiresFullPeriod
+        && periodsOverlap(checkIn, checkOut, pkg.start_iso_date, pkg.end_iso_date);
+    });
     if (
-      reveillonPackage &&
-      periodsOverlap(checkIn, checkOut, reveillonPackage.start_iso_date, reveillonPackage.end_iso_date) &&
-      (checkIn !== reveillonPackage.start_iso_date || checkOut !== reveillonPackage.end_iso_date)
+      fullPeriodPackage &&
+      (checkIn !== fullPeriodPackage.start_iso_date || checkOut !== fullPeriodPackage.end_iso_date)
     ) {
-      const reveillonText = `🎆 O pacote ${reveillonPackage.name} é vendido somente no período completo, de ${formatDate(reveillonPackage.start_iso_date)} a ${formatDate(reveillonPackage.end_iso_date)} (${Math.round((new Date(`${reveillonPackage.end_iso_date}T12:00:00Z`).getTime() - new Date(`${reveillonPackage.start_iso_date}T12:00:00Z`).getTime()) / (1000 * 60 * 60 * 24))} diárias). Não fazemos simulação parcial dentro desse período. Para calcular o pacote completo ou esclarecer alguma condição, fale com a recepção: (91) 98100-0800.`;
+      const fullPeriodText = `🎆 O pacote ${fullPeriodPackage.name} é vendido somente no período completo, de ${formatDate(fullPeriodPackage.start_iso_date)} a ${formatDate(fullPeriodPackage.end_iso_date)} (${Math.round((new Date(`${fullPeriodPackage.end_iso_date}T12:00:00Z`).getTime() - new Date(`${fullPeriodPackage.start_iso_date}T12:00:00Z`).getTime()) / (1000 * 60 * 60 * 24))} diárias). Não fazemos simulação parcial dentro desse período. Para calcular o pacote completo ou esclarecer alguma condição, fale com a recepção: (91) 98100-0800.`;
 
       return res.status(200).json({
         message: 'Restricted package period',
-        whatsapp_text: reveillonText,
-        prices_summary: reveillonText,
+        whatsapp_text: fullPeriodText,
+        prices_summary: fullPeriodText,
         availability_checked: false,
         requires_human_confirmation: true,
-        policy_restriction: 'reveillon_full_period_only',
-        required_check_in: reveillonPackage.start_iso_date,
-        required_check_out: reveillonPackage.end_iso_date,
+        policy_restriction: 'package_full_period_only',
+        required_check_in: fullPeriodPackage.start_iso_date,
+        required_check_out: fullPeriodPackage.end_iso_date,
       });
     }
 
