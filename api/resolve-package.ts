@@ -40,6 +40,8 @@ const STOP_WORDS = new Set([
   'na', 'nas', 'o', 'os', 'para', 'por', 'um', 'uma', 'quero', 'saber', 'sobre',
   'qual', 'quais', 'como', 'tem', 'hotel', 'solar', 'pacote', 'pacotes', 'feriado',
   'feriados', 'informacao', 'informacoes', 'detalhe', 'detalhes', 'programacao',
+  'dia', 'dias', 'bom', 'boa', 'tarde', 'noite', 'ola', 'oi', 'salinas', 'pessoas',
+  'familia', 'praia', 'ferias', 'valor', 'valores', 'preco', 'precos', 'obrigado',
 ]);
 
 const normalize = (value: string) => value
@@ -120,6 +122,7 @@ const scorePackage = (message: string, pkg: PackageRecord) => {
 
 const isPackageIntent = (message: string, bestScore: number) => {
   const normalized = normalize(message);
+  if (/^(oi|ola|bom dia|boa tarde|boa noite|obrigad[oa]|tudo bem)(\s+(tudo bem|obrigad[oa]))*$/.test(normalized)) return false;
   return bestScore >= 20 || [
     'pacote', 'pacotes', 'feriado', 'feriados', 'programacao', 'programacao do',
   ].some(term => normalized.includes(term));
@@ -188,7 +191,15 @@ const formatPackageDetails = (
 
   const text: string[] = [`🎉 *${pkg.name || 'Pacote especial'}*`, `📅 *Período:* ${period}`];
   if (pkg.location) text.push(`📍 *Local:* ${pkg.location}`);
-  if (pkg.description) text.push('', String(pkg.description).trim());
+  if (pkg.description) {
+    // Public copy is data, not an instruction to expose coupons or assert stock.
+    const description = conversational
+      ? String(pkg.description).split(/(?<=[.!?])\s+/).filter(sentence =>
+        !/cupom|cupon|vagas? limitad|apenas \d+ reservas|ultimas? (vagas?|unidades?)/i.test(normalize(sentence))
+      ).join(' ')
+      : String(pkg.description).trim();
+    if (description) text.push('', description);
+  }
   if (items.length) {
     text.push('', '✨ *Programação e itens inclusos:*', ...items.map(item => `• ${item}`));
   }

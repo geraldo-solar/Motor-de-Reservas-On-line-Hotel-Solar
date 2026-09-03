@@ -100,10 +100,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     
     // Calcula o número de diárias
-    const diffTime = Math.abs(co.getTime() - ci.getTime());
+    const diffTime = co.getTime() - ci.getTime();
     const nights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
-    if (nights <= 0 || nights > 30) {
+    if (nights <= 0 || nights > 30 || ci.toISOString().slice(0, 10) !== checkIn || co.toISOString().slice(0, 10) !== checkOut) {
       return res.status(400).json({ error: 'Check-out date must be after check-in date.' });
     }
 
@@ -225,6 +225,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // maiores valores antes das opções econômicas para favorecer o upsell.
     const roomQuotes = allRoomQuotes.filter(room => guestCount <= room.capacity);
     roomQuotes.sort((a, b) => b.finalPrice - a.finalPrice);
+    const quoteOptions: Array<{ name: string; capacity: number; total: number }> = [];
 
     if (roomQuotes.length === 0) {
       const maxCapacity = Math.max(...allRoomQuotes.map(room => room.capacity));
@@ -273,6 +274,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .map(([name, quantity]) => `${quantity}x ${name}`)
           .join(' + ');
         const combinedTotal = combination.finalPrice + extrasTotal;
+        quoteOptions.push({ name: description, capacity: combination.capacity, total: combinedTotal });
 
         summaryText += `- ${index === 0 ? '⭐ Recomendação premium — ' : ''}${description}: R$ ${money(combination.finalPrice)} em hospedagem`;
         whatsappText += `${index === 0 ? '⭐ *Recomendação premium*\n' : ''}• ${description}: *R$ ${money(combination.finalPrice)}* em hospedagem`;
@@ -285,6 +287,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     } else {
       roomQuotes.forEach((room, index) => {
+        quoteOptions.push({ name: room.name, capacity: room.capacity, total: room.finalPrice + extrasTotal });
         const premiumLabel = index === 0 ? '⭐ Recomendação premium — ' : '';
         summaryText += `- ${premiumLabel}${room.name} (até ${room.capacity} pessoas): R$ ${money(room.finalPrice)} em hospedagem`;
         whatsappText += `${index === 0 ? '⭐ *Recomendação premium*\n' : ''}• ${room.name} (até ${room.capacity} pessoas): *R$ ${money(room.finalPrice)}* em hospedagem`;
@@ -332,7 +335,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Preserve legacy response fields for integrations that still use them.
     const conversationText = whatsappText
       + 'Esta é uma simulação de valores, sem confirmação de disponibilidade.\n\n'
-      + 'Qual acomodação você prefere? Se desejar prosseguir com essa opção, vou pedir nome completo, e-mail e CPF para a recepção verificar as vagas e continuar sua solicitação aqui na conversa.';
+      + 'Qual acomodação você prefere? Se quiser prosseguir, diga qual opção escolheu. Primeiro confirmaremos sua escolha; só depois pediremos os dados para a recepção continuar por aqui.';
 
     const handoffText = 'Esta é uma simulação de valores e não confirma disponibilidade. Para consultar vagas e finalizar a reserva, fale com a recepção pelo WhatsApp: (91) 98100-0800.';
     summaryText += `\n${handoffText}`;
@@ -345,6 +348,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         prices_summary: safeSummary,
         whatsapp_text: whatsappText,
         conversation_text: conversationText,
+        quote_state: JSON.stringify({ version: 1, id: crypto.randomUUID(), created_at: Date.now(), check_in: checkIn, check_out: checkOut, guests: guestCount, extras: selectedExtras.map(extra => extra.code), options: quoteOptions }),
         discount_applied: activePackage ? true : false,
         package_name: activePackage ? activePackage.name : null,
         check_in: checkIn,

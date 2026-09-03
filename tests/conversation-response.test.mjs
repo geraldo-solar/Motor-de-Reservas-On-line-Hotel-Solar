@@ -51,7 +51,8 @@ test('cotação mantém valores, ordenação premium, extras e formato legado', 
   assertSameAmounts(result.whatsapp_text, result.conversation_text);
   assert.match(result.whatsapp_text, /98100-0800/);
   assert.match(result.conversation_text, /Qual acomodação você prefere/);
-  assert.match(result.conversation_text, /nome completo, e-mail e CPF/);
+  assert.match(result.conversation_text, /Primeiro confirmaremos sua escolha/);
+  assert.equal(JSON.parse(result.quote_state).options[0].name, 'Loft');
   assert.ok(result.conversation_text.indexOf('Loft') < result.conversation_text.indexOf('Suíte Casal'));
   assert.equal(result.availability_checked, false);
   assert.equal(result.extras_total, 530);
@@ -92,4 +93,16 @@ test('lista, ausência de pacote e texto longo também expõem saída conversaci
   const emptyHandler = await loadHandler('api/resolve-package.ts', []);
   const empty = await request(emptyHandler, { user_message: 'pacotes' });
   assert.match(empty.conversation_text, /para quantas pessoas/);
+});
+
+test('saudações e termos genéricos não selecionam o Dia das Crianças', async () => {
+  const handler = await loadHandler('api/resolve-package.ts', [{ ...packages[0], name: 'Dia das Crianças: 4 Dias de Feriado em Salinas', description: 'Praia e lazer. Use o cupom OUTUBRO15 e garanta desconto. Apenas 15 reservas com desconto.' }]);
+  for (const user_message of ['Bom dia ☀️', 'Boa tarde', 'Oi', 'Para duas pessoas, qual vc me indica?', 'Quantos dias?', 'Qual a localização em Salinas?']) {
+    const result = await request(handler, { user_message });
+    assert.equal(result.matched, false, user_message);
+  }
+  const result = await request(handler, { user_message: 'Quero conhecer o pacote Dia das Crianças' });
+  assert.equal(result.matched, true);
+  assert.match(result.quote_text, /OUTUBRO15/);
+  assert.doesNotMatch(result.conversation_text, /OUTUBRO15|15 reservas/);
 });
