@@ -34,6 +34,12 @@ const parsePackageCode = (value: unknown): string | null => {
     : null;
 };
 
+const parsePackageId = (value: unknown): string | null => {
+  const raw = String(value || '').trim();
+  const id = raw.toUpperCase().startsWith('PACKAGE_ID|') ? raw.slice('PACKAGE_ID|'.length) : raw;
+  return /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(id) ? id : null;
+};
+
 const findPackageByCode = (packages: PackageRecord[], code: string) =>
   packages.find(pkg => pkg.active !== false && getPackageCode(pkg) === code);
 
@@ -55,16 +61,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method Not Allowed. Use GET.' });
   }
 
-  const code = parsePackageCode(req.query.code);
-  if (!code || !supabaseUrl || !supabaseKey) {
-    return res.status(400).json({ error: 'Invalid package code or missing configuration.' });
+  const reference = req.query.code;
+  const packageId = parsePackageId(reference);
+  const code = parsePackageCode(reference);
+  if ((!packageId && !code) || !supabaseUrl || !supabaseKey) {
+    return res.status(400).json({ error: 'Invalid package reference or missing configuration.' });
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
   const { data: packages, error } = await supabase.from('packages').select('*').eq('active', true);
   if (error) return res.status(500).json({ error: error.message });
 
-  const pkg = findPackageByCode(packages || [], code);
+  const pkg = packageId
+    ? (packages || []).find(item => String(item.id) === packageId)
+    : findPackageByCode(packages || [], code!);
   if (!pkg?.image_url) return res.status(404).json({ error: 'Package image not found.' });
 
   try {

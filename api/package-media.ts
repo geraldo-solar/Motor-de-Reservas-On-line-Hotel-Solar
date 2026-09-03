@@ -35,6 +35,12 @@ const parsePackageCode = (value: unknown): string | null => {
     : null;
 };
 
+const parsePackageId = (value: unknown): string | null => {
+  const raw = String(value || '').trim();
+  const id = raw.toUpperCase().startsWith('PACKAGE_ID|') ? raw.slice('PACKAGE_ID|'.length) : raw;
+  return /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(id) ? id : null;
+};
+
 const findPackageByCode = (packages: PackageRecord[], code: string) =>
   packages.find(pkg => pkg.active !== false && getPackageCode(pkg) === code);
 
@@ -46,8 +52,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method Not Allowed. Use POST.' });
   }
 
-  const code = parsePackageCode(req.body?.package_request || req.body?.quote_request);
-  if (!code || !supabaseUrl || !supabaseKey) {
+  const reference = req.body?.package_request || req.body?.quote_request;
+  const packageId = parsePackageId(reference);
+  const code = parsePackageCode(reference);
+  if ((!packageId && !code) || !supabaseUrl || !supabaseKey) {
     return res.status(400).json({ error: 'Invalid package request or missing configuration.' });
   }
 
@@ -55,12 +63,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { data: packages, error } = await supabase.from('packages').select('*').eq('active', true);
   if (error) return res.status(500).json({ error: error.message });
 
-  const pkg = findPackageByCode(packages || [], code);
+  const pkg = packageId
+    ? (packages || []).find(item => String(item.id) === packageId)
+    : findPackageByCode(packages || [], code!);
   if (!pkg) return res.status(404).json({ error: 'Active package not found.' });
 
   const host = req.headers['x-forwarded-host'] || req.headers.host || 'reservas.hotelsolar.tur.br';
   const protocol = req.headers['x-forwarded-proto'] || 'https';
-  const imageUrl = `${protocol}://${host}/api/package-image?code=${encodeURIComponent(code)}`;
+  const imageUrl = `${protocol}://${host}/api/package-image?code=${encodeURIComponent(String(reference))}`;
   const responseText = String(req.body?.response_text || '').trim();
   const fallbackText = `🎉 ${pkg.name}\n${pkg.description || ''}`.trim();
 
