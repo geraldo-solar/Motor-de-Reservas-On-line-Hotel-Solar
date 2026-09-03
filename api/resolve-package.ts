@@ -64,10 +64,12 @@ const money = (value: number) => Math.round(Number(value)).toLocaleString('pt-BR
   maximumFractionDigits: 2,
 });
 
-const fitWhatsApp = (value: string) => {
+const fitWhatsApp = (value: string, conversational = false) => {
   const limit = 1900;
   if (value.length <= limit) return value;
-  const suffix = '\n\nHá mais detalhes cadastrados. Peça uma informação específica ou fale com a recepção: (91) 98100-0800.';
+  const suffix = conversational
+    ? '\n\nHá mais detalhes cadastrados. Qual informação você gostaria de conhecer? Podemos continuar por aqui.'
+    : '\n\nHá mais detalhes cadastrados. Peça uma informação específica ou fale com a recepção: (91) 98100-0800.';
   return `${value.slice(0, limit - suffix.length).trimEnd()}…${suffix}`;
 };
 
@@ -123,7 +125,7 @@ const isPackageIntent = (message: string, bestScore: number) => {
   ].some(term => normalized.includes(term));
 };
 
-const formatPackageList = (packages: PackageRecord[]) => {
+const formatPackageList = (packages: PackageRecord[], conversational = false) => {
   const lines = packages
     .sort((a, b) => String(a.start_iso_date || '').localeCompare(String(b.start_iso_date || '')))
     .map(pkg => {
@@ -139,12 +141,13 @@ const formatPackageList = (packages: PackageRecord[]) => {
     ...lines,
     '',
     'Qual deles você gostaria de conhecer? Posso mostrar a programação, as regras, os valores e a foto atual do pacote.',
-  ].join('\n'));
+  ].join('\n'), conversational);
 };
 
 const formatPackageDetails = (
   pkg: PackageRecord,
   rooms: RoomRecord[],
+  conversational = false,
 ) => {
   const period = pkg.start_iso_date && pkg.end_iso_date
     ? `${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}`
@@ -219,9 +222,11 @@ const formatPackageDetails = (
 
   text.push(
     '',
-    'Os valores acima são informativos e não confirmam disponibilidade. Para uma simulação personalizada, informe entrada, saída e quantidade de hóspedes. A recepção confirma as vagas e finaliza a reserva pelo WhatsApp (91) 98100-0800.',
+    conversational
+      ? 'Os valores acima são informativos e não confirmam disponibilidade. Podemos personalizar a simulação conforme os hóspedes e as datas da sua viagem, aproveitando o que você já informou. Se desejar prosseguir com uma opção, a recepção continuará o atendimento aqui na conversa.'
+      : 'Os valores acima são informativos e não confirmam disponibilidade. Para uma simulação personalizada, informe entrada, saída e quantidade de hóspedes. A recepção confirma as vagas e finaliza a reserva pelo WhatsApp (91) 98100-0800.',
   );
-  return fitWhatsApp(text.join('\n'));
+  return fitWhatsApp(text.join('\n'), conversational);
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -249,6 +254,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       quote_request: 'NO_PACKAGE',
       quote_text: 'No momento não há pacotes ativos cadastrados no motor de reservas.',
+      conversation_text: 'No momento não há pacotes ativos cadastrados no motor de reservas. Posso ajudar com uma simulação de diárias: para quantas pessoas será a estadia?',
       matched: false,
     });
   }
@@ -259,13 +265,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const best = ranked[0];
 
   if (!isPackageIntent(userMessage, best.score)) {
-    return res.status(200).json({ quote_request: 'NO_PACKAGE', quote_text: '', matched: false });
+    return res.status(200).json({ quote_request: 'NO_PACKAGE', quote_text: '', conversation_text: '', matched: false });
   }
 
   if (best.score < 20) {
     return res.status(200).json({
       quote_request: 'PACKAGE_LIST',
       quote_text: formatPackageList(packages as PackageRecord[]),
+      conversation_text: formatPackageList(packages as PackageRecord[], true),
       matched: true,
       match_type: 'list',
     });
@@ -276,6 +283,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   return res.status(200).json({
     quote_request: reference,
     quote_text: formatPackageDetails(pkg, (rooms || []) as RoomRecord[]),
+    conversation_text: formatPackageDetails(pkg, (rooms || []) as RoomRecord[], true),
     package_image_url: pkg.image_url
       ? `https://reservas.hotelsolar.tur.br/api/package-image?code=${encodeURIComponent(reference)}`
       : '',

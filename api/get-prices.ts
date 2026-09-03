@@ -141,6 +141,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         message: 'Restricted package period',
         whatsapp_text: fullPeriodText,
+        conversation_text: fullPeriodText.replace('Para calcular o pacote completo ou esclarecer alguma condição, fale com a recepção: (91) 98100-0800.', 'Quer que eu apresente as acomodações e os valores para esse período completo?'),
         prices_summary: fullPeriodText,
         availability_checked: false,
         requires_human_confirmation: true,
@@ -327,6 +328,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     whatsappText += '🚲 Bicicletas: cortesia da Cia. Marítima e do Hotel Solar, exclusiva para hóspedes. Retirada na recepção.\n\n';
 
+    // The new conversational flow stays in the same WhatsApp conversation.
+    // Preserve legacy response fields for integrations that still use them.
+    const conversationText = whatsappText
+      + 'Esta é uma simulação de valores, sem confirmação de disponibilidade.\n\n'
+      + 'Qual acomodação você prefere? Se desejar prosseguir com essa opção, vou pedir nome completo, e-mail e CPF para a recepção verificar as vagas e continuar sua solicitação aqui na conversa.';
+
     const handoffText = 'Esta é uma simulação de valores e não confirma disponibilidade. Para consultar vagas e finalizar a reserva, fale com a recepção pelo WhatsApp: (91) 98100-0800.';
     summaryText += `\n${handoffText}`;
     whatsappText += `⚠️ ${handoffText}`;
@@ -337,6 +344,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         message: 'Success', 
         prices_summary: safeSummary,
         whatsapp_text: whatsappText,
+        conversation_text: conversationText,
         discount_applied: activePackage ? true : false,
         package_name: activePackage ? activePackage.name : null,
         check_in: checkIn,
