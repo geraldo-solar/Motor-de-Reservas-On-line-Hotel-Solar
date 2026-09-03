@@ -64,6 +64,13 @@ const money = (value: number) => Math.round(Number(value)).toLocaleString('pt-BR
   maximumFractionDigits: 2,
 });
 
+const fitWhatsApp = (value: string) => {
+  const limit = 1900;
+  if (value.length <= limit) return value;
+  const suffix = '\n\nHá mais detalhes cadastrados. Peça uma informação específica ou fale com a recepção: (91) 98100-0800.';
+  return `${value.slice(0, limit - suffix.length).trimEnd()}…${suffix}`;
+};
+
 const dateIsInsidePackage = (pkg: PackageRecord, day: number, monthIndex: number) => {
   if (!pkg.start_iso_date || !pkg.end_iso_date) return false;
   const start = new Date(`${pkg.start_iso_date}T12:00:00Z`);
@@ -126,13 +133,13 @@ const formatPackageList = (packages: PackageRecord[]) => {
       return `• *${pkg.name || 'Pacote especial'}*${period}`;
     });
 
-  return [
+  return fitWhatsApp([
     '🎉 *Pacotes ativos do Hotel Solar*',
     '',
     ...lines,
     '',
     'Qual deles você gostaria de conhecer? Posso mostrar a programação, as regras, os valores e a foto atual do pacote.',
-  ].join('\n');
+  ].join('\n'));
 };
 
 const formatPackageDetails = (
@@ -208,7 +215,7 @@ const formatPackageDetails = (
     '',
     'Os valores acima são informativos e não confirmam disponibilidade. Para uma simulação personalizada, informe entrada, saída e quantidade de hóspedes. A recepção confirma as vagas e finaliza a reserva pelo WhatsApp (91) 98100-0800.',
   );
-  return text.join('\n');
+  return fitWhatsApp(text.join('\n'));
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
