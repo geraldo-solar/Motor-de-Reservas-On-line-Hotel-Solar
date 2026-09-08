@@ -5,13 +5,15 @@ import { advanceEvent, readEvent, type EventState } from '../utils/eventInquiry.
 import { publicEventInquiry, publicEventFollowup, publicEventContext, publicEventAnswer } from '../utils/publicEvents.js';
 import { isAudioInput, transcribeAudio } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage, audioSourceHash, readAudioTurn, type AudioTurn } from '../utils/audioInput.js';
+import { isAttachmentInput, analyzeAttachment, type AttachmentKind } from '../utils/attachmentAnalysis.js';
+import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
 
-// No bookings, stock queries or outbound messages. The HTTP adapter transcribes
-// audio; the conversation controller remains deterministic.
+// No bookings, stock queries or outbound messages. The HTTP adapter interprets
+// audio/attachments; the conversation controller remains deterministic.
 // User facts and conversational turns are separate. Assistant text NEVER updates facts.
 type Facts = { check_in?: string; check_out?: string; guests?: number; extras: string[]; children_pending?: boolean };
 type Quote = { version: number; id: string; created_at: number; check_in: string; check_out: string; guests: number; extras: string[]; options: { name: string; capacity: number; total: number }[] };
-type State = { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'public_events'; topic_at?: number; subject?: string; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn };
+type State = { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'public_events'; topic_at?: number; subject?: string; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
 const json = (v: unknown): any => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
 const months = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -76,6 +78,7 @@ function loadState(value: unknown, now = Date.now()): State {
     ...(['guests','dates'].includes(parsed.awaiting) ? {awaiting: parsed.awaiting} : {}),
     ...(typeof parsed.resolved_message === 'string' && !personal(parsed.resolved_message) ? {resolved_message: parsed.resolved_message.slice(0,500)} : {}),
     ...(readAudioTurn(parsed.audio, now) ? {audio: readAudioTurn(parsed.audio, now)} : {}),
+    ...(readAttachmentTurn(parsed.attachment, now) ? {attachment: readAttachmentTurn(parsed.attachment, now)} : {}),
   };
 }
 
@@ -213,6 +216,39 @@ function confirmation(q: Quote, name: string) {
 export function control(body: any, now = Date.now()) {
   const state = loadState(body.state, now);
   const input = String(body.user_message || '').trim();
+  const attachment = isAttachmentInput(input);
+  // Intercept documents before fact extraction, event advancement and all
+  // booking/confirmation branches. A missing prepare must still fail safely.
+  if (attachment && ['prepare', 'route', 'confirm'].includes(body.operation)) {
+    const current = attachmentForMessage(input, state, now) || { source_hash: attachmentSourceHash(input), kind: 'unreadable' as const, created_at: now };
+    state.attachment = current;
+    state.changed = false;
+    delete state.pending; delete state.awaiting; delete state.topic; delete state.topic_at;
+    delete state.subject; delete state.event; delete state.audio;
+    state.resolved_message = attachmentContextMessage(current.kind);
+    if (body.operation === 'prepare') {
+      state.first_turn = !state.greeted;
+      state.greeted = true;
+      state.history = [...state.history, state.resolved_message].slice(-12);
+      remember(state, 'user', state.resolved_message);
+      const context = JSON.stringify({
+        primeira_resposta: state.first_turn, tipo_entrada: 'attachment', tipo_anexo: current.kind,
+        fatos_informados_pelo_cliente: state.facts, mensagens_do_cliente: state.history,
+        conversa_recente: state.turns, assunto_ativo: '', acomodacao_em_foco: '',
+        ultima_mensagem: state.resolved_message, interpretacao_da_ultima_mensagem: state.resolved_message,
+        cotacao_valida_para_estes_dados: null, anexo_pendente_encaminhamento: true,
+        data_atual: new Date(now - 3 * 3600000).toISOString().slice(0, 10),
+        regra: 'A mensagem atual é um anexo, não um pedido de cotação nem consentimento de reserva. Não extrair datas, valores, hóspedes ou dados pessoais do anexo para a hospedagem. Possível comprovante não comprova autenticidade nem dinheiro recebido. Não confirmar pagamento ou reserva. O fluxo nativo ainda precisa encaminhar o atendimento ao setor responsável; não afirmar que já encaminhou. Não pedir dados pessoais nem prosseguir em eventos, pacotes ou fotos anteriores. A resposta final será definida pelo roteamento seguro do anexo.',
+      });
+      return { state: JSON.stringify(state), context, can_collect: 'NAO', quote_request: 'NOQUOTE', input_type: 'attachment', attachment_kind: current.kind };
+    }
+    // No assistant turn is remembered: a response template is not proof that
+    // the external ManyChat assignment or notification actually ran.
+    return { state: JSON.stringify(state), resolved_message: state.resolved_message,
+      quote_request: attachmentDecision(current.kind), can_collect: 'NAO', confirmation_text: '',
+      answer: attachmentAnswer(current.kind), input_type: 'attachment', attachment_kind: current.kind };
+  }
+  if (input && !attachment) delete state.attachment;
   const audio = isAudioInput(input);
   const raw = (audio ? audioMessage(input, state, now) || AUDIO_UNAVAILABLE : input).slice(0, 2000);
   const s = norm(raw);
@@ -260,7 +296,7 @@ export function control(body: any, now = Date.now()) {
   }
   const quote = validQuote(body.quote_state, state, now);
   if (body.operation === 'confirm') {
-    if (quote && state.pending?.quote_id === quote.id && quote.options.some(o => o.name === state.pending?.option)) {
+    if (!state.attachment && quote && state.pending?.quote_id === quote.id && quote.options.some(o => o.name === state.pending?.option)) {
       ready = 'SIM';
       confirmationText = confirmation(quote, state.pending.option);
       delete state.pending; // A confirmation is consumed once, not reusable.
@@ -333,8 +369,19 @@ export function control(body: any, now = Date.now()) {
   return { state: JSON.stringify(state), resolved_message: state.resolved_message || raw, quote_request: decision, can_collect: 'NAO', confirmation_text: confirmationText, answer };
 }
 
-export async function handleConversation(body: any, authorization = '', transcribe = transcribeAudio, now = Date.now()) {
+export async function handleConversation(body: any, authorization = '', transcribe = transcribeAudio, now = Date.now(), analyze = analyzeAttachment) {
   const input = String(body?.user_message || '').trim();
+  if (body?.operation === 'prepare' && isAttachmentInput(input)) {
+    let kind: AttachmentKind = 'unreadable';
+    try {
+      const analysis = await analyze(input, authorization);
+      if (['payment_receipt', 'other', 'unreadable'].includes(analysis?.kind)) kind = analysis.kind;
+      // Deliberately ignore every summary/content field from the provider.
+    } catch { /* Unreadable files still go to a human; never reuse prior intent. */ }
+    const state = loadState(body.state, now);
+    state.attachment = {source_hash: attachmentSourceHash(input), kind, created_at: now};
+    return control({...body, state}, now);
+  }
   if (body?.operation !== 'prepare' || !isAudioInput(input)) return control(body || {}, now);
   let text = AUDIO_UNAVAILABLE;
   let status: AudioTurn['status'] = 'error';

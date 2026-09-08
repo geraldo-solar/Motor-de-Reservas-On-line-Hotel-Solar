@@ -9,6 +9,8 @@ import { deliverEvent, deliveryFailed, acceptEventReceipt } from '../utils/event
 import { publicEventInquiry, publicEventAnswer } from '../utils/publicEvents.js';
 import { isAudioInput } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage } from '../utils/audioInput.js';
+import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
+import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -254,11 +256,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method Not Allowed. Use POST.' });
   }
   if(req.query?.operation==='event-receipt') {const r=await acceptEventReceipt(req.body);return res.status(r.code).json({status:r.status});}
+  const incomingMessage = String(req.body?.user_message || req.body?.message || '').trim();
+  if (isAttachmentInput(incomingMessage)) {
+    const routed = control({operation:'route', user_message:incomingMessage, state:req.body?.state});
+    const kind = 'attachment_kind' in routed ? routed.attachment_kind! : 'unreadable';
+    const message = attachmentReceivedMessage(kind);
+    return res.status(200).json({...routed, answer:message, quote_text:message, conversation_text:message,
+      matched:false, match_type:'attachment', availability_checked:false});
+  }
   if (!supabaseUrl || !supabaseKey) {
     return res.status(500).json({ error: 'Missing Supabase configuration.' });
   }
 
-  let userMessage = String(req.body?.user_message || req.body?.message || '').trim();
+  let userMessage = incomingMessage;
   let conversationState: any;
   try {
     const state = typeof req.body?.state === 'string' ? JSON.parse(req.body.state) : req.body?.state;
