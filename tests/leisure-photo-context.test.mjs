@@ -17,6 +17,10 @@ test('fotos conhecidas de lazer não repetem negação da IA nem afirmam envio',
     ['Tem fotografias do playground?',['PARQUE']],
     ['Álbum das bicicletas',['BIKE']],
     ['Galeria do parquinho',['PARQUE']],
+    ['Fotos das duas piscinas de hidromassagem',['HIDRO']],
+    ['Quero fotos da piscina principal e das hidromassagens',['PISCINA','HIDRO']],
+    ['Quero fotos das três piscinas',['PISCINA','HIDRO']],
+    ['Fotos de todas as piscinas',['PISCINA','HIDRO']],
   ]) {
     const p = prepare(message);
     const r = route(message,p.state);
@@ -75,6 +79,9 @@ test('acompanhamentos curtos trocam entre fotos de lazer sem usar assunto de apa
     ['E das bicicletas?',['BIKE']],
     ['e das piscinas?',['PISCINA']],
     ['E do parque infantil e bicicletas?',['PARQUE','BIKE']],
+    ['E das hidros?',['HIDRO']],
+    ['E das duas piscinas de hidromassagem?',['HIDRO']],
+    ['E da piscina principal e hidromassagens?',['PISCINA','HIDRO']],
   ]) {
     const p = prepare(message,state);
     const r = route(message,p.state);
@@ -85,6 +92,57 @@ test('acompanhamentos curtos trocam entre fotos de lazer sem usar assunto de apa
     assert.deepEqual(JSON.parse(state).facts,facts);
     assert.equal(r.quote_request,'NOQUOTE');
   }
+});
+
+test('informação sobre hidromassagem seguida de fotos mantém só as hidros e não altera hóspedes',()=>{
+ for(const message of ['Tem hidromassagem?','Vocês têm duas piscinas de hidromassagem?','Como são as hidros?']) {
+  const first=prepare(message);
+  assert.equal(JSON.parse(first.state).topic,'extra_info',message);
+  assert.deepEqual(JSON.parse(first.state).extra_photo_subjects,['HIDRO'],message);
+  assert.deepEqual(JSON.parse(first.state).facts,facts,message);
+  assert.deepEqual(JSON.parse(first.context).fotos_lazer_solicitadas,[],message);
+  for(const followup of ['Tem fotos?','Tem fotos delas?']) {
+   const p=prepare(followup,first.state);
+   const r=route(followup,p.state);
+   assert.equal(r.resolved_message,'Fotos de piscinas de hidromassagem',message);
+   assert.deepEqual(JSON.parse(r.state).extra_photo_subjects,['HIDRO'],message);
+   assert.deepEqual(JSON.parse(r.state).facts,facts,message);
+   assert.equal(r.quote_request,'NOQUOTE');
+   assert.equal(r.can_collect,'NAO');
+  }
+ }
+ const both=prepare('Fotos da piscina principal e das hidromassagens');
+ assert.equal(JSON.parse(prepare('Todas, pfv',both.state).state).resolved_message,'Fotos de piscinas e piscinas de hidromassagem');
+ assert.deepEqual(JSON.parse(prepare('Todas, pfv',both.state).state).extra_photo_subjects,['PISCINA','HIDRO']);
+ const information=prepare('Tem hidromassagem?');
+ assert.equal(JSON.parse(prepare('E das hidros?',information.state).state).topic,'extra_info');
+ const expired=prepare('Tem fotos?',information.state,now+31*60000);
+ assert.equal(JSON.parse(expired.state).resolved_message,'Tem fotos?');
+});
+
+test('grupo das três piscinas mantém referência em acompanhamentos de foto e informação',()=>{
+ const photoState=prepare('Fotos da hidro').state;
+ for(const message of ['E de todas as piscinas?','E das três piscinas?','E das 3 piscinas?']) {
+  const p=prepare(message,photoState);
+  const r=route(message,p.state);
+  assert.equal(r.resolved_message,`Fotos de ${message}`);
+  assert.equal(JSON.parse(r.state).topic,'extra_photos');
+  assert.deepEqual(JSON.parse(r.state).extra_photo_subjects,['PISCINA','HIDRO']);
+  assert.deepEqual(JSON.parse(r.state).facts,facts);
+ }
+ for(const message of ['Tem três piscinas?','Como são todas as piscinas?']) {
+  const p=prepare(message);
+  assert.equal(JSON.parse(p.state).topic,'extra_info');
+  assert.deepEqual(JSON.parse(p.state).extra_photo_subjects,['PISCINA','HIDRO']);
+  assert.deepEqual(JSON.parse(p.context).fotos_lazer_solicitadas,[]);
+  const next=prepare('Tem fotos delas?',p.state);
+  assert.equal(JSON.parse(next.state).resolved_message,'Fotos de piscinas e piscinas de hidromassagem');
+  assert.deepEqual(JSON.parse(next.state).extra_photo_subjects,['PISCINA','HIDRO']);
+  assert.deepEqual(JSON.parse(next.state).facts,facts);
+ }
+ const hydrosOnly=prepare('E de todas as piscinas de hidromassagem?',photoState);
+ assert.equal(JSON.parse(hydrosOnly.state).topic,'extra_photos');
+ assert.deepEqual(JSON.parse(hydrosOnly.state).extra_photo_subjects,['HIDRO']);
 });
 
 test('foto dessa piscina nunca herda o nome de quarto em memória', () => {
@@ -160,10 +218,10 @@ test('foco expira em 30 minutos e timestamps inválidos não revivem intenção 
   assert.equal(JSON.parse(prepare('Tem fotos?',state,now+30*60000).state).resolved_message,'Fotos de piscinas');
 });
 
-test('memória aceita os seis códigos de mídia mas não os inclui nos extras pagos', () => {
-  const p = control({operation:'remember_response',state:initial,extra_photo_requests:['PARQUE','PISCINA','BIKE','BARCO','MESA','LUA','PARQUE','UNKNOWN',{},['PISCINA']]},now);
+test('memória aceita os sete códigos de mídia mas não os inclui nos extras pagos', () => {
+  const p = control({operation:'remember_response',state:initial,extra_photo_requests:['PARQUE','PISCINA','BIKE','BARCO','MESA','LUA','HIDRO','PARQUE','UNKNOWN',{},['PISCINA']]},now);
   const q = prepare('Bom dia',p.state);
-  assert.deepEqual(JSON.parse(q.state).extra_photo_requests,['PARQUE','PISCINA','BIKE','BARCO','MESA','LUA']);
+  assert.deepEqual(JSON.parse(q.state).extra_photo_requests,['PARQUE','PISCINA','BIKE','BARCO','MESA','LUA','HIDRO']);
   assert.deepEqual(JSON.parse(q.state).facts,facts);
 });
 

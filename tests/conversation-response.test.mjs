@@ -84,6 +84,7 @@ test('foto de lazer oficial e bicicleta ManyChat chegam ao endpoint de imagem se
     for (const [code,expected] of [
       ['PARQUE',/hotelsolar\.tur\.br\/assets\/images\/parquinho\.webp$/],
       ['PISCINA',/hotelsolar\.tur\.br\/assets\/images\/editada-piscina\.webp$/],
+      ['HIDRO',/hotelsolar\.tur\.br\/assets\/images\/hidromassagem\.webp$/],
       ['BIKE',/manybot-thumbnails.*big_ac17283c8e6ce7cd2846389ecd0ee075\.jpeg$/],
     ]) {
       let status,bytes;const headers={};
@@ -109,6 +110,7 @@ test('reprodução do Inbox: pergunta da piscina ou playground seguida de Tem fo
     ['O hotel tem piscina?','Tem fotos?','PISCINA'],
     ['Tem parquinho para crianças?','Tem foto?','PARQUE'],
     ['Playground para crianças?','Tem foto?','PARQUE'],
+    ['Tem duas piscinas de hidromassagem?','Tem fotos delas?','HIDRO'],
   ]) {
     const facts={guests:2,extras:[]};
     const first=control({operation:'prepare',user_message:info,state:{version:2,history:[],facts,greeted:true}},now);

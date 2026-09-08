@@ -1,12 +1,25 @@
 export type ExtraRecord = {id:string; name?:string; price?:number; image_url?:string; imageUrl?:string; active?:boolean};
 export const normalizeExtra = (v:string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-export const EXTRA_MEDIA_CODES = ['BARCO','MESA','LUA','BIKE','PARQUE','PISCINA'] as const;
+export const EXTRA_MEDIA_CODES = ['BARCO','MESA','LUA','BIKE','PARQUE','PISCINA','HIDRO'] as const;
 const SERVICE_CODES = ['BARCO','MESA','LUA','BIKE'];
 export const extraPhotoRequest = (text:string) => /\b(fotos?|fotografias?|imagem|imagens|galeria|album)\b/.test(normalizeExtra(text));
 export const extraCodes = (text:string) => {
   const s=normalizeExtra(text);
-  return Object.entries({BARCO:/\bbarco\b|catamara/,MESA:/mesa posta/,LUA:/lua de mel|kit celebracao|kit romantico/,BIKE:/biciclet|\bbikes?\b/,PARQUE:/\b(parque infantil|parquinhos?|playground)\b/,PISCINA:/\bpiscinas?\b/})
-    .map(([code,re])=>({code,index:s.search(re)})).filter(match=>match.index>=0).sort((a,b)=>a.index-b.index).map(match=>match.code);
+  const hydro=/\b(?:piscinas?\s+(?:(?:de|com)\s+)?)?(?:hidromassagem|hidromassagens|hidros?)\b/g;
+  // A hydro pool is not the main pool. Mask only its own phrase, keeping
+  // offsets and any separately requested main pool in the original order.
+  const mainPoolText=s.replace(hydro,match=>' '.repeat(match.length));
+  // Remember the explicit all-three subject even in informational questions.
+  // requestedExtraCodes still requires photo intent before showing leisure
+  // images, and the catalog contains just one photograph of a hydro pool.
+  const allPools=/\b(?:todas(?:\s+as)?|tres|3)\s+piscinas\b/.exec(mainPoolText);
+  const allPoolsIndex=allPools?allPools.index+allPools[0].lastIndexOf('piscinas'):-1;
+  return Object.entries({BARCO:/\bbarco\b|catamara/,MESA:/mesa posta/,LUA:/lua de mel|kit celebracao|kit romantico/,BIKE:/biciclet|\bbikes?\b/,PARQUE:/\b(parque infantil|parquinhos?|playground)\b/,PISCINA:/\bpiscinas?\b/,HIDRO:hydro})
+    .map(([code,re])=>{
+      let index=(code==='PISCINA'?mainPoolText:s).search(re);
+      if(code==='HIDRO'&&allPoolsIndex>=0) index=index<0?allPoolsIndex:Math.min(index,allPoolsIndex);
+      return {code,index};
+    }).filter(match=>match.index>=0).sort((a,b)=>a.index-b.index).map(match=>match.code);
 };
 export const extraCode = (name:string) => extraCodes(name)[0];
 // Existing Hotel Solar ManyChat media, visually verified in the named flows.
@@ -20,6 +33,8 @@ const MANYCHAT_MEDIA: Record<string,string> = {
 const OFFICIAL_MEDIA: Record<string,string> = {
   PARQUE:'https://www.hotelsolar.tur.br/assets/images/parquinho.webp',
   PISCINA:'https://www.hotelsolar.tur.br/assets/images/editada-piscina.webp',
+  // This photo shows one of the two hydro pools, not both.
+  HIDRO:'https://www.hotelsolar.tur.br/assets/images/hidromassagem.webp',
   BIKE:'https://www.hotelsolar.tur.br/assets/images/bike.webp',
 };
 function validImageUrl(image:string) {
@@ -35,7 +50,8 @@ export const extraImage = (extra?:ExtraRecord,code='') => extraImages(extra,code
 export function extraCaption(code:string,extras:ExtraRecord[],includedBoat=false) {
   const extra=extras.find(e=>extraCode(e.name || '')===code);
   if(code==='PARQUE') return 'Parque infantil do Hotel Solar 📷';
-  if(code==='PISCINA') return 'Piscinas do Hotel Solar 📷';
+  if(code==='PISCINA') return 'Piscina principal do Hotel Solar 📷';
+  if(code==='HIDRO') return 'Uma das piscinas de hidromassagem do Hotel Solar 📷';
   if(code==='BIKE') return '🚲 Bicicletas\nCortesia gratuita da Cia. Marítima e do Hotel Solar, exclusiva para hóspedes. Retirada na recepção mediante formulário.';
   if(code==='BARCO') return 'Passeio de barco\nPasseio pelos manguezais, com saída no trapiche do hotel e parada na Praia Ponta do Espadarte. Duração aproximada de 2h, na maré cheia.\n'+(includedBoat?'Já incluído no pacote informado, sem cobrança adicional.':'R$ 350,00 por grupo de até 4 pessoas. Para mais participantes, a recepção confirma o valor.');
   const price=Number(extra?.price);

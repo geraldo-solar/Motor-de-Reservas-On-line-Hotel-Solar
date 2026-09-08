@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import sharp from 'sharp';
 const bundled=await build({entryPoints:['utils/extraMedia.ts'],bundle:true,write:false,platform:'node',format:'esm'});
-const {requestedExtraCodes,extraMediaResult,nextExtraMedia,extraImage,extraImages,extraPhotoRequest}=await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
+const {extraCodes,requestedExtraCodes,extraMediaResult,nextExtraMedia,extraImage,extraImages,extraPhotoRequest}=await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
 const extras=[{id:'b',name:'Passeio de Barco',price:100,image_url:'https://example.com/barco.jpg'},{id:'m',name:'Mesa Posta',price:180,image_url:'https://example.com/mesa.jpg'},{id:'l',name:'Kit Lua de Mel',price:350,image_url:'https://example.com/lua.jpg'},{id:'c',name:'Bicicletas',price:50,image_url:'https://example.com/bike.jpg'}];
 test('oferta específica, contextual e todos; não repete automaticamente, mas reenvia a pedido',()=>{
  assert.deepEqual(requestedExtraCodes('Quero conhecer o barco',''),['BARCO']);
@@ -46,7 +46,7 @@ test('pedido combinado preserva parque, piscinas e bicicletas em fila finita e s
  assert.equal(result.quote_request,'ROOM_DONE');
  assert.deepEqual(sent.map(item=>item.code),codes);
  assert.match(sent[0].caption,/Parque infantil/);
- assert.match(sent[1].caption,/Piscinas/);
+ assert.match(sent[1].caption,/Piscina principal/);
  assert.match(sent[2].caption,/Bicicletas.*\nCortesia gratuita/);
  for(const item of sent.slice(0,2)) assert.doesNotMatch(item.caption,/R\$|gratuit|cortesia|Lua de Mel|barco|cobrança/i);
  assert.deepEqual(requestedExtraCodes('Fotos das piscinas','Veja também o parque e as bicicletas'),['PISCINA']);
@@ -54,6 +54,50 @@ test('pedido combinado preserva parque, piscinas e bicicletas em fila finita e s
  assert.deepEqual(requestedExtraCodes('Álbum do playground',''),['PARQUE']);
  assert.deepEqual(requestedExtraCodes('Quais são os extras?','Parque infantil e piscinas'),['BARCO','MESA','LUA','BIKE']);
  assert.equal(nextExtraMedia('EXTRA_ID|PISCINA|DESCONHECIDO|PAID',[]).quote_request,'ROOM_DONE');
+});
+
+test('hidromassagens têm assunto próprio sem capturar a piscina principal nem perder a ordem',()=>{
+ for(const message of ['Fotos da hidromassagem','Fotos das hidromassagens','Fotos das hidros','Fotos da hidro','Fotos das duas piscinas de hidromassagem','Fotos da piscina com hidromassagem','Fotos das piscinas com hidromassagem','Fotos das piscinas hidro','Fotos de todas as piscinas de hidromassagem']) {
+  assert.deepEqual(extraCodes(message),['HIDRO'],message);
+  assert.deepEqual(requestedExtraCodes(message,'Veja a piscina principal'),['HIDRO'],message);
+ }
+ for(const [message,codes] of [
+  ['Fotos da piscina principal e das hidromassagens',['PISCINA','HIDRO']],
+  ['Fotos das hidromassagens e da piscina principal',['HIDRO','PISCINA']],
+  ['Fotos das piscinas de hidromassagem e da piscina principal',['HIDRO','PISCINA']],
+  ['Fotos da piscina principal, parque e piscina de hidro',['PISCINA','HIDRO']],
+  ['Fotos das hidros, bicicletas, piscina principal e hidromassagem',['HIDRO','BIKE','PISCINA']],
+ ]) assert.deepEqual(requestedExtraCodes(message,''),codes,message);
+ assert.deepEqual(extraCodes('Fotografias de massagem e hidroginástica'),[]);
+ assert.deepEqual(requestedExtraCodes('Quais são os extras?','Temos duas hidromassagens'),['BARCO','MESA','LUA','BIKE']);
+ for(const message of ['Tem hidromassagem?','Tem duas piscinas de hidromassagem?','Como são as hidros?']) {
+  assert.deepEqual(requestedExtraCodes(message,'Veja as bicicletas'),[],message);
+ }
+ assert.deepEqual(requestedExtraCodes('Quero uma imagem da hidro','',['HIDRO']),['HIDRO']);
+ const first=extraMediaResult(['HIDRO','PISCINA'],[]);
+ assert.equal(first.quote_request,'EXTRA_ID|HIDRO|PISCINA|PAID');
+ assert.equal(first.conversation_text,'Uma das piscinas de hidromassagem do Hotel Solar 📷');
+ assert.doesNotMatch(first.conversation_text,/aquec|privativ|R\$|gratuit|ambas|as duas/i);
+ const next=nextExtraMedia(first.quote_request,[]);
+ assert.equal(next.quote_request,'EXTRA_ID|PISCINA||PAID');
+ assert.equal(next.conversation_text,'Piscina principal do Hotel Solar 📷');
+ assert.equal(nextExtraMedia(next.quote_request,[]).quote_request,'ROOM_DONE');
+ assert.equal(nextExtraMedia('EXTRA_ID|PISCINA|HIDRO,HIDRO|PAID',[]).quote_request,'EXTRA_ID|HIDRO||PAID');
+});
+
+test('fotos de todas ou das três piscinas incluem principal e a única foto disponível de hidro',()=>{
+ for(const message of ['Fotos de todas as piscinas','Quero fotos das três piscinas','Fotos das 3 piscinas','Fotos de todas as três piscinas']) {
+  assert.deepEqual(requestedExtraCodes(message,''),['PISCINA','HIDRO'],message);
+ }
+ assert.deepEqual(requestedExtraCodes('Fotos das bicicletas e de todas as piscinas',''),['BIKE','PISCINA','HIDRO']);
+ assert.deepEqual(requestedExtraCodes('Fotos de todas as piscinas e das bicicletas',''),['PISCINA','HIDRO','BIKE']);
+ assert.deepEqual(requestedExtraCodes('Fotos de todas as piscinas e das hidros',''),['PISCINA','HIDRO']);
+ assert.deepEqual(requestedExtraCodes('Fotos das piscinas',''),['PISCINA']);
+ assert.deepEqual(requestedExtraCodes('Tem três piscinas?',''),[]);
+ assert.deepEqual(requestedExtraCodes('Como são todas as piscinas?',''),[]);
+ assert.deepEqual(extraCodes('Tem três piscinas?'),['PISCINA','HIDRO']);
+ assert.deepEqual(extraCodes('Como são todas as piscinas?'),['PISCINA','HIDRO']);
+ assert.deepEqual(extraCodes('Como são todas as piscinas de hidromassagem?'),['HIDRO']);
 });
 
 test('imagem, fotografia e álbum reenviam pedido explícito mesmo quando já lembrado',()=>{
@@ -81,6 +125,7 @@ test('cadastro válido precede ManyChat e site; inválido ou vazio não esconde 
  const site='https://www.hotelsolar.tur.br/assets/images/';
  assert.equal(extraImage(undefined,'PARQUE'),site+'parquinho.webp');
  assert.equal(extraImage(undefined,'PISCINA'),site+'editada-piscina.webp');
+ assert.equal(extraImage(undefined,'HIDRO'),site+'hidromassagem.webp');
  for(const image_url of ['', '   ', 'javascript:alert(1)', 'http://example.com/image.jpg', 'https://', 'https://invalid host/image.jpg', 'data:image/png;base64,', 'https://user:password@example.com/image.jpg']) {
   assert.equal(extraImage({id:'p',image_url},'PARQUE'),site+'parquinho.webp');
  }
@@ -119,12 +164,16 @@ test('endpoint entrega o espaço correto e tenta site quando foto cadastrada/Man
  const bytes=await sharp({create:{width:16,height:16,channels:3,background:'#479'}}).png().toBuffer();
  const originalFetch=globalThis.fetch;
  try {
-  for(const [code,file] of [['PARQUE','parquinho.webp'],['PISCINA','editada-piscina.webp']]) {
+  for(const [code,file] of [['PARQUE','parquinho.webp'],['PISCINA','editada-piscina.webp'],['HIDRO','hidromassagem.webp']]) {
    const seen=[];
    globalThis.fetch=async url=>{seen.push(String(url));return new Response(bytes,{headers:{'content-type':'image/png'}})};
    await imageRequest(await loadImageHandler(),`EXTRA_ID|${code}|BIKE|PAID`);
    assert.deepEqual(seen,[`https://www.hotelsolar.tur.br/assets/images/${file}`]);
   }
+  const hydroSeen=[];
+  globalThis.fetch=async url=>{hydroSeen.push(String(url));return String(url).endsWith('/hidromassagem.webp')?new Response(bytes,{headers:{'content-type':'image/png'}}):new Response(null,{status:404})};
+  await imageRequest(await loadImageHandler([{id:'hydro',name:'Piscinas de hidromassagem',image_url:'https://example.com/missing-hydro.jpg'}]),'EXTRA_ID|HIDRO||PAID');
+  assert.deepEqual(hydroSeen,['https://example.com/missing-hydro.jpg','https://www.hotelsolar.tur.br/assets/images/hidromassagem.webp']);
   const seen=[];
   globalThis.fetch=async url=>{seen.push(String(url));return String(url).endsWith('/bike.webp')?new Response(bytes,{headers:{'content-type':'image/png'}}):new Response(null,{status:404})};
   await imageRequest(await loadImageHandler([{id:'bike',name:'Bicicletas',image_url:'https://example.com/missing.jpg'}]),'EXTRA_ID|BIKE||PAID');

@@ -67,7 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const reference = req.query.code;
   const siteImage=sitePhotoUrl(String(reference||''));
-  const extraMatch=String(reference||'').match(/^EXTRA_ID\|(BARCO|MESA|LUA|BIKE|PARQUE|PISCINA)(?:\|[A-Z,]*\|(INCLUDED|PAID))?$/);
+  const extraMatch=String(reference||'').match(/^EXTRA_ID\|(BARCO|MESA|LUA|BIKE|PARQUE|PISCINA|HIDRO)(?:\|[A-Z,]*\|(INCLUDED|PAID))?$/);
   const serviceCode=extraMatch?.[1];
   const roomMatch = String(reference || '').match(/^ROOM_ID\|([0-9a-f]{8}-[0-9a-f-]{27,})(?:\|[0-9a-f,-]{1,800})?$/i);
   const roomId = roomMatch?.[1];

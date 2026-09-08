@@ -50,6 +50,8 @@ test('áudio de bicicletas e piscinas mantém fotos de lazer e perguntas anterio
     ['Fotos das bicicletas','e das piscinas?','Fotos de e das piscinas?',['PISCINA']],
     ['O hotel tem piscina?','Tem fotos?','Fotos de piscinas',['PISCINA']],
     ['Playground para crianças?','Tem foto?','Fotos de parque infantil',['PARQUE']],
+    ['Tem duas piscinas de hidromassagem?','Tem fotos delas?','Fotos de piscinas de hidromassagem',['HIDRO']],
+    ['Fotos das piscinas','E das hidros?','Fotos de E das hidros?',['HIDRO']],
   ]) {
     const first = control({operation:'prepare',user_message:firstMessage},now);
     const p = await handleConversation({operation:'prepare',user_message:audio,state:first.state},auth,async()=>spoken,now);

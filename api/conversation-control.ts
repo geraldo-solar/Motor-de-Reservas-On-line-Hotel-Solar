@@ -33,7 +33,7 @@ const greeting = (s: string) => /^(oi|ola|bom dia|boa tarde|boa noite|tudo bem)(
 const mediaRequest = (s: string) => /\b(fotos?|fotografias?|imagem|imagens|videos?|galeria|album)\b/.test(s);
 const personal = (s: string) => /@|\b(?:\d[.\s-]*){11,}\b|\b(cpf|meu nome|me chamo)\b/i.test(s);
 const knownMediaCode = (code: unknown): code is string => typeof code === 'string' && EXTRA_MEDIA_CODES.some(known => known === code);
-const photoSubjectLabels: Record<string, string> = {BARCO: 'barco', MESA: 'mesa posta', LUA: 'kit lua de mel', BIKE: 'bicicletas', PARQUE: 'parque infantil', PISCINA: 'piscinas'};
+const photoSubjectLabels: Record<string, string> = {BARCO: 'barco', MESA: 'mesa posta', LUA: 'kit lua de mel', BIKE: 'bicicletas', PARQUE: 'parque infantil', PISCINA: 'piscinas', HIDRO: 'piscinas de hidromassagem'};
 
 // Audio must carry a safe version of the current request through later HTTP
 // steps, which receive the media URL again instead of the spoken words.
@@ -111,7 +111,7 @@ function resolveFollowup(state: State, raw: string, now: number): string {
   const directExtras = extraCodes(s);
   // Restrict implicit requests to a list of subjects/connectors. Price, rules,
   // availability, booking and ordinary facility questions are not photo intent.
-  const shortExtraChoice = directExtras.length > 0 && /^(?:(?:e|agora|tambem|a|o|as|os|da|do|das|dos|de|me|mande|manda|envie|envia|quero|ver|por favor|pfv|hotel solar|@)[\s,/.!?-]*)+$/.test(s.replace(/\b(parque infantil|parquinhos?|playgrounds?|piscinas?|bicicletas?|bikes?|barcos?|catamara|mesa posta|lua de mel|kit celebracao|kit romantico)\b/g, '@'));
+  const shortExtraChoice = directExtras.length > 0 && /^(?:(?:e|agora|tambem|a|o|as|os|da|do|das|dos|de|duas|dois|tres|2|3|todas|todos|me|mande|manda|envie|envia|quero|ver|por favor|pfv|hotel solar|@)[\s,/.!?-]*)+$/.test(s.replace(/\b((?:piscinas?\s+(?:(?:de|com)\s+)?)?(?:hidromassagem|hidromassagens|hidros?)|parque infantil|parquinhos?|playgrounds?|piscinas?(?:\s+(?:principal|principais))?|bicicletas?|bikes?|barcos?|catamara|mesa posta|lua de mel|kit celebracao|kit romantico)\b/g, '@'));
   let resolved = active && !mediaRequest(s) && (shortChoice || shortExtraChoice) ? `Fotos de ${raw}` : raw;
   if (state.topic === 'extra_photos' && state.extra_photo_subjects?.length && shortChoice && /\btod[oa]s\b/.test(s) && !roomWords.test(s)) resolved = `Fotos de ${state.extra_photo_subjects.map(code => photoSubjectLabels[code]).join(' e ')}`;
   const genericPhotos = extraPhotoRequest(s) && /^(?:(?:e|agora|tambem|tem|voces|voce|ha|pode|podem|poderia|poderiam|me|mande|manda|enviar|envie|envia|mostrar|quero|gostaria|queria|ver|de|a|as|o|os|um|uma|umas|uns|alguma|algumas|algum|alguns|mais|todos|todas|dess[ae]s?|dest[ae]s?|del[ae]s?|por favor|pfv|fotos?|fotografias?|imagem|imagens|galeria|album)[\s,/.!?-]*)+$/.test(s);

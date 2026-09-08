@@ -37,6 +37,7 @@ for(const [information,followup,expected] of [
   ['O hotel tem piscina?','Tem fotos?','PISCINA'],
   ['Tem parquinho para crianças?','Tem foto?','PARQUE'],
   ['Playground para crianças?','Tem foto?','PARQUE'],
+  ['Tem duas piscinas de hidromassagem?','Tem fotos delas?','HIDRO'],
 ]) {
   const first=await turn(information);
   const routed=await turn(followup,first.state);
@@ -45,14 +46,15 @@ for(const [information,followup,expected] of [
   assert.doesNotMatch(result.conversation_text,/não disponho|não há foto|idades das crianças/i);
 }
 
-const combined='Me mande fotos do parque infantil, piscinas e bicicletas';
+const combined='Me mande fotos do parque infantil, piscina principal, hidromassagens e bicicletas';
 const routed=await turn(combined);
 let media=await post('/api/resolve-package',{user_message:combined,state:routed.state});
-assert.deepEqual(media.photo_codes,['PARQUE','PISCINA','BIKE']);
+assert.deepEqual(media.photo_codes,['PARQUE','PISCINA','HIDRO','BIKE']);
 const results=[];
 while(media.quote_request!=='ROOM_DONE') {
-  assert.ok(results.length<3,'photo queue must finish');
+  assert.ok(results.length<4,'photo queue must finish');
   const code=media.quote_request.split('|')[1];
+  if(code==='HIDRO') assert.equal(media.conversation_text,'Uma das piscinas de hidromassagem do Hotel Solar 📷');
   const bytes=await call('/api/package-image?code='+encodeURIComponent(media.quote_request));
   const metadata=await sharp(bytes).metadata();
   assert.equal(metadata.format,'jpeg');
@@ -61,8 +63,18 @@ while(media.quote_request!=='ROOM_DONE') {
   results.push({code,bytes:bytes.length,width:metadata.width,height:metadata.height});
   media=await post('/api/resolve-package?operation=next',{user_message:media.quote_request});
 }
-assert.deepEqual(results.map(item=>item.code),['PARQUE','PISCINA','BIKE']);
-const repeat=await turn('Quero uma imagem das bicicletas',{...emptyState(),extra_photo_requests:['BIKE']});
-const repeated=await post('/api/resolve-package',{user_message:'Quero uma imagem das bicicletas',state:repeat.state});
-assert.deepEqual(repeated.photo_codes,['BIKE']);
-console.log(JSON.stringify({status:'ok',base:base.origin,exactInboxSequences:3,queueTerminated:true,photos:results},null,2));
+assert.deepEqual(results.map(item=>item.code),['PARQUE','PISCINA','HIDRO','BIKE']);
+for(const [message,code] of [['Quero uma imagem das bicicletas','BIKE'],['Quero fotos das duas piscinas de hidromassagem','HIDRO']]) {
+  const repeat=await turn(message,{...emptyState(),extra_photo_requests:[code]});
+  const repeated=await post('/api/resolve-package',{user_message:message,state:repeat.state});
+  assert.deepEqual(repeated.photo_codes,[code]);
+}
+const hydroFollowup=await turn('E das hidros?',(await turn('Fotos da piscina principal')).state);
+assert.deepEqual((await post('/api/resolve-package',{user_message:'E das hidros?',state:hydroFollowup.state})).photo_codes,['HIDRO']);
+const allPools=await turn('Fotos das três piscinas');
+assert.deepEqual((await post('/api/resolve-package',{user_message:'Fotos das três piscinas',state:allPools.state})).photo_codes,['PISCINA','HIDRO']);
+for(const [information,followup] of [['Fotos da hidro','E de todas as piscinas?'],['Tem três piscinas?','Tem fotos delas?']]) {
+  const next=await turn(followup,(await turn(information)).state);
+  assert.deepEqual((await post('/api/resolve-package',{user_message:followup,state:next.state})).photo_codes,['PISCINA','HIDRO']);
+}
+console.log(JSON.stringify({status:'ok',base:base.origin,exactInboxSequences:3,hydroContextVerified:true,queueTerminated:true,photos:results},null,2));
