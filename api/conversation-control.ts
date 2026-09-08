@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { EXTRA_MEDIA_CODES, extraCodes, extraPhotoRequest } from '../utils/extraMedia.js';
+import { PHOTO_CLARIFY, PHOTO_LOOKUP, photoDeliveryClaim, photoRetryRequest, shortPhotoRetry } from '../utils/photoIntent.js';
 import { eventInquiry, eventContactText } from '../utils/hotelInfo.js';
 import { advanceEvent, readEvent, type EventState } from '../utils/eventInquiry.js';
 import { publicEventInquiry, publicEventFollowup, publicEventContext, publicEventAnswer } from '../utils/publicEvents.js';
@@ -111,10 +112,17 @@ function resolveFollowup(state: State, raw: string, now: number): string {
   const directExtras = extraCodes(s);
   // Restrict implicit requests to a list of subjects/connectors. Price, rules,
   // availability, booking and ordinary facility questions are not photo intent.
-  const shortExtraChoice = directExtras.length > 0 && /^(?:(?:e|agora|tambem|a|o|as|os|da|do|das|dos|de|duas|dois|tres|2|3|todas|todos|me|mande|manda|envie|envia|quero|ver|por favor|pfv|hotel solar|@)[\s,/.!?-]*)+$/.test(s.replace(/\b((?:piscinas?\s+(?:(?:de|com)\s+)?)?(?:hidromassagem|hidromassagens|hidros?)|parque infantil|parquinhos?|playgrounds?|piscinas?(?:\s+(?:principal|principais))?|bicicletas?|bikes?|barcos?|catamara|mesa posta|lua de mel|kit celebracao|kit romantico)\b/g, '@'));
+  // "Tem da..." points to another photo, while "Tem hidromassagem?" is an
+  // ordinary facility question, even after a photo. Require the preposition.
+  const photoChoiceText = active ? s.replace(/^(?:e )?(?:(?:voce|voces) )?tem (d[ao]s?)\b/, '$1') : s;
+  const shortExtraChoice = directExtras.length > 0 && /^(?:(?:e|agora|tambem|a|o|as|os|da|do|das|dos|de|duas|dois|tres|2|3|todas|todos|me|mande|manda|envie|envia|quero|ver|por favor|pfv|hotel solar|@)[\s,/.!?-]*)+$/.test(photoChoiceText.replace(/\b((?:piscinas?\s+(?:(?:de|com)\s+)?)?(?:hidromassagem|hidromassagens|hidros?)|parque infantil|parquinhos?|playgrounds?|piscinas?(?:\s+(?:principal|principais))?|bicicletas?|bikes?|barcos?|catamara|mesa posta|lua de mel|kit celebracao|kit romantico)\b/g, '@'));
   let resolved = active && !mediaRequest(s) && (shortChoice || shortExtraChoice) ? `Fotos de ${raw}` : raw;
+  if (active && (photoRetryRequest(raw) || shortPhotoRetry(raw))) {
+    if (state.topic === 'extra_photos' && state.extra_photo_subjects?.length) resolved = `Fotos de ${state.extra_photo_subjects.map(code => photoSubjectLabels[code]).join(' e ')}`;
+    else if (activeRooms && state.subject) resolved = `Fotos de ${state.subject}`;
+  }
   if (state.topic === 'extra_photos' && state.extra_photo_subjects?.length && shortChoice && /\btod[oa]s\b/.test(s) && !roomWords.test(s)) resolved = `Fotos de ${state.extra_photo_subjects.map(code => photoSubjectLabels[code]).join(' e ')}`;
-  const genericPhotos = extraPhotoRequest(s) && /^(?:(?:e|agora|tambem|tem|voces|voce|ha|pode|podem|poderia|poderiam|me|mande|manda|enviar|envie|envia|mostrar|quero|gostaria|queria|ver|de|a|as|o|os|um|uma|umas|uns|alguma|algumas|algum|alguns|mais|todos|todas|dess[ae]s?|dest[ae]s?|del[ae]s?|por favor|pfv|fotos?|fotografias?|imagem|imagens|galeria|album)[\s,/.!?-]*)+$/.test(s);
+  const genericPhotos = extraPhotoRequest(s) && /^(?:(?:e|agora|tambem|tem|voces|voce|ha|pode|podem|poderia|poderiam|me|mande|manda|mandar|enviar|envie|envia|mostrar|quero|gostaria|queria|ver|de|a|as|o|os|um|uma|umas|uns|alguma|algumas|algum|alguns|mais|todos|todas|dess[ae]s?|dest[ae]s?|del[ae]s?|por favor|pfv|fotos?|fotografias?|imagem|imagens|galeria|album)[\s,/.!?-]*)+$/.test(s);
   if (extraPhotoRequest(s) && !directExtras.length && (genericPhotos || /\b(dess[ae]s?|dest[ae]s?|del[ae]s?)\b/.test(s))) {
     if ((state.topic === 'extra_photos' || state.topic === 'extra_info') && state.extra_photo_subjects?.length && genericPhotos) resolved = `Fotos de ${state.extra_photo_subjects.map(code => photoSubjectLabels[code]).join(' e ')}`;
     else if (state.subject && !restaurantInquiry(s)) resolved = `Fotos de ${state.subject}`;
@@ -357,7 +365,7 @@ export function control(body: any, now = Date.now()) {
   else if (extraPhotoRequest(publicMessage) && extraCodes(publicMessage).length) {
     // The native media branch resolves available photos and replaces this
     // transition. Do not repeat an unsupported AI denial or claim media sent.
-    answer = 'Vou consultar as fotos solicitadas no acervo do hotel.';
+    answer = PHOTO_LOOKUP;
     delete state.pending;
   }
   else if (publicEventInquiry(publicMessage)) {answer=publicEventAnswer(publicMessage,now);delete state.pending;}
@@ -405,6 +413,8 @@ export function control(body: any, now = Date.now()) {
     }
   }
   if (question(s)) delete state.pending;
+  if (decision === 'NOQUOTE' && photoRetryRequest(publicMessage)) answer = PHOTO_CLARIFY;
+  else if (decision === 'NOQUOTE' && photoDeliveryClaim(answer)) answer = mediaRequest(norm(publicMessage)) ? PHOTO_LOOKUP : PHOTO_CLARIFY;
   if (decision !== 'COLETAR') confirmationText = '';
   if (state.first_turn && decision === 'NOQUOTE' && answer && !/^(olá|oi|bom dia|boa tarde|boa noite)/i.test(answer)) answer = 'Olá! Que bom receber seu contato no Hotel Solar. ☀️\n\n' + answer;
   delete state.awaiting;

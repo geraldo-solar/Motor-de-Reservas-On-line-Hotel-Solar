@@ -65,6 +65,9 @@ export function requestedExtraCodes(message:string,assistant:string,requestedBef
   const explicitPhoto=extraPhotoRequest(message);
   const all=/\b(extras|servicos adicionais|servicos extras|experiencias)\b/.test(s);
   const direct=extraCodes(message);
+  // Unknown photo subjects must not turn an older assistant offer into an
+  // unrelated picture. Context resolution uses customer-derived subjects.
+  if(explicitPhoto && !all && !direct.length) return [];
   if(!direct.length && /\b(pacotes?|feriados?|aptos?|apartamentos?|quartos?|loft|suite)\b/.test(s) && (explicitPhoto || /pacotes?|feriados?/.test(s))) return [];
   const source=all ? SERVICE_CODES : direct.length ? direct : extraCodes(assistant).filter(code=>SERVICE_CODES.includes(code));
   // Leisure-space questions keep their informative answer unless the client

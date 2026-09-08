@@ -2,7 +2,8 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { resolveRoomMedia, nextRoomMedia } from '../utils/roomMedia.js';
 import { control } from './conversation-control.js';
-import { requestedExtraCodes, extraCodes, extraMediaResult, nextExtraMedia, normalizeExtra } from '../utils/extraMedia.js';
+import { PHOTO_CLARIFY, documentPhotoInquiry, photoRetryRequest } from '../utils/photoIntent.js';
+import { requestedExtraCodes, extraCodes, extraPhotoRequest, extraMediaResult, nextExtraMedia, normalizeExtra } from '../utils/extraMedia.js';
 import { eventInquiry, eventContactText, reservaPhotoRequest, sitePhotoResult } from '../utils/hotelInfo.js';
 import { readEvent } from '../utils/eventInquiry.js';
 import { deliverEvent, deliveryFailed, acceptEventReceipt } from '../utils/eventDelivery.js';
@@ -282,6 +283,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!userMessage) {
     return res.status(400).json({ error: 'Missing user_message.' });
   }
+  // A question about the customer's document is not a hotel photo request.
+  // Leave the attachment conversation to its existing response/human flow.
+  if (!req.query?.operation && documentPhotoInquiry(userMessage)) {
+    return res.status(200).json({quote_request:'NO_PACKAGE',quote_text:'',conversation_text:'',matched:false,availability_checked:false,...control({operation:'remember_response',state:req.body?.state})});
+  }
+
+  // A retry with no recent, identified photo must ask its subject, not select
+  // an old room/service or fall through to the package/hotel qualification.
+  if (!req.query?.operation && photoRetryRequest(userMessage)) {
+    return res.status(200).json({quote_request:'ROOM_LIST',quote_text:PHOTO_CLARIFY,conversation_text:PHOTO_CLARIFY,matched:false,availability_checked:false,...control({operation:'remember_response',state:req.body?.state,response_text:PHOTO_CLARIFY})});
+  }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
   if (!req.query?.operation && publicEventInquiry(userMessage)) {
@@ -342,6 +354,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (media) {
     const gallery = media.match_type === 'room_gallery';
     return res.status(200).json({...media, ...remember(gallery ? `Fotos solicitadas das categorias: ${('room_names' in media ? media.room_names : []).join(', ')}. Se a referência a uma delas for ambígua, pergunte qual.` : media.conversation_text, gallery ? '' : media.room_name, gallery)});
+  }
+  const bestPackageScore = Math.max(0, ...(packages || []).map(pkg => scorePackage(userMessage, pkg)));
+  if (extraPhotoRequest(userMessage) && !isPackageIntent(userMessage, bestPackageScore)) {
+    return res.status(200).json({quote_request:'ROOM_LIST',quote_text:PHOTO_CLARIFY,conversation_text:PHOTO_CLARIFY,matched:false,availability_checked:false,...remember(PHOTO_CLARIFY,'',true)});
   }
   if (packageError) return res.status(500).json({ error: packageError.message });
   if (!packages?.length) {

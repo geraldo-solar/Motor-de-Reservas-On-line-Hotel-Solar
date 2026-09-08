@@ -24,9 +24,9 @@ async function call(path,body) {
 const post=async(path,body)=>JSON.parse((await call(path,body)).toString());
 const facts={guests:2,extras:[]};
 const emptyState=()=>({version:2,history:[],facts,greeted:true});
-async function turn(user_message,state=emptyState()) {
+async function turn(user_message,state=emptyState(),ai_response='No momento, não disponho de fotos para envio.') {
   const prepared=await post('/api/conversation-control',{operation:'prepare',user_message,state});
-  const routed=await post('/api/conversation-control',{operation:'route',user_message,state:prepared.state,ai_response:'No momento, não disponho de fotos para envio.',proposed:'COLETAR'});
+  const routed=await post('/api/conversation-control',{operation:'route',user_message,state:prepared.state,ai_response,proposed:'COLETAR'});
   assert.equal(routed.can_collect,'NAO');
   assert.equal(routed.confirmation_text,'');
   assert.deepEqual(JSON.parse(routed.state).facts,facts);
@@ -77,4 +77,28 @@ for(const [information,followup] of [['Fotos da hidro','E de todas as piscinas?'
   const next=await turn(followup,(await turn(information)).state);
   assert.deepEqual((await post('/api/resolve-package',{user_message:followup,state:next.state})).photo_codes,['PISCINA','HIDRO']);
 }
-console.log(JSON.stringify({status:'ok',base:base.origin,exactInboxSequences:3,hydroContextVerified:true,queueTerminated:true,photos:results},null,2));
+
+let inboxState=emptyState();
+for(const [message,code] of [
+  ['gostaria que vc me enviasse foto do playground','PARQUE'],
+  ['tem da hidromassagem?','HIDRO'],
+  ['a foto nao chegou','HIDRO'],
+  ['da hidromassagem','HIDRO'],
+  ['Pode mandar fotos delas?','HIDRO'],
+]) {
+  const routed=await turn(message,inboxState,'Aqui está a foto oficial. Já enviei a foto para você.');
+  assert.doesNotMatch(routed.answer,/aqui est|enviei|reenviada/i);
+  const selected=await post('/api/resolve-package',{user_message:message,state:routed.state});
+  assert.equal(selected.quote_request,`EXTRA_ID|${code}||PAID`);
+  assert.deepEqual(selected.photo_codes,[code]);
+  assert.doesNotMatch(selected.conversation_text,/enviei|reenviada|nao chegou|não chegou/i);
+  inboxState=selected.state;
+}
+for(const message of ['a foto nao chegou','Foto da academia']) {
+  const routed=await turn(message,emptyState(),'Vou reenviar a foto para você agora.');
+  const result=await post('/api/resolve-package',{user_message:message,state:routed.state});
+  assert.equal(result.quote_request,'ROOM_LIST');
+  assert.match(result.conversation_text,/qual espa[çc]o/i);
+  assert.equal(result.availability_checked,false);
+}
+console.log(JSON.stringify({status:'ok',base:base.origin,exactInboxSequences:4,hydroContextVerified:true,photoRetryVerified:true,unknownPhotoSafe:true,queueTerminated:true,photos:results},null,2));
