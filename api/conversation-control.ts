@@ -8,13 +8,14 @@ import { isAudioInput, transcribeAudio } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage, audioSourceHash, readAudioTurn, type AudioTurn } from '../utils/audioInput.js';
 import { isAttachmentInput, analyzeAttachment, type AttachmentKind } from '../utils/attachmentAnalysis.js';
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
+import { packageInquiry, packageFollowup, packageBookingRequest, newTripRequest, readPackageContext, type PackageContext } from '../utils/packageContext.js';
 
 // No bookings, stock queries or outbound messages. The HTTP adapter interprets
 // audio/attachments; the conversation controller remains deterministic.
 // User facts and conversational turns are separate. Assistant text NEVER updates facts.
 type Facts = { check_in?: string; check_out?: string; guests?: number; extras: string[]; children_pending?: boolean };
 type Quote = { version: number; id: string; created_at: number; check_in: string; check_out: string; guests: number; extras: string[]; options: { name: string; capacity: number; total: number }[] };
-type State = { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events'; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
+type State = { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
 const json = (v: unknown): any => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
 const months = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -77,7 +78,8 @@ function loadState(value: unknown, now = Date.now()): State {
     extra_photo_requests: Array.isArray(parsed.extra_photo_requests) ? [...new Set<string>(parsed.extra_photo_requests.filter(knownMediaCode))] : [],
     ...(Array.isArray(parsed.extra_photo_subjects) ? {extra_photo_subjects: [...new Set<string>(parsed.extra_photo_subjects.filter(knownMediaCode))]} : {}),
     ...(readEvent(parsed.event) ? {event:readEvent(parsed.event)} : {}),
-    ...(['room_photos', 'extra_photos', 'extra_info', 'photo_clarification', 'public_events'].includes(parsed.topic) ? {topic: parsed.topic, topic_at: Number(parsed.topic_at) || 0} : {}),
+    ...(['room_photos', 'extra_photos', 'extra_info', 'photo_clarification', 'public_events', 'package_info'].includes(parsed.topic) ? {topic: parsed.topic, topic_at: Number(parsed.topic_at) || 0} : {}),
+    ...(readPackageContext(parsed.package_context, now) ? {package_context:readPackageContext(parsed.package_context, now)} : {}),
     ...(typeof parsed.subject === 'string' && !personal(parsed.subject) ? {subject: parsed.subject.slice(0,100)} : {}),
     ...(['guests','dates'].includes(parsed.awaiting) ? {awaiting: parsed.awaiting} : {}),
     ...(typeof parsed.resolved_message === 'string' && !personal(parsed.resolved_message) ? {resolved_message: parsed.resolved_message.slice(0,500)} : {}),
@@ -208,10 +210,10 @@ function updateFacts(state: State, message: string, now: number) {
   const shortCount = s.match(new RegExp(`^(?:para\\s+)?${numberPattern}[.!]?$`));
   if (total) state.facts.guests = count(total[1]);
   else if (adults) state.facts.guests = count(adults[1]) + (children ? count(children[1]) : 0);
+  else if (/\b(somos|para|vai|um) casal\b/.test(s)) state.facts.guests = 2 + (children ? count(children[1]) : 0);
   else if (group) state.facts.guests = count(group[1]);
-  else if (/\b(somos|para|vai|um) casal\b/.test(s)) state.facts.guests = 2;
   else if (shortCount && (!state.facts.guests || state.awaiting === 'guests')) state.facts.guests = count(shortCount[1]);
-  if (/crianca|bebe/.test(s) && !/sem crianca/.test(s)) state.facts.children_pending = !/\d+\s*(anos?|meses?)\b/.test(s);
+  if (/crianca|bebe/.test(s) && !/sem crianca/.test(s) && (!question(s) && !/\b(paga|gratuidade|gratis|cortesia|politica|regra)\b/.test(s) || !!children)) state.facts.children_pending = !/\d+\s*(anos?|meses?)\b/.test(s);
   if (state.facts.children_pending && /\d+\s*(anos?|meses?)\b/.test(s)) state.facts.children_pending = false;
   if (/sem crianca|so adultos|apenas adultos/.test(s)) state.facts.children_pending = false;
   const dates = parseDates(s, now);
@@ -234,6 +236,7 @@ function updateFacts(state: State, message: string, now: number) {
 function validQuote(value: unknown, state: State, now: number): Quote | null {
   const q = json(value);
   const f = state.facts;
+  if (state.topic === 'package_info' && state.package_context && (q?.check_in !== state.package_context.start_date || q?.check_out !== state.package_context.end_date)) return null;
   if (q?.version !== 1 || typeof q.id !== 'string' || !Number.isFinite(q.created_at) || now - q.created_at < 0 || now - q.created_at > 30 * 60000 || !Array.isArray(q.options) || !q.options.length || !Array.isArray(q.extras)) return null;
   if (q.check_in !== f.check_in || q.check_out !== f.check_out || q.guests !== f.guests || f.children_pending || JSON.stringify([...q.extras || []].sort()) !== JSON.stringify([...f.extras].sort())) return null;
   if (!q.options.every((o: any) => o && typeof o.name === 'string' && Number.isFinite(o.capacity) && o.capacity >= q.guests && Number.isFinite(o.total) && o.total > 0)) return null;
@@ -269,7 +272,7 @@ export function control(body: any, now = Date.now()) {
     const current = attachmentForMessage(input, state, now) || { source_hash: attachmentSourceHash(input), kind: 'unreadable' as const, created_at: now };
     state.attachment = current;
     state.changed = false;
-    delete state.pending; delete state.awaiting; delete state.topic; delete state.topic_at;
+    delete state.pending; delete state.awaiting; delete state.topic; delete state.topic_at; delete state.package_context;
     delete state.subject; delete state.extra_photo_subjects; delete state.event; delete state.audio;
     state.resolved_message = attachmentContextMessage(current.kind);
     if (body.operation === 'prepare') {
@@ -311,6 +314,12 @@ export function control(body: any, now = Date.now()) {
     delete state.pending; // Any new typed message invalidates an older confirmation card.
     const wasPublic = state.topic === 'public_events';
     const publicFollowup = wasPublic && Number.isFinite(state.topic_at) && now >= state.topic_at! && now - state.topic_at! <= 30 * 60000 && publicEventFollowup(raw);
+    const packageQuery = !human(s) && !restaurantInquiry(s) && !eventInquiry(raw) && !publicEventInquiry(raw) && packageInquiry(raw);
+    const packageContinuation = !human(s) && !eventInquiry(raw) && !publicEventInquiry(raw) && state.topic === 'package_info' && !!state.package_context && packageFollowup(raw);
+    if (state.topic === 'package_info' && newTripRequest(raw)) {
+      delete state.facts.check_in; delete state.facts.check_out; state.facts.extras = [];
+    }
+    if (!packageQuery && !packageContinuation) delete state.package_context;
     if (raw === AUDIO_UNAVAILABLE) {
       state.resolved_message = AUDIO_UNAVAILABLE;
       state.changed = false;
@@ -320,6 +329,11 @@ export function control(body: any, now = Date.now()) {
       state.topic = 'public_events'; state.topic_at = now; state.changed = false;
       delete state.awaiting; delete state.subject; delete state.extra_photo_subjects;
       // A public show is not an answer/consent to a private-event lead in progress.
+    } else if (packageQuery || packageContinuation) {
+      state.resolved_message = personal(raw) ? '[Dado pessoal omitido]' : raw;
+      state.topic = 'package_info'; state.topic_at = now;
+      delete state.subject; delete state.extra_photo_subjects; delete state.event;
+      updateFacts(state, state.resolved_message, now);
     } else {
       state.resolved_message = personal(raw) ? '[Dado pessoal omitido]' : resolveFollowup(state, raw, now);
       const event = mediaRequest(norm(state.resolved_message)) || (wasPublic && !eventInquiry(raw)) ? undefined : advanceEvent(state.event,raw,String(body.subscriber_id||state.event?.source||''),now);
@@ -337,6 +351,8 @@ export function control(body: any, now = Date.now()) {
       assunto_ativo: state.topic || '', acomodacao_em_foco: state.subject || '',
       lazer_em_foco: state.extra_photo_subjects || [],
       fotos_lazer_solicitadas: state.topic === 'extra_photos' ? state.extra_photo_subjects || [] : [],
+      pacote_em_foco: state.topic === 'package_info' && !packageQuery ? state.package_context || null : null,
+      regra_pacote: 'Pacote em foco é somente o assunto consultado, não aceite de reserva. Responda continuações sobre hóspedes, acomodações, valores e inclusões no mesmo pacote. O próximo passo consulta os dados atuais do catálogo. Não reaproveite datas, preços ou extras de outra viagem nem confirme disponibilidade. As datas do catálogo não são datas declaradas pelo cliente.',
       interpretacao_da_ultima_mensagem: personal(raw) ? '[Dado pessoal omitido]' : state.resolved_message,
       ultima_mensagem: personal(raw) ? '[Dado pessoal omitido; não repetir nem guardar]' : raw,
       cotacao_valida_para_estes_dados: currentQuote,
@@ -352,6 +368,29 @@ export function control(body: any, now = Date.now()) {
     if (body.clear_subject === true) delete state.subject;
     if (typeof body.room_name === 'string' && body.room_name) state.subject = body.room_name.slice(0,100);
     awaitPhotoSubject(state, String(body.response_text || ''), now);
+    if (body.clear_package === true) {
+      delete state.package_context;
+      if (state.topic === 'package_info') { delete state.topic; delete state.topic_at; }
+    }
+    const catalog = readPackageContext({...body.package_context, updated_at: now}, now);
+    if (catalog) {
+      if (state.package_context?.id !== catalog.id) {
+        // New inquiry invalidates a previous trip, but preserves facts the
+        // customer explicitly supplied in THIS turn. Catalog dates are not facts.
+        const current = state.history.at(-1) || '';
+        const fresh: State = {version:2, history:[], facts:{extras:[]}, greeted:true};
+        updateFacts(fresh, current, now);
+        delete state.facts.check_in; delete state.facts.check_out;
+        if (fresh.facts.check_in) state.facts.check_in = fresh.facts.check_in;
+        if (fresh.facts.check_out) state.facts.check_out = fresh.facts.check_out;
+        state.facts.extras = fresh.facts.extras;
+        delete state.pending; delete state.awaiting;
+        state.changed = false;
+      }
+      state.package_context = catalog; state.topic = 'package_info'; state.topic_at = now;
+      delete state.subject; delete state.extra_photo_subjects;
+    }
+    if (/quantas pessoas/i.test(String(body.response_text || ''))) state.awaiting = 'guests';
     return {state: JSON.stringify(state)};
   }
   const quote = validQuote(body.quote_state, state, now);
@@ -374,6 +413,12 @@ export function control(body: any, now = Date.now()) {
     delete state.topic; delete state.topic_at; delete state.subject; delete state.extra_photo_subjects;
   }
   else if (human(s)) decision = 'HUMANO';
+  else if ((!restaurantInquiry(s) && !eventInquiry(publicMessage) && !publicEventInquiry(publicMessage) && packageInquiry(publicMessage))
+    || (state.topic === 'package_info' && state.package_context && packageFollowup(publicMessage)
+      && !(quote && packageBookingRequest(publicMessage)))) {
+    answer = 'Vou consultar as informações e as opções do pacote para continuar com você.';
+    delete state.pending;
+  }
   else if (extraPhotoRequest(publicMessage) && extraCodes(publicMessage).length) {
     // The native media branch resolves available photos and replaces this
     // transition. Do not repeat an unsupported AI denial or claim media sent.

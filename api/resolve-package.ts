@@ -12,6 +12,8 @@ import { isAudioInput } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage } from '../utils/audioInput.js';
 import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
 import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
+import { namedPackageInquiry, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext } from '../utils/packageContext.js';
+import { packagePrices, packageRecommendation } from '../utils/packageReply.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -170,36 +172,7 @@ const formatPackageDetails = (
   const items = [...(pkg.includes || []), ...(pkg.benefits || [])]
     .map(item => String(item).trim())
     .filter((item, index, all) => item && all.indexOf(item) === index);
-  const roomNames = new Map(rooms.map(room => [String(room.id), room.name || 'Acomodação']));
-  let prices = (pkg.room_prices || [])
-    .map(item => ({
-      name: roomNames.get(String(item.roomId || item.room_id || '')) || 'Acomodação',
-      price: Number(item.price || 0),
-    }))
-    .filter(item => item.price > 0)
-    .sort((a, b) => b.price - a.price);
-
-  let priceLabel = '💰 *Valores cadastrados por acomodação:*';
-  if (!prices.length && pkg.start_iso_date && pkg.end_iso_date) {
-    const start = new Date(`${pkg.start_iso_date}T12:00:00Z`);
-    const end = new Date(`${pkg.end_iso_date}T12:00:00Z`);
-    const discount = Number(pkg.full_period_discount_pct || 0);
-    prices = rooms.map(room => {
-      let total = 0;
-      const current = new Date(start);
-      while (current < end) {
-        const isoDate = current.toISOString().slice(0, 10);
-        const override = (room.overrides || []).find(item =>
-          String(item.dateIso || item.date_iso || '') === isoDate
-        );
-        total += override?.price !== undefined ? Number(override.price) : Number(room.base_price || 0);
-        current.setUTCDate(current.getUTCDate() + 1);
-      }
-      if (discount > 0) total *= 1 - discount / 100;
-      return { name: room.name || 'Acomodação', price: total };
-    }).filter(item => item.price > 0).sort((a, b) => b.price - a.price);
-    priceLabel = '💰 *Simulação cadastrada para o período completo:*';
-  }
+  const {prices, label:priceLabel} = packagePrices(pkg, rooms);
 
   const text: string[] = [`🎉 *${pkg.name || 'Pacote especial'}*`, `📅 *Período:* ${period}`];
   if (pkg.location) text.push(`📍 *Local:* ${pkg.location}`);
@@ -328,6 +301,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json(nextRoomMedia(userMessage, rooms || []));
   }
   const offersOnly=req.query?.operation==='offers';
+  const focusedPackage = conversationState?.topic === 'package_info' ? readPackageContext(conversationState.package_context) : undefined;
+  // Inclusions such as the boat belong to the package, not to a new paid-extra
+  // offer. Resolve these continuations before the proactive media/extra branch.
+  if (!offersOnly && focusedPackage && packageFollowup(userMessage) && !namedPackageInquiry(userMessage)) {
+    const [{data: packages,error: packageError},{data: rooms,error: roomError}] = await Promise.all([
+      supabase.from('packages').select('*').eq('active',true),
+      supabase.from('room_types').select('*').eq('active',true),
+    ]);
+    if (packageError || roomError) return res.status(500).json({error:'Unable to load package information.'});
+    const pkg = (packages || []).find((item: PackageRecord) => item.id === focusedPackage.id);
+    if (!pkg) {
+      const answer = 'Esse pacote não está mais disponível no catálogo ativo. Qual período ou pacote você gostaria de consultar?';
+      return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,availability_checked:false,...control({operation:'remember_response',state:req.body?.state,response_text:answer,clear_package:true})});
+    }
+    const facts = conversationState?.facts || {};
+    const differentDates = (facts.check_in && facts.check_in !== pkg.start_iso_date) || (facts.check_out && facts.check_out !== pkg.end_iso_date);
+    const answer = differentDates
+      ? `O pacote ${pkg.name} tem período de ${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}. As datas que você informou são diferentes${pkg.full_period_required ? ', e esse pacote exige o período completo' : ''}. Você quer continuar consultando esse pacote ou deseja outra estadia? Não alterei suas datas nem confirmei uma reserva.`
+      : packageBookingRequest(userMessage)
+      ? `Vamos continuar com o pacote ${pkg.name}, de ${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}. ${!facts.guests ? 'Quantas pessoas vão se hospedar, contando adultos e crianças?' : facts.children_pending ? 'Quais são as idades das crianças?' : 'Para seguir com a opção escolhida, peça para falar com a recepção, que confere as condições e a disponibilidade.'} Ainda não há reserva confirmada.`
+      : packageRecommendationInquiry(userMessage)
+      ? packageRecommendation(pkg,rooms || [],conversationState?.facts?.guests)
+      : formatPackageDetails(pkg,rooms || [],true);
+    return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
+      package_id:pkg.id,package_name:pkg.name,match_type:'package_followup',availability_checked:false,
+      ...control({operation:'remember_response',state:req.body?.state,response_text:answer,
+        package_context:{id:pkg.id,name:pkg.name,start_date:pkg.start_iso_date,end_date:pkg.end_iso_date}})});
+  }
   const assistant=offersOnly ? userMessage : conversationState?.turns?.at(-1)?.role==='assistant' ? String(conversationState.turns.at(-1).text || '') : '';
   const codes=requestedExtraCodes(offersOnly?'':userMessage,assistant,conversationState?.extra_photo_requests||[]);
   if(codes.length) {
@@ -366,6 +367,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       quote_text: 'No momento não há pacotes ativos cadastrados no motor de reservas.',
       conversation_text: 'No momento não há pacotes ativos cadastrados no motor de reservas. Posso ajudar com uma simulação de diárias: para quantas pessoas será a estadia?',
       matched: false,
+      ...control({operation:'remember_response',state:req.body?.state,clear_package:true}),
     });
   }
 
@@ -385,7 +387,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       conversation_text: formatPackageList(packages as PackageRecord[], true),
       matched: true,
       match_type: 'list',
-      ...remember(formatPackageList(packages as PackageRecord[], true)),
+      ...control({operation:'remember_response',state:req.body?.state,response_text:formatPackageList(packages as PackageRecord[], true),clear_package:true}),
     });
   }
 
@@ -403,6 +405,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     matched: true,
     match_type: 'specific',
     score: best.score,
-    ...remember(formatPackageDetails(pkg, (rooms || []) as RoomRecord[], true)),
+    ...control({operation:'remember_response',state:req.body?.state,response_text:formatPackageDetails(pkg, (rooms || []) as RoomRecord[], true),
+      package_context:{id:pkg.id,name:pkg.name,start_date:pkg.start_iso_date,end_date:pkg.end_iso_date}}),
   });
 }
