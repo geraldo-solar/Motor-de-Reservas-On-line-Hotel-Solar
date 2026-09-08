@@ -3,6 +3,12 @@ const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u0
 export const PHOTO_LOOKUP = 'Vou consultar as fotos solicitadas no acervo do hotel.';
 export const PHOTO_CLARIFY = 'De qual espaço do hotel você gostaria de ver fotos?';
 
+// Only our explicit clarification prompts open a photo-selection turn. Do not
+// infer that pending question from arbitrary prose or old conversation history.
+export function photoClarificationQuestion(value: string) {
+  return [PHOTO_CLARIFY, 'Pode me dizer de qual espaço do hotel você gostaria de ver fotos?'].some(question => normalize(value) === normalize(question));
+}
+
 export function documentPhotoInquiry(value: string) {
   const s = normalize(value);
   return /\b(?:foto|fotos|imagem|imagens)\b/.test(s) && /\b(?:comprovante|comprovantes|documento|documentos|pdf|anexo|anexos)\b/.test(s);

@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { EXTRA_MEDIA_CODES, extraCodes, extraPhotoRequest } from '../utils/extraMedia.js';
-import { PHOTO_CLARIFY, PHOTO_LOOKUP, photoDeliveryClaim, photoRetryRequest, shortPhotoRetry } from '../utils/photoIntent.js';
+import { PHOTO_CLARIFY, PHOTO_LOOKUP, photoClarificationQuestion, photoDeliveryClaim, photoRetryRequest, shortPhotoRetry } from '../utils/photoIntent.js';
 import { eventInquiry, eventContactText } from '../utils/hotelInfo.js';
 import { advanceEvent, readEvent, type EventState } from '../utils/eventInquiry.js';
 import { publicEventInquiry, publicEventFollowup, publicEventContext, publicEventAnswer } from '../utils/publicEvents.js';
@@ -14,7 +14,7 @@ import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachm
 // User facts and conversational turns are separate. Assistant text NEVER updates facts.
 type Facts = { check_in?: string; check_out?: string; guests?: number; extras: string[]; children_pending?: boolean };
 type Quote = { version: number; id: string; created_at: number; check_in: string; check_out: string; guests: number; extras: string[]; options: { name: string; capacity: number; total: number }[] };
-type State = { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'extra_photos' | 'extra_info' | 'public_events'; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
+type State = { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events'; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
 const json = (v: unknown): any => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
 const months = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -77,7 +77,7 @@ function loadState(value: unknown, now = Date.now()): State {
     extra_photo_requests: Array.isArray(parsed.extra_photo_requests) ? [...new Set<string>(parsed.extra_photo_requests.filter(knownMediaCode))] : [],
     ...(Array.isArray(parsed.extra_photo_subjects) ? {extra_photo_subjects: [...new Set<string>(parsed.extra_photo_subjects.filter(knownMediaCode))]} : {}),
     ...(readEvent(parsed.event) ? {event:readEvent(parsed.event)} : {}),
-    ...(['room_photos', 'extra_photos', 'extra_info', 'public_events'].includes(parsed.topic) ? {topic: parsed.topic, topic_at: Number(parsed.topic_at) || 0} : {}),
+    ...(['room_photos', 'extra_photos', 'extra_info', 'photo_clarification', 'public_events'].includes(parsed.topic) ? {topic: parsed.topic, topic_at: Number(parsed.topic_at) || 0} : {}),
     ...(typeof parsed.subject === 'string' && !personal(parsed.subject) ? {subject: parsed.subject.slice(0,100)} : {}),
     ...(['guests','dates'].includes(parsed.awaiting) ? {awaiting: parsed.awaiting} : {}),
     ...(typeof parsed.resolved_message === 'string' && !personal(parsed.resolved_message) ? {resolved_message: parsed.resolved_message.slice(0,500)} : {}),
@@ -91,6 +91,14 @@ function remember(state: State, role: 'user' | 'assistant', text: string, replac
   const turns = state.turns || [];
   if (replace && turns.at(-1)?.role === 'assistant') turns.pop();
   state.turns = [...turns, {role, text: text.slice(0,900)}].slice(-16);
+}
+
+function awaitPhotoSubject(state: State, response: string, now: number) {
+  if (!photoClarificationQuestion(response)) return;
+  state.topic = 'photo_clarification';
+  state.topic_at = now;
+  delete state.subject;
+  delete state.extra_photo_subjects;
 }
 
 // Resolve short follow-ups only within an explicit, recent photo conversation.
@@ -107,7 +115,8 @@ function resolveFollowup(state: State, raw: string, now: number): string {
   // Migrate the existing user-only state once, without importing any bot facts.
   // An expired/malformed topic must not be revived by this legacy migration.
   const activeRooms = state.topic === 'room_photos' || (!hadTopic && !state.turns?.length && mediaRequest(previous) && roomWords.test(previous));
-  const active = activeRooms || state.topic === 'extra_photos';
+  const clarifying = state.topic === 'photo_clarification';
+  const active = activeRooms || state.topic === 'extra_photos' || clarifying;
   const shortChoice = shortPhotoChoice(s);
   const directExtras = extraCodes(s);
   // Restrict implicit requests to a list of subjects/connectors. Price, rules,
@@ -116,7 +125,9 @@ function resolveFollowup(state: State, raw: string, now: number): string {
   // ordinary facility question, even after a photo. Require the preposition.
   const photoChoiceText = active ? s.replace(/^(?:e )?(?:(?:voce|voces) )?tem (d[ao]s?)\b/, '$1') : s;
   const shortExtraChoice = directExtras.length > 0 && /^(?:(?:e|agora|tambem|a|o|as|os|da|do|das|dos|de|duas|dois|tres|2|3|todas|todos|me|mande|manda|envie|envia|quero|ver|por favor|pfv|hotel solar|@)[\s,/.!?-]*)+$/.test(photoChoiceText.replace(/\b((?:piscinas?\s+(?:(?:de|com)\s+)?)?(?:hidromassagem|hidromassagens|hidros?)|parque infantil|parquinhos?|playgrounds?|piscinas?(?:\s+(?:principal|principais))?|bicicletas?|bikes?|barcos?|catamara|mesa posta|lua de mel|kit celebracao|kit romantico)\b/g, '@'));
-  let resolved = active && !mediaRequest(s) && (shortChoice || shortExtraChoice) ? `Fotos de ${raw}` : raw;
+  // A clarification has no previous subject: "todas" alone cannot choose a
+  // gallery. A named room or facility can answer the question directly.
+  let resolved = active && !mediaRequest(s) && ((shortChoice && (!clarifying || roomWords.test(s))) || shortExtraChoice) ? `Fotos de ${raw}` : raw;
   if (active && (photoRetryRequest(raw) || shortPhotoRetry(raw))) {
     if (state.topic === 'extra_photos' && state.extra_photo_subjects?.length) resolved = `Fotos de ${state.extra_photo_subjects.map(code => photoSubjectLabels[code]).join(' e ')}`;
     else if (activeRooms && state.subject) resolved = `Fotos de ${state.subject}`;
@@ -340,6 +351,7 @@ export function control(body: any, now = Date.now()) {
     if(Array.isArray(body.extra_photo_requests)) state.extra_photo_requests=[...new Set([...(state.extra_photo_requests||[]),...body.extra_photo_requests.filter(knownMediaCode)])];
     if (body.clear_subject === true) delete state.subject;
     if (typeof body.room_name === 'string' && body.room_name) state.subject = body.room_name.slice(0,100);
+    awaitPhotoSubject(state, String(body.response_text || ''), now);
     return {state: JSON.stringify(state)};
   }
   const quote = validQuote(body.quote_state, state, now);
@@ -415,6 +427,7 @@ export function control(body: any, now = Date.now()) {
   if (question(s)) delete state.pending;
   if (decision === 'NOQUOTE' && photoRetryRequest(publicMessage)) answer = PHOTO_CLARIFY;
   else if (decision === 'NOQUOTE' && photoDeliveryClaim(answer)) answer = mediaRequest(norm(publicMessage)) ? PHOTO_LOOKUP : PHOTO_CLARIFY;
+  if (decision === 'NOQUOTE') awaitPhotoSubject(state, answer, now);
   if (decision !== 'COLETAR') confirmationText = '';
   if (state.first_turn && decision === 'NOQUOTE' && answer && !/^(olá|oi|bom dia|boa tarde|boa noite)/i.test(answer)) answer = 'Olá! Que bom receber seu contato no Hotel Solar. ☀️\n\n' + answer;
   delete state.awaiting;

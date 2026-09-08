@@ -12,9 +12,11 @@ const protectedDeployment=process.argv.includes('--vercel');
 const run=promisify(execFile);
 async function call(path,body) {
   if(protectedDeployment) {
-    const args=['--yes','vercel@59.11.7','curl',path,'--deployment',base.origin,'--','--silent','--show-error','--fail'];
+    // An already-installed, version-checked CLI avoids repeated npm resolution.
+    const cli=process.env.VERCEL_CLI_PATH;
+    const args=cli ? [cli,'curl',path,'--deployment',base.origin,'--','--silent','--show-error','--fail'] : ['--yes','vercel@59.11.7','curl',path,'--deployment',base.origin,'--','--silent','--show-error','--fail'];
     if(body) args.push('-X','POST','-H','Content-Type: application/json','--data-binary',JSON.stringify(body));
-    const {stdout}=await run('npx',args,{encoding:'buffer',maxBuffer:8*1024*1024,timeout:60000});
+    const {stdout}=await run(cli ? process.execPath : 'npx',args,{encoding:'buffer',maxBuffer:8*1024*1024,timeout:60000});
     return stdout;
   }
   const response=await fetch(new URL(path,base),body ? {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)} : {signal:AbortSignal.timeout(20000)});
@@ -101,4 +103,22 @@ for(const message of ['a foto nao chegou','Foto da academia']) {
   assert.match(result.conversation_text,/qual espa[çc]o/i);
   assert.equal(result.availability_checked,false);
 }
-console.log(JSON.stringify({status:'ok',base:base.origin,exactInboxSequences:4,hydroContextVerified:true,photoRetryVerified:true,unknownPhotoSafe:true,queueTerminated:true,photos:results},null,2));
+// Real regression: the bot must accept the answer to its own photo question,
+// including a fresh conversation without any previously selected photograph.
+for(const answer of ['da hidromassagem','hidromassagem']) {
+  const first='me encaminhe a foto pfv';
+  const request=await turn(first,emptyState(),'Vou encaminhar a foto para você.');
+  const clarification=await post('/api/resolve-package',{user_message:first,state:request.state});
+  assert.equal(clarification.quote_request,'ROOM_LIST');
+  assert.match(clarification.conversation_text,/qual espa[çc]o/i);
+  let state=clarification.state;
+  for(const message of [answer,'a foto nao chegou']) {
+    const routed=await turn(message,state,'Encaminhei sua solicitação para envio da foto da hidromassagem.');
+    const selected=await post('/api/resolve-package',{user_message:message,state:routed.state});
+    assert.equal(selected.quote_request,'EXTRA_ID|HIDRO||PAID');
+    assert.equal(selected.conversation_text,'Uma das piscinas de hidromassagem do Hotel Solar 📷');
+    assert.equal(selected.availability_checked,false);
+    state=selected.state;
+  }
+}
+console.log(JSON.stringify({status:'ok',base:base.origin,exactInboxSequences:4,hydroContextVerified:true,photoRetryVerified:true,photoClarificationVerified:true,unknownPhotoSafe:true,queueTerminated:true,photos:results},null,2));
