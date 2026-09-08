@@ -3,12 +3,15 @@ import { extraCodes } from '../utils/extraMedia.js';
 import { eventInquiry, eventContactText } from '../utils/hotelInfo.js';
 import { advanceEvent, readEvent, type EventState } from '../utils/eventInquiry.js';
 import { publicEventInquiry, publicEventFollowup, publicEventContext, publicEventAnswer } from '../utils/publicEvents.js';
+import { isAudioInput, transcribeAudio } from '../utils/audioTranscription.js';
+import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage, audioSourceHash, readAudioTurn, type AudioTurn } from '../utils/audioInput.js';
 
-// No bookings, stock queries, outbound messages, personal-data storage or LLM calls.
+// No bookings, stock queries or outbound messages. The HTTP adapter transcribes
+// audio; the conversation controller remains deterministic.
 // User facts and conversational turns are separate. Assistant text NEVER updates facts.
 type Facts = { check_in?: string; check_out?: string; guests?: number; extras: string[]; children_pending?: boolean };
 type Quote = { version: number; id: string; created_at: number; check_in: string; check_out: string; guests: number; extras: string[]; options: { name: string; capacity: number; total: number }[] };
-type State = { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'public_events'; topic_at?: number; subject?: string; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState };
+type State = { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'public_events'; topic_at?: number; subject?: string; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
 const json = (v: unknown): any => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
 const months = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -28,7 +31,29 @@ const greeting = (s: string) => /^(oi|ola|bom dia|boa tarde|boa noite|tudo bem)(
 const mediaRequest = (s: string) => /\b(fotos?|fotografias?|imagem|imagens|videos?|galeria|album)\b/.test(s);
 const personal = (s: string) => /@|\b(?:\d[.\s-]*){11,}\b|\b(cpf|meu nome|me chamo)\b/i.test(s);
 
-function loadState(value: unknown): State {
+// Audio must carry a safe version of the current request through later HTTP
+// steps, which receive the media URL again instead of the spoken words.
+function safeAudioText(value: string): string {
+  let text = value
+    .replace(/[^\s@,;!?<>]+@[^\s@,;!?<>]+/g, '[Dado pessoal omitido]')
+    .replace(/\+?\b\d(?:[\s().-]*\d){10,}\b/g, '[Dado pessoal omitido]');
+  if (human(norm(text))) return 'Quero falar com a recepção';
+  const nameClause = /\b(?:meu nome(?: completo)?(?:\s+[ée])?|me chamo)\s*[:,-]?\s*/i;
+  // A name may contain several words or commas. Keep only a recognizable
+  // request after it; when there is no clear boundary, omit the entire tail.
+  const requestStart = /\b(?:quero|gostaria|queria|preciso|pode(?:ria)?|qual|quais|quanto|quantos|como|onde|quando|tem|manda|mande|posso|somos|seremos|me (?:mande|manda|passe|passa|envie|envia))\b/i;
+  for (let clause = nameClause.exec(text); clause; clause = nameClause.exec(text)) {
+    const tail = text.slice(clause.index + clause[0].length);
+    const nextRequest = requestStart.exec(tail);
+    text = text.slice(0, clause.index) + (nextRequest ? tail.slice(nextRequest.index) : '');
+  }
+  // Asking about this document is not itself personal data. Spell out its
+  // name so the existing typed-message privacy filter does not erase the query.
+  text = text.replace(/\bcpf\b/gi, 'Cadastro de Pessoas Físicas').replace(/\s+/g, ' ').trim();
+  return text && !personal(text) ? text.slice(0, 2000) : '[Dado pessoal omitido]';
+}
+
+function loadState(value: unknown, now = Date.now()): State {
   const parsed = json(value);
   if (parsed?.version !== 2 || !Array.isArray(parsed.history) || !parsed.facts) {
     return { version: 2, history: [], facts: { extras: [] }, greeted: false };
@@ -50,6 +75,7 @@ function loadState(value: unknown): State {
     ...(typeof parsed.subject === 'string' && !personal(parsed.subject) ? {subject: parsed.subject.slice(0,100)} : {}),
     ...(['guests','dates'].includes(parsed.awaiting) ? {awaiting: parsed.awaiting} : {}),
     ...(typeof parsed.resolved_message === 'string' && !personal(parsed.resolved_message) ? {resolved_message: parsed.resolved_message.slice(0,500)} : {}),
+    ...(readAudioTurn(parsed.audio, now) ? {audio: readAudioTurn(parsed.audio, now)} : {}),
   };
 }
 
@@ -185,20 +211,28 @@ function confirmation(q: Quote, name: string) {
 }
 
 export function control(body: any, now = Date.now()) {
-  const state = loadState(body.state);
-  const raw = String(body.user_message || '').slice(0, 2000);
+  const state = loadState(body.state, now);
+  const input = String(body.user_message || '').trim();
+  const audio = isAudioInput(input);
+  const raw = (audio ? audioMessage(input, state, now) || AUDIO_UNAVAILABLE : input).slice(0, 2000);
   const s = norm(raw);
   let decision = 'NOQUOTE';
   let answer = String(body.ai_response || '').slice(0, 1800);
   let ready = 'NAO';
   let confirmationText = '';
   if (body.operation === 'prepare') {
+    // The adapter supplies a fresh transcription for this turn. Older audio
+    // must not be used if the user changes subject or sends another recording.
+    delete state.audio;
     state.first_turn = !state.greeted;
     state.greeted = true;
     delete state.pending; // Any new typed message invalidates an older confirmation card.
     const wasPublic = state.topic === 'public_events';
     const publicFollowup = wasPublic && Number.isFinite(state.topic_at) && now >= state.topic_at! && now - state.topic_at! <= 30 * 60000 && publicEventFollowup(raw);
-    if (!human(s) && (publicEventInquiry(raw) || publicFollowup)) {
+    if (raw === AUDIO_UNAVAILABLE) {
+      state.resolved_message = AUDIO_UNAVAILABLE;
+      state.changed = false;
+    } else if (!human(s) && (publicEventInquiry(raw) || publicFollowup)) {
       state.resolved_message = personal(raw) ? 'Programação musical de Heraldo Ramos no Reserva Solar' : publicFollowup && !publicEventInquiry(raw) ? `Programação musical de Heraldo Ramos no Reserva Solar: ${raw}` : raw;
       state.topic = 'public_events'; state.topic_at = now; state.changed = false;
       delete state.awaiting; delete state.subject;
@@ -209,8 +243,10 @@ export function control(body: any, now = Date.now()) {
       if(event) {state.event=event;state.changed=false;delete state.awaiting;delete state.topic;}
       else {delete state.event;updateFacts(state, state.resolved_message, now);}
     }
-    if (raw && !personal(raw)) state.history = [...state.history, raw.slice(0, 500)].slice(-12);
-    remember(state, 'user', raw);
+    if (raw !== AUDIO_UNAVAILABLE) {
+      if (raw && !personal(raw)) state.history = [...state.history, raw.slice(0, 500)].slice(-12);
+      remember(state, 'user', raw);
+    }
     const currentQuote = validQuote(body.quote_state, state, now);
     const context = JSON.stringify({ primeira_resposta: state.first_turn, fatos_informados_pelo_cliente: state.facts, mensagens_do_cliente: state.history, conversa_recente: state.turns, assunto_ativo: state.topic || '', acomodacao_em_foco: state.subject || '', interpretacao_da_ultima_mensagem: personal(raw) ? '[Dado pessoal omitido]' : state.resolved_message, ultima_mensagem: personal(raw) ? '[Dado pessoal omitido; não repetir nem guardar]' : raw, cotacao_valida_para_estes_dados: currentQuote, data_atual: new Date(now - 3 * 3600000).toISOString().slice(0, 10), programacao_musical_confirmada: publicEventContext(now), regra: 'Reserva Solar é o nome próprio do restaurante pé na areia, nunca um pedido de reserva de hospedagem. Cardápio, menu, pratos, horários, mesa e informações do Reserva Solar ficam no atendimento de gastronomia e não iniciam cotação. Datas e ocupação só valem se estão nos fatos do cliente. Oferta de pacote não é escolha do cliente. Histórico do atendimento serve para entender referências, nunca comprova aceite ou entrega de mídia. Nunca pedir dados pessoais: isso pertence à confirmação por botão. Nunca afirmar encaminhamento sem ação real. Programação musical pública não é pedido de orçamento privado para Luiza nem escolha de datas de hospedagem. Respeite as datas, situação temporal e limites da programação confirmada; não deduza couvert, entrada ou duração pelas regras gerais do restaurante.' });
     return { state: JSON.stringify(state), context, can_collect: 'NAO', quote_request: 'NOQUOTE' };
@@ -234,7 +270,13 @@ export function control(body: any, now = Date.now()) {
   if (body.operation !== 'route') return { error: 'Invalid operation' };
   const proposed = String(body.proposed || '').trim();
   const publicMessage = state.history.at(-1) === raw ? state.resolved_message || raw : raw;
-  if (human(s)) decision = 'HUMANO';
+  if (raw === AUDIO_UNAVAILABLE) {
+    answer = AUDIO_RETRY;
+    state.resolved_message = AUDIO_UNAVAILABLE;
+    state.changed = false;
+    delete state.pending;
+  }
+  else if (human(s)) decision = 'HUMANO';
   else if (publicEventInquiry(publicMessage)) {answer=publicEventAnswer(publicMessage,now);delete state.pending;}
   else if (state.event) {answer=state.event.answer;delete state.pending;}
   else if (eventInquiry(s) && !mediaRequest(s)) {
@@ -291,8 +333,36 @@ export function control(body: any, now = Date.now()) {
   return { state: JSON.stringify(state), resolved_message: state.resolved_message || raw, quote_request: decision, can_collect: 'NAO', confirmation_text: confirmationText, answer };
 }
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
+export async function handleConversation(body: any, authorization = '', transcribe = transcribeAudio, now = Date.now()) {
+  const input = String(body?.user_message || '').trim();
+  if (body?.operation !== 'prepare' || !isAudioInput(input)) return control(body || {}, now);
+  let text = AUDIO_UNAVAILABLE;
+  let status: AudioTurn['status'] = 'error';
+  try {
+    // Credentials travel only to the transcription provider, never to media URLs.
+    text = (await transcribe(input, authorization)).trim().slice(0, 2000);
+    if (text) status = 'ok';
+    else text = AUDIO_UNAVAILABLE;
+  } catch { /* Return a usable, non-technical fallback within ManyChat's timeout. */ }
+  if (status === 'ok') text = safeAudioText(text);
+  const result = control({...body, user_message: text}, now);
+  if (!('context' in result) || !result.state) return result;
+  const state = json(result.state);
+  state.audio = {source_hash: audioSourceHash(input), text, status, created_at: now};
+  const context = json(result.context);
+  context.tipo_entrada = 'audio';
+  context.audio_transcrito = status === 'ok';
+  if (status === 'error') {
+    context.ultima_mensagem = '[Não foi possível transcrever o áudio recebido.]';
+    context.interpretacao_da_ultima_mensagem = context.ultima_mensagem;
+    context.regra = `O áudio atual não foi compreendido. Responda somente: ${AUDIO_RETRY}`;
+    context.cotacao_valida_para_estes_dados = null;
+  }
+  return {...result, state: JSON.stringify(state), context: JSON.stringify(context), input_type: 'audio', transcription_status: status};
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST' });
-  const result = control(req.body || {});
+  const result = await handleConversation(req.body || {}, req.headers?.authorization || '');
   return res.status('error' in result ? 400 : 200).json(result);
 }

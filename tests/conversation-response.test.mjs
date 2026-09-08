@@ -4,6 +4,7 @@ import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import sharp from 'sharp';
+import { createHash } from 'node:crypto';
 
 const rooms = [
   { id: 'casal', name: 'Suíte Casal', capacity: 2, base_price: 500, overrides: [] },
@@ -42,6 +43,22 @@ async function request(handler, body) {
   assert.equal(status, 200);
   return payload;
 }
+
+test('áudio transcrito chega às fotos; falha não reutiliza pacote ou evento antigo', async () => {
+  const handler = await loadHandler('api/resolve-package.ts', packages, rooms.map(room => ({...room,images:['https://example.com/room.jpg']})));
+  const url = 'https://media.example.com/voice.ogg';
+  const text = 'Quero fotos do Loft';
+  const state = {version:2,history:[text],resolved_message:text,facts:{extras:[]},greeted:true,audio:{source_hash:createHash('sha256').update(url).digest('hex'),text,status:'ok',created_at:Date.now()}};
+  const r = await request(handler,{user_message:url,state});
+  assert.match(r.quote_request,/ROOM_ID/);
+  assert.match(r.room_name,/Loft/);
+  for (const invalid of [{...state,audio:{...state.audio,status:'error'}},{...state,audio:{...state.audio,created_at:Date.now()-16*60000}}]) {
+    const failed = await request(handler,{user_message:url,state:invalid});
+    assert.equal(failed.quote_request,'ROOM_LIST');
+    assert.match(failed.conversation_text,/reenviar ou escrever/);
+    assert.doesNotMatch(failed.conversation_text,/Loft|pacote|quantas pessoas/);
+  }
+});
 
 test('programação Heraldo responde antes de pacotes/extras/lead privado sem acessar tabelas', async () => {
   const handler=await loadHandler('api/resolve-package.ts',[],[]);

@@ -7,6 +7,8 @@ import { eventInquiry, eventContactText, reservaPhotoRequest, sitePhotoResult } 
 import { readEvent } from '../utils/eventInquiry.js';
 import { deliverEvent, deliveryFailed, acceptEventReceipt } from '../utils/eventDelivery.js';
 import { publicEventInquiry, publicEventAnswer } from '../utils/publicEvents.js';
+import { isAudioInput } from '../utils/audioTranscription.js';
+import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage } from '../utils/audioInput.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -261,8 +263,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const state = typeof req.body?.state === 'string' ? JSON.parse(req.body.state) : req.body?.state;
     conversationState = state;
+    if (isAudioInput(userMessage)) userMessage = audioMessage(userMessage, state) || AUDIO_UNAVAILABLE;
     if (state?.version === 2 && state.history?.at(-1) === userMessage && typeof state.resolved_message === 'string') userMessage = state.resolved_message;
   } catch { /* Legacy or invalid state: use only the actual message. */ }
+  if (isAudioInput(userMessage) || userMessage === AUDIO_UNAVAILABLE) {
+    return res.status(200).json({quote_request:'ROOM_LIST',quote_text:AUDIO_RETRY,conversation_text:AUDIO_RETRY,matched:false,availability_checked:false});
+  }
   if (!userMessage) {
     return res.status(400).json({ error: 'Missing user_message.' });
   }
