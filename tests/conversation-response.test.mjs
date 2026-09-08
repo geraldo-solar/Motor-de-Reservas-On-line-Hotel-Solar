@@ -44,6 +44,87 @@ async function request(handler, body) {
   return payload;
 }
 
+test('pedido combinado de parque, piscinas e bicicletas por texto ou áudio mantém as três fotos', async () => {
+  const bundle = await build({entryPoints:['api/conversation-control.ts'],bundle:true,write:false,platform:'node',format:'esm'});
+  const {control,handleConversation} = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
+  const handler = await loadHandler('api/resolve-package.ts', [], []);
+  const spoken = 'Me mande fotos do parque infantil, piscinas e bicicletas';
+  const audioUrl = 'https://media.example.com/leisure.ogg';
+  const initial = {version:2,history:[],facts:{guests:2,extras:[]},greeted:true,extra_photo_requests:['BIKE'],turns:[{role:'assistant',text:'Não tenho fotos de bicicletas para enviar.'}]};
+  for (const user_message of [spoken,audioUrl]) {
+    const prepared = await handleConversation({operation:'prepare',user_message,state:initial},'Bearer test-only',async()=>spoken);
+    const routed = control({operation:'route',user_message,state:prepared.state,proposed:'COLETAR',ai_response:'Não temos essas fotos.'});
+    assert.equal(routed.quote_request,'NOQUOTE');
+    assert.equal(routed.can_collect,'NAO');
+    assert.equal(routed.confirmation_text,'');
+    const result = await request(handler,{user_message,state:routed.state});
+    assert.deepEqual(result.photo_codes,['PARQUE','PISCINA','BIKE']);
+    assert.deepEqual(JSON.parse(result.state).facts,{guests:2,extras:[]});
+    assert.equal(result.availability_checked,false);
+    assert.match(result.conversation_text,/Parque infantil/i);
+    assert.doesNotMatch(result.conversation_text,/Não temos|não tenho|não há foto|CPF|diárias|confirmada/i);
+    const sent=[];
+    let item=result;
+    for (let step=0;step<4 && item.quote_request!=='ROOM_DONE';step++) {
+      sent.push(item.quote_request.split('|')[1]);
+      await handler({method:'POST',query:{operation:'next'},body:{user_message:item.quote_request}}, {status(){return this;},json(value){item=value;return value;}});
+    }
+    assert.deepEqual(sent,['PARQUE','PISCINA','BIKE']);
+    assert.equal(item.quote_request,'ROOM_DONE');
+  }
+});
+
+test('foto de lazer oficial e bicicleta ManyChat chegam ao endpoint de imagem sem troca de tema', async () => {
+  const handler = await loadHandler('api/package-image.ts',[],[],[]);
+  const source = await sharp({create:{width:1800,height:1400,channels:3,background:'#693'}}).webp().toBuffer();
+  const fetchBefore = globalThis.fetch;
+  const requests=[];
+  globalThis.fetch = async (url) => {requests.push(String(url)); return new Response(source,{headers:{'Content-Type':'image/webp'}});};
+  try {
+    for (const [code,expected] of [
+      ['PARQUE',/hotelsolar\.tur\.br\/assets\/images\/parquinho\.webp$/],
+      ['PISCINA',/hotelsolar\.tur\.br\/assets\/images\/editada-piscina\.webp$/],
+      ['BIKE',/manybot-thumbnails.*big_ac17283c8e6ce7cd2846389ecd0ee075\.jpeg$/],
+    ]) {
+      let status,bytes;const headers={};
+      await handler({method:'GET',query:{code:`EXTRA_ID|${code}||PAID`}}, {
+        status(value){status=value;return this;},setHeader(key,value){headers[key]=value;},send(value){bytes=value;},json(value){throw Error(JSON.stringify(value));},
+      });
+      assert.equal(status,200);
+      assert.match(requests.at(-1),expected);
+      assert.equal(headers['Content-Type'],'image/jpeg');
+      assert.ok(bytes.length<4_500_000);
+      const metadata=await sharp(bytes).metadata();
+      assert.ok(metadata.width<=1280 && metadata.height<=1280);
+    }
+  } finally {globalThis.fetch=fetchBefore;}
+});
+
+test('reprodução do Inbox: pergunta da piscina ou playground seguida de Tem fotos usa o tema atual', async () => {
+  const bundle=await build({entryPoints:['api/conversation-control.ts'],bundle:true,write:false,platform:'node',format:'esm'});
+  const {control}=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
+  const handler=await loadHandler('api/resolve-package.ts',[],[]);
+  const now=Date.now();
+  for(const [info,followup,code] of [
+    ['O hotel tem piscina?','Tem fotos?','PISCINA'],
+    ['Tem parquinho para crianças?','Tem foto?','PARQUE'],
+    ['Playground para crianças?','Tem foto?','PARQUE'],
+  ]) {
+    const facts={guests:2,extras:[]};
+    const first=control({operation:'prepare',user_message:info,state:{version:2,history:[],facts,greeted:true}},now);
+    const answer=control({operation:'route',user_message:info,state:first.state,ai_response:'Sim, esse espaço faz parte da estrutura do hotel.'},now);
+    assert.deepEqual(JSON.parse(answer.state).facts,facts);
+    assert.doesNotMatch(answer.answer,/idades das crianças|datas de entrada|quantas pessoas/i);
+    const next=control({operation:'prepare',user_message:followup,state:answer.state},now+1000);
+    const routed=control({operation:'route',user_message:followup,state:next.state,ai_response:'No momento, não disponho de fotos específicas para envio.'},now+1000);
+    const result=await request(handler,{user_message:followup,state:routed.state});
+    assert.deepEqual(result.photo_codes,[code]);
+    assert.match(result.quote_request,new RegExp(`^EXTRA_ID\\|${code}\\|`));
+    assert.doesNotMatch(result.conversation_text,/não disponho|não há foto|idades das crianças/i);
+    assert.deepEqual(JSON.parse(result.state).facts,facts);
+  }
+});
+
 test('áudio transcrito chega às fotos; falha não reutiliza pacote ou evento antigo', async () => {
   const handler = await loadHandler('api/resolve-package.ts', packages, rooms.map(room => ({...room,images:['https://example.com/room.jpg']})));
   const url = 'https://media.example.com/voice.ogg';

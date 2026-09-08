@@ -44,6 +44,26 @@ test('áudio de acompanhamento mantém referência das fotos solicitadas', async
   assert.equal(r.quote_request,'NOQUOTE');
 });
 
+test('áudio de bicicletas e piscinas mantém fotos de lazer e perguntas anteriores em foco', async () => {
+  for (const [firstMessage,spoken,resolved,codes] of [
+    ['Quero fotos do parque infantil','E das bicicletas?','Fotos de E das bicicletas?',['BIKE']],
+    ['Fotos das bicicletas','e das piscinas?','Fotos de e das piscinas?',['PISCINA']],
+    ['O hotel tem piscina?','Tem fotos?','Fotos de piscinas',['PISCINA']],
+    ['Playground para crianças?','Tem foto?','Fotos de parque infantil',['PARQUE']],
+  ]) {
+    const first = control({operation:'prepare',user_message:firstMessage},now);
+    const p = await handleConversation({operation:'prepare',user_message:audio,state:first.state},auth,async()=>spoken,now);
+    const r = control({operation:'route',user_message:audio,state:p.state,ai_response:'Não temos fotos.',proposed:'COLETAR'},now);
+    assert.equal(r.resolved_message,resolved);
+    assert.deepEqual(JSON.parse(r.state).extra_photo_subjects,codes);
+    assert.equal(r.quote_request,'NOQUOTE');
+    assert.equal(r.can_collect,'NAO');
+    assert.match(r.answer,/consultar as fotos/);
+    assert.deepEqual(JSON.parse(r.state).facts,{extras:[]});
+    assert.doesNotMatch(p.state+p.context,/signature|media\.example|Bearer/);
+  }
+});
+
 test('falha ou áudio vazio não reutiliza resposta antiga nem inicia coleta', async () => {
   const state = control({operation:'prepare',user_message:'De 20 a 25 de setembro para duas pessoas'},now).state;
   for (const transcribe of [async () => {throw Error('provider secret');},async () => '   ']) {

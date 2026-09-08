@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { extraCodes } from '../utils/extraMedia.js';
+import { EXTRA_MEDIA_CODES, extraCodes, extraPhotoRequest } from '../utils/extraMedia.js';
 import { eventInquiry, eventContactText } from '../utils/hotelInfo.js';
 import { advanceEvent, readEvent, type EventState } from '../utils/eventInquiry.js';
 import { publicEventInquiry, publicEventFollowup, publicEventContext, publicEventAnswer } from '../utils/publicEvents.js';
@@ -13,7 +13,7 @@ import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachm
 // User facts and conversational turns are separate. Assistant text NEVER updates facts.
 type Facts = { check_in?: string; check_out?: string; guests?: number; extras: string[]; children_pending?: boolean };
 type Quote = { version: number; id: string; created_at: number; check_in: string; check_out: string; guests: number; extras: string[]; options: { name: string; capacity: number; total: number }[] };
-type State = { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'public_events'; topic_at?: number; subject?: string; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
+type State = { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'extra_photos' | 'extra_info' | 'public_events'; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
 const json = (v: unknown): any => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
 const months = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -32,6 +32,8 @@ const greeting = (s: string) => /^(oi|ola|bom dia|boa tarde|boa noite|tudo bem)(
 // Asking to see something is informational, even with "quero" and a room name.
 const mediaRequest = (s: string) => /\b(fotos?|fotografias?|imagem|imagens|videos?|galeria|album)\b/.test(s);
 const personal = (s: string) => /@|\b(?:\d[.\s-]*){11,}\b|\b(cpf|meu nome|me chamo)\b/i.test(s);
+const knownMediaCode = (code: unknown): code is string => typeof code === 'string' && EXTRA_MEDIA_CODES.some(known => known === code);
+const photoSubjectLabels: Record<string, string> = {BARCO: 'barco', MESA: 'mesa posta', LUA: 'kit lua de mel', BIKE: 'bicicletas', PARQUE: 'parque infantil', PISCINA: 'piscinas'};
 
 // Audio must carry a safe version of the current request through later HTTP
 // steps, which receive the media URL again instead of the spoken words.
@@ -71,9 +73,10 @@ function loadState(value: unknown, now = Date.now()): State {
   if (typeof f.children_pending === 'boolean') facts.children_pending = f.children_pending;
   return { version: 2, history: parsed.history.filter((s: unknown) => typeof s === 'string' && !personal(s as string)).slice(-12).map((s: string) => s.slice(0, 500)), facts, greeted: parsed.greeted === true, first_turn: parsed.first_turn === true, changed: parsed.changed === true, ...(typeof parsed.pending?.quote_id === 'string' && typeof parsed.pending?.option === 'string' ? { pending: parsed.pending } : {}),
     turns: Array.isArray(parsed.turns) ? parsed.turns.filter((t: any) => ['user', 'assistant'].includes(t?.role) && typeof t.text === 'string' && !personal(t.text)).slice(-16).map((t: any) => ({role:t.role, text:t.text.slice(0,900)})) : [],
-    extra_photo_requests: Array.isArray(parsed.extra_photo_requests) ? [...new Set<string>(parsed.extra_photo_requests.filter((c:unknown)=>['BARCO','MESA','LUA','BIKE'].includes(String(c))))] : [],
+    extra_photo_requests: Array.isArray(parsed.extra_photo_requests) ? [...new Set<string>(parsed.extra_photo_requests.filter(knownMediaCode))] : [],
+    ...(Array.isArray(parsed.extra_photo_subjects) ? {extra_photo_subjects: [...new Set<string>(parsed.extra_photo_subjects.filter(knownMediaCode))]} : {}),
     ...(readEvent(parsed.event) ? {event:readEvent(parsed.event)} : {}),
-    ...(['room_photos', 'public_events'].includes(parsed.topic) ? {topic: parsed.topic, topic_at: Number(parsed.topic_at) || 0} : {}),
+    ...(['room_photos', 'extra_photos', 'extra_info', 'public_events'].includes(parsed.topic) ? {topic: parsed.topic, topic_at: Number(parsed.topic_at) || 0} : {}),
     ...(typeof parsed.subject === 'string' && !personal(parsed.subject) ? {subject: parsed.subject.slice(0,100)} : {}),
     ...(['guests','dates'].includes(parsed.awaiting) ? {awaiting: parsed.awaiting} : {}),
     ...(typeof parsed.resolved_message === 'string' && !personal(parsed.resolved_message) ? {resolved_message: parsed.resolved_message.slice(0,500)} : {}),
@@ -93,19 +96,43 @@ function remember(state: State, role: 'user' | 'assistant', text: string, replac
 // New topics and booking choices must not inherit the previous photo intent.
 function resolveFollowup(state: State, raw: string, now: number): string {
   const s = norm(raw);
-  if (state.topic_at && now - state.topic_at > 30 * 60000) { delete state.topic; delete state.subject; }
+  const hadTopic = !!state.topic;
+  const recentTopic = Number.isFinite(state.topic_at) && state.topic_at! > 0 && now >= state.topic_at! && now - state.topic_at! <= 30 * 60000;
+  if (hadTopic && !recentTopic) { delete state.topic; delete state.topic_at; delete state.subject; delete state.extra_photo_subjects; }
+  if (human(s)) { delete state.topic; delete state.topic_at; delete state.subject; delete state.extra_photo_subjects; return raw; }
   const roomWords = /\b(aptos?|apartamentos?|quartos?|acomodacoes|acomodacao|suites?|loft|varanda|terreo|quadruplo|triplo|sacada|casal)\b/;
-  const shortPhotoChoice = (value: string) => /^(?:(?:e|agora|a|o|da|do|das|dos|de|suite|me mande|me manda|mande|manda|quero ver|quero|por favor|pfv)\s+)*(?:todos|todas|loft|casal|triplo|quadruplo|varanda terreo|sacada vista mar)(?:\s+(?:os|as|aptos|apartamentos|quartos|suites|acomodacoes|pfv|por favor))*[.!?]*$/.test(value);
+  const shortPhotoChoice = (value: string) => /^(?:(?:e|agora|a|o|da|do|das|dos|de|suite|me mande|me manda|mande|manda|quero ver|quero|por favor|pfv)\s+)*(?:todos|todas|loft|casal|triplo|quadruplo|varanda terreo|sacada vista mar)(?:\s+(?:os|as|aptos|apartamentos|quartos|suites|acomodacoes|pfv|por favor))*[.!?]*$/.test(value.replace(/,/g, ' ').replace(/\s+/g, ' ').trim());
   const previous = norm([...state.history].slice(-4).reverse().find(message => !shortPhotoChoice(norm(message))) || '');
   // Migrate the existing user-only state once, without importing any bot facts.
-  const active = state.topic === 'room_photos' || (!state.turns?.length && mediaRequest(previous) && roomWords.test(previous));
+  // An expired/malformed topic must not be revived by this legacy migration.
+  const activeRooms = state.topic === 'room_photos' || (!hadTopic && !state.turns?.length && mediaRequest(previous) && roomWords.test(previous));
+  const active = activeRooms || state.topic === 'extra_photos';
   const shortChoice = shortPhotoChoice(s);
-  let resolved = active && !mediaRequest(s) && shortChoice ? `Fotos de ${raw}` : raw;
-  if (mediaRequest(s) && /\b(dess[ae]|dest[ae]|del[ae])\b/.test(s) && state.subject && !/restaurante|reserva solar/.test(s)) resolved = `Fotos de ${state.subject}`;
-  if (mediaRequest(norm(resolved)) && (roomWords.test(norm(resolved)) || (active && /\btod[oa]s\b/.test(s)))) {
+  const directExtras = extraCodes(s);
+  // Restrict implicit requests to a list of subjects/connectors. Price, rules,
+  // availability, booking and ordinary facility questions are not photo intent.
+  const shortExtraChoice = directExtras.length > 0 && /^(?:(?:e|agora|tambem|a|o|as|os|da|do|das|dos|de|me|mande|manda|envie|envia|quero|ver|por favor|pfv|hotel solar|@)[\s,/.!?-]*)+$/.test(s.replace(/\b(parque infantil|parquinhos?|playgrounds?|piscinas?|bicicletas?|bikes?|barcos?|catamara|mesa posta|lua de mel|kit celebracao|kit romantico)\b/g, '@'));
+  let resolved = active && !mediaRequest(s) && (shortChoice || shortExtraChoice) ? `Fotos de ${raw}` : raw;
+  if (state.topic === 'extra_photos' && state.extra_photo_subjects?.length && shortChoice && /\btod[oa]s\b/.test(s) && !roomWords.test(s)) resolved = `Fotos de ${state.extra_photo_subjects.map(code => photoSubjectLabels[code]).join(' e ')}`;
+  const genericPhotos = extraPhotoRequest(s) && /^(?:(?:e|agora|tambem|tem|voces|voce|ha|pode|podem|poderia|poderiam|me|mande|manda|enviar|envie|envia|mostrar|quero|gostaria|queria|ver|de|a|as|o|os|um|uma|umas|uns|alguma|algumas|algum|alguns|mais|todos|todas|dess[ae]s?|dest[ae]s?|del[ae]s?|por favor|pfv|fotos?|fotografias?|imagem|imagens|galeria|album)[\s,/.!?-]*)+$/.test(s);
+  if (extraPhotoRequest(s) && !directExtras.length && (genericPhotos || /\b(dess[ae]s?|dest[ae]s?|del[ae]s?)\b/.test(s))) {
+    if ((state.topic === 'extra_photos' || state.topic === 'extra_info') && state.extra_photo_subjects?.length && genericPhotos) resolved = `Fotos de ${state.extra_photo_subjects.map(code => photoSubjectLabels[code]).join(' e ')}`;
+    else if (state.subject && !restaurantInquiry(s)) resolved = `Fotos de ${state.subject}`;
+  }
+  const resolvedExtras = extraCodes(resolved);
+  if (extraPhotoRequest(resolved) && resolvedExtras.length) {
+    state.topic = 'extra_photos'; state.topic_at = now; state.extra_photo_subjects = resolvedExtras;
+    delete state.subject; // Pools and bicycles never become the room in focus.
+  } else if (mediaRequest(norm(resolved)) && (roomWords.test(norm(resolved)) || (activeRooms && /\btod[oa]s\b/.test(s)))) {
     state.topic = 'room_photos'; state.topic_at = now;
+    delete state.extra_photo_subjects;
     if (/\btod[oa]s\b/.test(s)) resolved = 'Fotos de todos os apartamentos';
-  } else { delete state.topic; }
+  } else if (directExtras.length && !mediaRequest(s) && !lodging(s) && !restaurantInquiry(s) && (question(s) || shortExtraChoice)) {
+    // Remember the facility mentioned by the customer, not something offered
+    // by the assistant. This is informational until they explicitly ask photos.
+    state.topic = 'extra_info'; state.topic_at = now; state.extra_photo_subjects = directExtras;
+    delete state.subject;
+  } else { delete state.topic; delete state.topic_at; delete state.subject; delete state.extra_photo_subjects; }
   return resolved;
 }
 
@@ -224,7 +251,7 @@ export function control(body: any, now = Date.now()) {
     state.attachment = current;
     state.changed = false;
     delete state.pending; delete state.awaiting; delete state.topic; delete state.topic_at;
-    delete state.subject; delete state.event; delete state.audio;
+    delete state.subject; delete state.extra_photo_subjects; delete state.event; delete state.audio;
     state.resolved_message = attachmentContextMessage(current.kind);
     if (body.operation === 'prepare') {
       state.first_turn = !state.greeted;
@@ -268,14 +295,15 @@ export function control(body: any, now = Date.now()) {
     if (raw === AUDIO_UNAVAILABLE) {
       state.resolved_message = AUDIO_UNAVAILABLE;
       state.changed = false;
+      delete state.topic; delete state.topic_at; delete state.subject; delete state.extra_photo_subjects;
     } else if (!human(s) && (publicEventInquiry(raw) || publicFollowup)) {
       state.resolved_message = personal(raw) ? 'Programação musical de Heraldo Ramos no Reserva Solar' : publicFollowup && !publicEventInquiry(raw) ? `Programação musical de Heraldo Ramos no Reserva Solar: ${raw}` : raw;
       state.topic = 'public_events'; state.topic_at = now; state.changed = false;
-      delete state.awaiting; delete state.subject;
+      delete state.awaiting; delete state.subject; delete state.extra_photo_subjects;
       // A public show is not an answer/consent to a private-event lead in progress.
     } else {
       state.resolved_message = personal(raw) ? '[Dado pessoal omitido]' : resolveFollowup(state, raw, now);
-      const event = wasPublic && !eventInquiry(raw) ? undefined : advanceEvent(state.event,raw,String(body.subscriber_id||state.event?.source||''),now);
+      const event = mediaRequest(norm(state.resolved_message)) || (wasPublic && !eventInquiry(raw)) ? undefined : advanceEvent(state.event,raw,String(body.subscriber_id||state.event?.source||''),now);
       if(event) {state.event=event;state.changed=false;delete state.awaiting;delete state.topic;}
       else {delete state.event;updateFacts(state, state.resolved_message, now);}
     }
@@ -284,12 +312,24 @@ export function control(body: any, now = Date.now()) {
       remember(state, 'user', raw);
     }
     const currentQuote = validQuote(body.quote_state, state, now);
-    const context = JSON.stringify({ primeira_resposta: state.first_turn, fatos_informados_pelo_cliente: state.facts, mensagens_do_cliente: state.history, conversa_recente: state.turns, assunto_ativo: state.topic || '', acomodacao_em_foco: state.subject || '', interpretacao_da_ultima_mensagem: personal(raw) ? '[Dado pessoal omitido]' : state.resolved_message, ultima_mensagem: personal(raw) ? '[Dado pessoal omitido; não repetir nem guardar]' : raw, cotacao_valida_para_estes_dados: currentQuote, data_atual: new Date(now - 3 * 3600000).toISOString().slice(0, 10), programacao_musical_confirmada: publicEventContext(now), regra: 'Reserva Solar é o nome próprio do restaurante pé na areia, nunca um pedido de reserva de hospedagem. Cardápio, menu, pratos, horários, mesa e informações do Reserva Solar ficam no atendimento de gastronomia e não iniciam cotação. Datas e ocupação só valem se estão nos fatos do cliente. Oferta de pacote não é escolha do cliente. Histórico do atendimento serve para entender referências, nunca comprova aceite ou entrega de mídia. Nunca pedir dados pessoais: isso pertence à confirmação por botão. Nunca afirmar encaminhamento sem ação real. Programação musical pública não é pedido de orçamento privado para Luiza nem escolha de datas de hospedagem. Respeite as datas, situação temporal e limites da programação confirmada; não deduza couvert, entrada ou duração pelas regras gerais do restaurante.' });
+    const context = JSON.stringify({
+      primeira_resposta: state.first_turn, fatos_informados_pelo_cliente: state.facts,
+      mensagens_do_cliente: state.history, conversa_recente: state.turns,
+      assunto_ativo: state.topic || '', acomodacao_em_foco: state.subject || '',
+      lazer_em_foco: state.extra_photo_subjects || [],
+      fotos_lazer_solicitadas: state.topic === 'extra_photos' ? state.extra_photo_subjects || [] : [],
+      interpretacao_da_ultima_mensagem: personal(raw) ? '[Dado pessoal omitido]' : state.resolved_message,
+      ultima_mensagem: personal(raw) ? '[Dado pessoal omitido; não repetir nem guardar]' : raw,
+      cotacao_valida_para_estes_dados: currentQuote,
+      data_atual: new Date(now - 3 * 3600000).toISOString().slice(0, 10),
+      programacao_musical_confirmada: publicEventContext(now),
+      regra: 'Reserva Solar é o nome próprio do restaurante pé na areia, nunca um pedido de reserva de hospedagem. Cardápio, menu, pratos, horários, mesa e informações do Reserva Solar ficam no atendimento de gastronomia e não iniciam cotação. Datas e ocupação só valem se estão nos fatos do cliente. Oferta de pacote não é escolha do cliente. Histórico do atendimento serve para entender referências, nunca comprova aceite ou entrega de mídia. Nunca pedir dados pessoais: isso pertence à confirmação por botão. Nunca afirmar encaminhamento sem ação real. Programação musical pública não é pedido de orçamento privado para Luiza nem escolha de datas de hospedagem. Respeite as datas, situação temporal e limites da programação confirmada; não deduza couvert, entrada ou duração pelas regras gerais do restaurante. Pedidos de fotos de lazer e serviços são resolvidos pelo acervo de mídia do hotel no próximo passo; não afirmar que não há fotos nem que já foram enviadas. Lazer em foco não é escolha de hospedagem, inclusão de extra pago nem informação sobre crianças da reserva.',
+    });
     return { state: JSON.stringify(state), context, can_collect: 'NAO', quote_request: 'NOQUOTE' };
   }
   if (body.operation === 'remember_response') {
     remember(state, 'assistant', String(body.response_text || ''), true);
-    if(Array.isArray(body.extra_photo_requests)) state.extra_photo_requests=[...new Set([...(state.extra_photo_requests||[]),...body.extra_photo_requests.filter((c:string)=>['BARCO','MESA','LUA','BIKE'].includes(c))])];
+    if(Array.isArray(body.extra_photo_requests)) state.extra_photo_requests=[...new Set([...(state.extra_photo_requests||[]),...body.extra_photo_requests.filter(knownMediaCode)])];
     if (body.clear_subject === true) delete state.subject;
     if (typeof body.room_name === 'string' && body.room_name) state.subject = body.room_name.slice(0,100);
     return {state: JSON.stringify(state)};
@@ -311,8 +351,15 @@ export function control(body: any, now = Date.now()) {
     state.resolved_message = AUDIO_UNAVAILABLE;
     state.changed = false;
     delete state.pending;
+    delete state.topic; delete state.topic_at; delete state.subject; delete state.extra_photo_subjects;
   }
   else if (human(s)) decision = 'HUMANO';
+  else if (extraPhotoRequest(publicMessage) && extraCodes(publicMessage).length) {
+    // The native media branch resolves available photos and replaces this
+    // transition. Do not repeat an unsupported AI denial or claim media sent.
+    answer = 'Vou consultar as fotos solicitadas no acervo do hotel.';
+    delete state.pending;
+  }
   else if (publicEventInquiry(publicMessage)) {answer=publicEventAnswer(publicMessage,now);delete state.pending;}
   else if (state.event) {answer=state.event.answer;delete state.pending;}
   else if (eventInquiry(s) && !mediaRequest(s)) {
@@ -325,7 +372,7 @@ export function control(body: any, now = Date.now()) {
     // mistaken QUOTE proposal caused by the word "reserva" in the venue name.
     delete state.pending;
   }
-  else if (mediaRequest(s) || mediaRequest(norm(state.resolved_message || '')) && state.topic === 'room_photos') {
+  else if (mediaRequest(s) || mediaRequest(norm(publicMessage)) && (state.topic === 'room_photos' || state.topic === 'extra_photos')) {
     // Continue to ManyChat's media branch; do not quote, select or collect data.
     delete state.pending;
   }

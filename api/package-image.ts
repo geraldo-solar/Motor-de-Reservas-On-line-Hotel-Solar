@@ -2,7 +2,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { roomImages } from '../utils/roomMedia.js';
 import sharp from 'sharp';
-import {extraCode,extraImage} from '../utils/extraMedia.js';
+import {extraCode,extraImages} from '../utils/extraMedia.js';
 import {sitePhotoUrl} from '../utils/hotelInfo.js';
 
 type PackageRecord = {
@@ -67,7 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const reference = req.query.code;
   const siteImage=sitePhotoUrl(String(reference||''));
-  const extraMatch=String(reference||'').match(/^EXTRA_ID\|(BARCO|MESA|LUA|BIKE)(?:\|[A-Z,]*\|(INCLUDED|PAID))?$/);
+  const extraMatch=String(reference||'').match(/^EXTRA_ID\|(BARCO|MESA|LUA|BIKE|PARQUE|PISCINA)(?:\|[A-Z,]*\|(INCLUDED|PAID))?$/);
   const serviceCode=extraMatch?.[1];
   const roomMatch = String(reference || '').match(/^ROOM_ID\|([0-9a-f]{8}-[0-9a-f-]{27,})(?:\|[0-9a-f,-]{1,800})?$/i);
   const roomId = roomMatch?.[1];
@@ -89,11 +89,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     : packageId
     ? (packages || []).find(item => String(item.id) === packageId)
     : findPackageByCode(packages || [], code!);
-  const selectedImage = siteImage || (serviceCode ? extraImage(pkg,serviceCode) : roomId && pkg ? roomImages(pkg)[0] : pkg?.image_url);
-  if (!selectedImage) return res.status(404).json({ error: 'Image not found.' });
+  const selectedImages = serviceCode ? extraImages(pkg,serviceCode) : [siteImage || (roomId && pkg ? roomImages(pkg)[0] : pkg?.image_url)].filter(Boolean);
+  if (!selectedImages.length) return res.status(404).json({ error: 'Image not found.' });
 
   try {
-    const image = selectedImage.trim();
     res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
 
     const sendImage = async (bytes: Buffer, contentType: string) => {
@@ -110,21 +109,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).send(optimized);
     };
 
-    if (image.startsWith('data:image/')) {
-      const match = image.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/s);
-      if (!match) return res.status(422).json({ error: 'Invalid embedded image.' });
-      return await sendImage(Buffer.from(match[2], 'base64'), match[1]);
-    }
+    for (let index=0;index<selectedImages.length;index++) {
+      const image=selectedImages[index]!.trim();
+      const hasFallback=index+1<selectedImages.length;
+      try {
+        if (image.startsWith('data:image/')) {
+          const match = image.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/s);
+          if (!match) {
+            if(hasFallback) continue;
+            return res.status(422).json({ error: 'Invalid embedded image.' });
+          }
+          return await sendImage(Buffer.from(match[2], 'base64'), match[1]);
+        }
 
-    const imageUrl = image.startsWith('/')
-      ? `https://reservas.hotelsolar.tur.br${image}`
-      : toDirectImageUrl(image);
-    const imageResponse = await fetch(imageUrl);
-    if (!imageResponse.ok) {
-      return res.status(502).json({ error: 'Unable to load package image.' });
+        const imageUrl = image.startsWith('/')
+          ? `https://reservas.hotelsolar.tur.br${image}`
+          : toDirectImageUrl(image);
+        const imageResponse = await fetch(imageUrl);
+        if (!imageResponse.ok) {
+          if(hasFallback) continue;
+          return res.status(502).json({ error: 'Unable to load package image.' });
+        }
+        return await sendImage(Buffer.from(await imageResponse.arrayBuffer()), imageResponse.headers.get('content-type') || 'image/jpeg');
+      } catch(error) {
+        if(!hasFallback) throw error;
+      }
     }
-
-    return await sendImage(Buffer.from(await imageResponse.arrayBuffer()), imageResponse.headers.get('content-type') || 'image/jpeg');
+    return res.status(502).json({ error: 'Unable to load package image.' });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
