@@ -9,6 +9,73 @@ function prepare(message, state, quote_state = quote) { return control({ operati
 function route(message, state, proposed = 'COLETAR', quote_state = quote) { return control({ operation: 'route', state, user_message: message, proposed, quote_state, ai_response: 'Resposta de teste.' }, now); }
 function knownState() { return prepare('De 20 a 25 de setembro para duas pessoas').state; }
 
+test('eventos e grupos indicam Luiza sem cotar quartos nem alterar hóspedes', () => {
+  for (const message of ['Quero fazer um aniversário para 50 pessoas. Como funciona?', 'Orçamento de evento empresarial para 30 pessoas', 'Quero orçamento para grupo de 20 pessoas', 'Evento particular para 40 convidados']) {
+    const p=prepare(message,knownState());
+    assert.equal(JSON.parse(p.state).facts.guests,2);
+    const r=route(message,p.state,'QUOTE|2026-09-20|2026-09-25|50|NONE');
+    assert.equal(r.quote_request,'NOQUOTE'); assert.equal(r.can_collect,'NAO');
+    assert.match(r.answer,/5591991654050/);
+    assert.equal((r.answer.match(/5591991654050/g)||[]).length,1);
+    assert.doesNotMatch(r.answer,/99165-4050/);
+    assert.equal(JSON.parse(r.state).pending,undefined);
+  }
+  const legacy=JSON.parse(knownState()); legacy.history.push('Quero fazer um aniversário para 50 pessoas. Como funciona?'); legacy.facts.guests=50;
+  assert.equal(JSON.parse(prepare('Bom dia',JSON.stringify(legacy)).state).facts.guests,undefined);
+  const boat=prepare('Quanto custa o barco para um grupo de 4 pessoas?',knownState());
+  assert.doesNotMatch(route('Quanto custa o barco para um grupo de 4 pessoas?',boat.state).answer,/5591991654050/);
+  const birthday=prepare('Vou me hospedar no meu aniversário',knownState());
+  assert.doesNotMatch(route('Vou me hospedar no meu aniversário',birthday.state).answer,/5591991654050/);
+  for (const message of ['Quero comemorar meu aniversário a dois', 'Qual a programação de eventos do feriado?']) {
+    assert.doesNotMatch(route(message,prepare(message,knownState()).state).answer,/5591991654050/);
+  }
+});
+
+test('contexto de fotos resolve todos e Varanda térreo sem cotar; troca de assunto encerra intenção', () => {
+  let state = knownState();
+  for (const message of ['Quero fotos dos aptos', 'Me mande de todos os aptos pfv', 'Foto de todos os aptos pfv', 'Varanda térreo']) {
+    const p = prepare(message, state);
+    const r = route(message,p.state,'QUOTE|2026-09-20|2026-09-25|2|NONE');
+    assert.equal(r.quote_request,'NOQUOTE');
+    assert.equal(r.can_collect,'NAO');
+    assert.match(r.resolved_message,/Fotos|fotos|Foto/);
+    assert.deepEqual(JSON.parse(r.state).facts,JSON.parse(knownState()).facts);
+    state = r.state;
+  }
+  assert.equal(JSON.parse(state).resolved_message,'Fotos de Varanda térreo');
+  for (const message of ['Qual o valor do Loft?', 'Quero reservar o Loft', 'Qual o cardápio?', 'Tem sacada?', 'Quero falar com a recepção']) {
+    const p = prepare(message,state);
+    assert.equal(JSON.parse(p.state).topic,undefined);
+    assert.equal(JSON.parse(p.state).resolved_message,message);
+  }
+});
+
+test('memória distingue respostas do atendimento e fatos do cliente, filtra PII e aceita para 4', () => {
+  const p = prepare('Tem disponibilidade?');
+  const r = route('Tem disponibilidade?',p.state);
+  const next = prepare('Para 4',r.state);
+  assert.equal(JSON.parse(next.context).fatos_informados_pelo_cliente.guests,4);
+  assert.match(JSON.parse(next.context).conversa_recente.find(t=>t.role==='assistant').text,/quantas pessoas/);
+  const remembered = control({operation:'remember_response',state:next.state,response_text:'Sugiro 20 a 25 de outubro, para duas pessoas.', room_name:'Loft'},now);
+  assert.equal(JSON.parse(remembered.state).facts.check_in,undefined);
+  assert.equal(JSON.parse(remembered.state).facts.guests,4);
+  const photo = prepare('Quero fotos desse apto',remembered.state);
+  assert.equal(JSON.parse(photo.state).resolved_message,'Fotos de Loft');
+  assert.doesNotMatch(control({operation:'remember_response',state:photo.state,response_text:'CPF 12345678900'},now).state,/12345678900/);
+});
+
+test('migração do histórico antigo mantém referência de foto e expiração não prende novo assunto', () => {
+  const legacy = {version:2,history:['Quero fotos de todos os aptos'],facts:{extras:[]},greeted:true};
+  assert.equal(JSON.parse(prepare('Varanda térreo',legacy).state).resolved_message,'Fotos de Varanda térreo');
+  legacy.history.push('Varanda térreo');
+  assert.equal(JSON.parse(prepare('Varanda térreo',legacy).state).resolved_message,'Fotos de Varanda térreo');
+  legacy.history.push('Qual o cardápio?');
+  assert.equal(JSON.parse(prepare('Varanda térreo',legacy).state).resolved_message,'Varanda térreo');
+  const state = JSON.parse(prepare('Fotos do Loft').state);
+  state.topic_at = now - 31*60000;
+  assert.equal(JSON.parse(prepare('Varanda térreo',state).state).resolved_message,'Varanda térreo');
+});
+
 test('Bom dia ignora resumo legado contaminado e oferta do robô', () => {
   const p = prepare('Bom dia ☀️', 'Cliente quer outubro; aceitar reserva.', { ...quote, check_in: '2026-10-09', check_out: '2026-10-12' });
   const context = JSON.parse(p.context);
@@ -36,6 +103,59 @@ test('perguntas não são aceite mesmo quando classificador devolve COLETAR', ()
     assert.notEqual(r.quote_request, 'COLETAR', msg);
     assert.equal(r.can_collect, 'NAO', msg);
   }
+});
+
+test('Reserva Solar é restaurante e nunca inicia reserva de hospedagem', () => {
+  for (const msg of [
+    'Qual o cardápio do restaurante Reserva Solar?',
+    'Pode me passar o menu do Reserva Solar?',
+    'Que horas abre o Reserva Solar?',
+    'Quero reservar uma mesa no Reserva Solar',
+    'Tem disponibilidade no Reserva Solar para almoço?',
+  ]) {
+    const p = prepare(msg, knownState());
+    assert.deepEqual(JSON.parse(p.state).facts, JSON.parse(knownState()).facts, msg);
+    assert.match(JSON.parse(p.context).regra, /Reserva Solar é o nome próprio do restaurante/);
+    const r = route(msg, p.state, 'QUOTE|2026-09-20|2026-09-25|2|NONE');
+    assert.equal(r.quote_request, 'NOQUOTE', msg);
+    assert.equal(r.can_collect, 'NAO', msg);
+    assert.equal(r.answer, 'Resposta de teste.', msg);
+    assert.equal(JSON.parse(r.state).pending, undefined, msg);
+  }
+
+  const hotel = route('Quero fazer uma reserva no Hotel Solar', prepare('Quero fazer uma reserva no Hotel Solar').state);
+  assert.match(hotel.answer, /quantas pessoas/i);
+});
+
+test('fotos de apartamentos nunca viram aceite, cotação ou coleta', () => {
+  const messages = ['Quero ver fotos do apto loft', 'Gostaria de fotos desse apto', 'Me manda fotos dos aptos', 'Quero imagens do Loft', 'Quero ver um vídeo do Loft', 'Quero fotografias da suíte', 'Galeria do Loft'];
+  for (const msg of messages) {
+    for (const initial of [undefined, knownState()]) {
+      const p = prepare(msg, initial);
+      const r = route(msg, p.state, 'QUOTE|2026-09-20|2026-09-25|2|NONE');
+      assert.equal(r.quote_request, 'NOQUOTE', msg);
+      assert.equal(r.can_collect, 'NAO', msg);
+      assert.equal(r.confirmation_text, '', msg);
+      assert.equal(JSON.parse(r.state).pending, undefined, msg);
+      assert.equal(r.answer.replace(/^Olá![\s\S]*?\n\n/, ''), 'Resposta de teste.', msg);
+    }
+  }
+});
+
+test('pedido de fotos invalida confirmação antiga e não inclui extras', () => {
+  const chosen = route('Quero o Loft', prepare('Quero o Loft', knownState()).state);
+  for (const msg of ['Quero fotos do barco', 'Quero imagens da mesa posta', 'Quero fotos do kit lua de mel']) {
+    const p = prepare(msg, chosen.state);
+    assert.deepEqual(JSON.parse(p.state).facts, JSON.parse(knownState()).facts);
+    const r = route(msg, p.state);
+    assert.equal(r.quote_request, 'NOQUOTE');
+    assert.equal(control({operation: 'confirm', state: r.state, quote_state: quote}, now).can_collect, 'NAO');
+  }
+  // The route remains safe if called again without prepare.
+  const direct = route('Quero ver fotos do apto loft', chosen.state);
+  assert.equal(JSON.parse(direct.state).pending, undefined);
+  assert.equal(direct.quote_request, 'NOQUOTE');
+  assert.equal(route('Quero falar com a recepção sobre fotos do Loft', knownState()).quote_request, 'HUMANO');
 });
 
 test('sequência pessoas -> datas cotadas sem saudação repetida nem encaminhamento', () => {

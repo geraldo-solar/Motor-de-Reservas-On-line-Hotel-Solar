@@ -1,5 +1,12 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { resolveRoomMedia, nextRoomMedia } from '../utils/roomMedia.js';
+import { control } from './conversation-control.js';
+import { requestedExtraCodes, extraCodes, extraMediaResult, nextExtraMedia, normalizeExtra } from '../utils/extraMedia.js';
+import { eventInquiry, eventContactText, reservaPhotoRequest, sitePhotoResult } from '../utils/hotelInfo.js';
+import { readEvent } from '../utils/eventInquiry.js';
+import { deliverEvent, deliveryFailed, acceptEventReceipt } from '../utils/eventDelivery.js';
+import { publicEventInquiry, publicEventAnswer } from '../utils/publicEvents.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -244,23 +251,83 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed. Use POST.' });
   }
+  if(req.query?.operation==='event-receipt') {const r=await acceptEventReceipt(req.body);return res.status(r.code).json({status:r.status});}
   if (!supabaseUrl || !supabaseKey) {
     return res.status(500).json({ error: 'Missing Supabase configuration.' });
   }
 
-  const userMessage = String(req.body?.user_message || req.body?.message || '').trim();
+  let userMessage = String(req.body?.user_message || req.body?.message || '').trim();
+  let conversationState: any;
+  try {
+    const state = typeof req.body?.state === 'string' ? JSON.parse(req.body.state) : req.body?.state;
+    conversationState = state;
+    if (state?.version === 2 && state.history?.at(-1) === userMessage && typeof state.resolved_message === 'string') userMessage = state.resolved_message;
+  } catch { /* Legacy or invalid state: use only the actual message. */ }
   if (!userMessage) {
     return res.status(400).json({ error: 'Missing user_message.' });
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
+  if (!req.query?.operation && publicEventInquiry(userMessage)) {
+    const answer=(conversationState?.first_turn === true ? 'Olá! Que bom receber seu contato no Hotel Solar. ☀️\n\n' : '')+publicEventAnswer(userMessage);
+    return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,match_type:'public_programming',availability_checked:false,...control({operation:'remember_response',state:req.body?.state,response_text:answer,clear_subject:true})});
+  }
+  const event=readEvent(conversationState?.event);
+  if(!req.query?.operation && event) {
+    let answer=event.answer;
+    if(event.status==='ready') {
+      try {const delivered=await deliverEvent(event,String(req.body?.subscriber_id||''));conversationState.event=delivered.event;answer=delivered.answer;}
+      catch {answer=deliveryFailed;}
+    }
+    return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,availability_checked:false,state:JSON.stringify(conversationState)});
+  }
+  if (req.query?.operation === 'next' && userMessage.startsWith('SITE_ID|')) return res.status(200).json(sitePhotoResult(true,userMessage));
+  if (!req.query?.operation && reservaPhotoRequest(userMessage)) {
+    const result=sitePhotoResult();
+    return res.status(200).json({...result,...control({operation:'remember_response',state:req.body?.state,response_text:result.conversation_text,clear_subject:true})});
+  }
+  if (!req.query?.operation && eventInquiry(userMessage) && !/fotos?|imagens|galeria/i.test(userMessage)) {
+    return res.status(200).json({quote_request:'ROOM_LIST',quote_text:eventContactText,conversation_text:eventContactText,availability_checked:false,...control({operation:'remember_response',state:req.body?.state,response_text:eventContactText,clear_subject:true})});
+  }
+  if (req.query?.operation === 'next' && userMessage.startsWith('EXTRA_ID|')) {
+    const {data: extras,error}=await supabase.from('extras').select('*').eq('active',true);
+    if(error) return res.status(500).json({error:'Unable to load extra media.'});
+    return res.status(200).json(nextExtraMedia(userMessage,extras||[]));
+  }
+  if (req.query?.operation === 'next') {
+    const {data: rooms, error} = await supabase.from('room_types').select('id,name').eq('active', true);
+    if (error) return res.status(500).json({error:error.message});
+    return res.status(200).json(nextRoomMedia(userMessage, rooms || []));
+  }
+  const offersOnly=req.query?.operation==='offers';
+  const assistant=offersOnly ? userMessage : conversationState?.turns?.at(-1)?.role==='assistant' ? String(conversationState.turns.at(-1).text || '') : '';
+  const codes=requestedExtraCodes(offersOnly?'':userMessage,assistant,conversationState?.extra_photo_requests||[]);
+  if(codes.length) {
+    const {data: extras,error}=await supabase.from('extras').select('*').eq('active',true);
+    if(error) return res.status(500).json({error:'Unable to load extra media.'});
+    const includedBoat=/barco[^\n]{0,60}(ja incluido|sem cobranca adicional)/.test(normalizeExtra(assistant));
+    const result=extraMediaResult(codes,extras||[],includedBoat);
+    if(!offersOnly && assistant && !extraCodes(userMessage).length && !/extras|servicos|experiencias/.test(normalizeExtra(userMessage))) {
+      result.conversation_text=(assistant.slice(0,800)+'\n\n'+result.conversation_text).slice(0,1900);
+      result.quote_text=result.conversation_text;
+    }
+    const remembered=control({operation:'remember_response',state:req.body?.state,response_text:result.conversation_text,extra_photo_requests:result.photo_codes});
+    return res.status(200).json({...result,...remembered});
+  }
+  if(offersOnly) return res.status(200).json({quote_request:'ROOM_DONE',conversation_text:'',quote_text:'',...control({operation:'remember_response',state:req.body?.state})});
   const [{ data: packages, error: packageError }, { data: rooms, error: roomError }] = await Promise.all([
     supabase.from('packages').select('*').eq('active', true),
     supabase.from('room_types').select('*').eq('active', true),
   ]);
 
-  if (packageError) return res.status(500).json({ error: packageError.message });
   if (roomError) return res.status(500).json({ error: roomError.message });
+  const media = resolveRoomMedia(userMessage, rooms || []);
+  const remember = (response_text: string, room_name = '', clear_subject = false) => control({operation:'remember_response', state:req.body?.state, response_text, room_name, clear_subject});
+  if (media) {
+    const gallery = media.match_type === 'room_gallery';
+    return res.status(200).json({...media, ...remember(gallery ? `Fotos solicitadas das categorias: ${('room_names' in media ? media.room_names : []).join(', ')}. Se a referência a uma delas for ambígua, pergunte qual.` : media.conversation_text, gallery ? '' : media.room_name, gallery)});
+  }
+  if (packageError) return res.status(500).json({ error: packageError.message });
   if (!packages?.length) {
     return res.status(200).json({
       quote_request: 'NO_PACKAGE',
@@ -276,7 +343,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const best = ranked[0];
 
   if (!isPackageIntent(userMessage, best.score)) {
-    return res.status(200).json({ quote_request: 'NO_PACKAGE', quote_text: '', conversation_text: '', matched: false });
+    return res.status(200).json({ quote_request: 'NO_PACKAGE', quote_text: '', conversation_text: '', matched: false, ...remember('') });
   }
 
   if (best.score < 20) {
@@ -286,6 +353,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       conversation_text: formatPackageList(packages as PackageRecord[], true),
       matched: true,
       match_type: 'list',
+      ...remember(formatPackageList(packages as PackageRecord[], true)),
     });
   }
 
@@ -303,5 +371,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     matched: true,
     match_type: 'specific',
     score: best.score,
+    ...remember(formatPackageDetails(pkg, (rooms || []) as RoomRecord[], true)),
   });
 }

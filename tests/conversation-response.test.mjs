@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+import sharp from 'sharp';
 
 const rooms = [
   { id: 'casal', name: 'Suíte Casal', capacity: 2, base_price: 500, overrides: [] },
@@ -11,19 +14,20 @@ const packages = [
   { id: 'reveillon', name: 'Réveillon Solar 2027', start_iso_date: '2026-12-31', end_iso_date: '2027-01-03', description: 'Celebração de Ano-Novo.', includes: [], benefits: [], room_prices: [], no_checkin_dates: [], no_checkout_dates: [] },
 ];
 
-async function loadHandler(file, fixturePackages = packages) {
-  const fixture = JSON.stringify({ room_types: rooms, packages: fixturePackages, extras: [] });
+async function loadHandler(file, fixturePackages = packages, fixtureRooms = rooms, fixtureExtras = []) {
+  const fixture = JSON.stringify({ room_types: fixtureRooms, packages: fixturePackages, extras: fixtureExtras });
   const result = await build({
     entryPoints: [file], bundle: true, write: false, platform: 'node', format: 'esm',
     define: { 'process.env.VITE_SUPABASE_URL': '"https://fixture.invalid"', 'process.env.VITE_SUPABASE_ANON_KEY': '"fixture"' },
     plugins: [{ name: 'read-only-fixtures', setup(builder) {
+      builder.onResolve({ filter: /^sharp$/ }, () => ({path: pathToFileURL(createRequire(import.meta.url).resolve('sharp')).href, external: true}));
       builder.onResolve({ filter: /^@supabase\/supabase-js$/ }, () => ({ path: 'supabase-fixture', namespace: 'test' }));
       builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({ contents: `
         const data = ${fixture};
         export function createClient() {
           return { from(table) {
             if (!(table in data)) throw new Error('Unexpected table access: ' + table);
-            return { select() { return { eq() { return Promise.resolve({data: data[table], error: null}); } }; } };
+            return { select() { let rows=data[table]; const query={eq(key,value) {if(key==='id') rows=rows.filter(r=>r.id===value); return query;},then(resolve){return Promise.resolve({data:rows,error:null}).then(resolve);}}; return query; } };
           } };
         }
       `, loader: 'js' }));
@@ -38,6 +42,43 @@ async function request(handler, body) {
   assert.equal(status, 200);
   return payload;
 }
+
+test('programação Heraldo responde antes de pacotes/extras/lead privado sem acessar tabelas', async () => {
+  const handler=await loadHandler('api/resolve-package.ts',[],[]);
+  for (const user_message of ['Heraldo Ramos dia 05/09/2026 e 06/09/2026', 'Quanto custa o couvert do Heraldo Ramos?']) {
+    const r=await request(handler,{user_message,state:{version:2,history:[],facts:{guests:2,extras:[]},greeted:true,turns:[{role:'assistant',text:'Sugiro Mesa Posta'}]}});
+    assert.equal(r.quote_request,'ROOM_LIST');
+    assert.equal(r.match_type,'public_programming');
+    assert.equal(r.availability_checked,false);
+    assert.match(r.conversation_text,/Heraldo Ramos/);
+    assert.doesNotMatch(r.conversation_text,/Luiza|R\$|Mesa Posta|hospedagem/);
+  }
+  const state={version:2,history:['E amanhã?'],resolved_message:'Programação musical de Heraldo Ramos no Reserva Solar: E amanhã?',facts:{extras:[]},greeted:true,topic:'public_events'};
+  const r=await request(handler,{user_message:'E amanhã?',state});
+  assert.equal(r.match_type,'public_programming');
+  assert.doesNotMatch(r.conversation_text,/Luiza|quantas pessoas/);
+  assert.doesNotMatch(r.conversation_text,/^Olá/);
+  const first=await request(handler,{user_message:'Heraldo Ramos hoje?',state:{version:2,history:[],facts:{extras:[]},greeted:true,first_turn:true}});
+  assert.match(first.conversation_text,/^Olá!/);
+});
+
+test('Reserva Solar possui duas fotos próprias, fila finita e eventos não viram pacotes ou extras', async () => {
+  const handler=await loadHandler('api/resolve-package.ts',[],[]);
+  const r=await request(handler,{user_message:'Vc tem fotos do restaurante reserva solar?'});
+  assert.equal(r.quote_request,'SITE_ID|RESERVA_1|RESERVA_2');
+  assert.match(r.conversation_text,/Reserva Solar/); assert.doesNotMatch(r.conversation_text,/Loft|piscina/);
+  let next;
+  const response={status(){return this;},json(v){next=v;return v;}};
+  await handler({method:'POST',query:{operation:'next'},body:{user_message:r.quote_request}},response);
+  assert.equal(next.quote_request,'SITE_ID|RESERVA_2');
+  await handler({method:'POST',query:{operation:'next'},body:{user_message:next.quote_request}},response);
+  assert.equal(next.quote_request,'ROOM_DONE');
+  const event=await request(handler,{user_message:'Orçamento de aniversário para 50 pessoas',state:{version:2,history:[],facts:{extras:[]},turns:[{role:'assistant',text:'Sugiro Mesa Posta'}]}});
+  assert.equal(event.quote_request,'ROOM_LIST'); assert.match(event.conversation_text,/5591991654050/);
+  assert.equal((event.conversation_text.match(/5591991654050/g)||[]).length,1);
+  assert.doesNotMatch(event.conversation_text,/99165-4050/);
+  assert.equal(event.availability_checked,false);
+});
 
 function assertSameAmounts(legacy, conversational) {
   const values = value => value.match(/R\$\s*[\d.,]+/g) || [];
@@ -56,6 +97,89 @@ test('cotação mantém valores, ordenação premium, extras e formato legado', 
   assert.ok(result.conversation_text.indexOf('Loft') < result.conversation_text.indexOf('Suíte Casal'));
   assert.equal(result.availability_checked, false);
   assert.equal(result.extras_total, 530);
+});
+
+test('foto específica vem da categoria cadastrada, sem preço ou disponibilidade', async () => {
+  const original = await sharp({create:{width:2400,height:1600,channels:3,background:'#f60'}}).png().toBuffer();
+  const image = 'data:image/png;base64,' + original.toString('base64');
+  const room = { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', name: 'LOFT', images: [image] };
+  const quad = { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', name: 'Suíte Quádruplo', images: [image] };
+  const handler = await loadHandler('api/resolve-package.ts', [], [room, quad]);
+  for (const [message, expected] of [['Quero ver fotos do apto loft', room], ['Quero imagens do quádruplo', quad], ['Me mande fotos dos aptos', room]]) {
+    const r = await request(handler, { user_message: message });
+    assert.equal(r.quote_request, `ROOM_ID|${expected.id}`);
+    assert.equal(r.room_name, expected.name);
+    assert.equal(r.availability_checked, false);
+    assert.doesNotMatch(r.conversation_text, /R\$|Confirmar opção|CPF|disponível/);
+  }
+  for (const message of ['Fotos da suíte presidencial', 'Fotos do Loft e da suíte quádruplo']) {
+    const r = await request(handler, {user_message: message});
+    assert.equal(r.quote_request, 'ROOM_LIST');
+  }
+  const missing = await loadHandler('api/resolve-package.ts', [], [{...room, images: []}]);
+  assert.equal((await request(missing, {user_message: 'Fotos do Loft'})).quote_request, 'ROOM_LIST');
+  const imageHandler = await loadHandler('api/package-image.ts', [], [room, quad]);
+  let status, bytes; const headers = {};
+  await imageHandler({method: 'GET', query: {code: `ROOM_ID|${room.id}`}}, {
+    status(code) {status=code; return this;}, setHeader(key,value) {headers[key]=value;},
+    send(value) {bytes=value;}, json(value) {throw new Error(JSON.stringify(value));},
+  });
+  assert.equal(status,200);
+  assert.equal(headers['Content-Type'],'image/jpeg');
+  const metadata = await sharp(bytes).metadata();
+  assert.equal(metadata.format,'jpeg');
+  assert.ok(metadata.width <= 1280 && metadata.height <= 1280);
+  assert.ok(bytes.length < 4_500_000);
+});
+
+test('pedido de foto de pacote mantém o caminho de pacote', async () => {
+  const handler = await loadHandler('api/resolve-package.ts');
+  const r = await request(handler,{user_message:'Quero foto do pacote Independência Solar'});
+  assert.equal(r.quote_request,'PACKAGE_ID|independencia');
+});
+
+test('serviço oferecido recebe imagem real, preço correto e memória sem aceite', async()=>{
+  const image='data:image/png;base64,'+(await sharp({create:{width:1600,height:1000,channels:3,background:'#369'}}).png().toBuffer()).toString('base64');
+  const extras=[{id:'barco',name:'Passeio de Barco',price:100,image_url:image},{id:'mesa',name:'Mesa Posta',price:180,image_url:image}];
+  const handler=await loadHandler('api/resolve-package.ts',packages,rooms,extras);
+  const state={version:2,history:['Vamos comemorar'],facts:{extras:[]},greeted:true,turns:[{role:'assistant',text:'Que tal a Mesa Posta para celebrar?'}]};
+  const result=await request(handler,{user_message:'Vamos comemorar',state});
+  assert.match(result.quote_request,/^EXTRA_ID\|MESA/);assert.match(result.conversation_text,/180,00/);
+  assert.deepEqual(JSON.parse(result.state).facts.extras,[]);
+  assert.deepEqual(JSON.parse(result.state).extra_photo_requests,['MESA']);
+  const imageHandler=await loadHandler('api/package-image.ts',packages,rooms,extras);
+  let status,bytes;const headers={};
+  await imageHandler({method:'GET',query:{code:result.quote_request}},{status(c){status=c;return this;},setHeader(k,v){headers[k]=v;},send(v){bytes=v;},json(v){throw Error(JSON.stringify(v));}});
+  assert.equal(status,200);assert.equal(headers['Content-Type'],'image/jpeg');assert.ok(bytes.length<4500000);
+  const repeat=await request(handler,{user_message:'Vamos comemorar',state:result.state});assert.equal(repeat.matched,false);
+  const resend=await request(handler,{user_message:'Foto da Mesa Posta novamente',state:result.state});assert.match(resend.quote_request,/^EXTRA_ID\|MESA/);
+});
+
+test('todos os aptos percorre categorias uma vez e termina; pacote não entra no loop', async () => {
+  const catalog = Array.from({length:6},(_,i)=>({id:`room${i}`,name:`Categoria ${i}`,images:['https://example.com/room.jpg']}));
+  catalog.push({id:'missing',name:'Sem foto',images:[]});
+  const handler = await loadHandler('api/resolve-package.ts',packages,catalog);
+  let response = await request(handler,{user_message:'Fotos de todos os aptos'});
+  const names = [];
+  while (response.quote_request.startsWith('ROOM_ID|')) {
+    names.push(response.room_name);
+    assert.ok(names.length<=6);
+    await handler({method:'POST',query:{operation:'next'},body:{user_message:response.quote_request}},{status(){return this;},json(v){response=v;return v;}});
+  }
+  assert.deepEqual(names,catalog.slice(0,6).map(r=>r.name));
+  assert.equal(response.quote_request,'ROOM_DONE');
+  await handler({method:'POST',query:{operation:'next'},body:{user_message:'PACKAGE_ID|independencia'}},{status(){return this;},json(v){response=v;return v;}});
+  assert.equal(response.quote_request,'ROOM_DONE');
+});
+
+test('resolver usa referência contextual e registra a resposta real de mídia separadamente', async () => {
+  const handler = await loadHandler('api/resolve-package.ts',[],[{id:'varanda',name:'Suíte Varanda Térreo',images:['https://example.com/varanda.jpg']}]);
+  const state = {version:2,history:['Fotos dos aptos','Varanda térreo'],facts:{extras:[],guests:4},greeted:true,resolved_message:'Fotos de Varanda térreo',topic:'room_photos'};
+  const r = await request(handler,{user_message:'Varanda térreo',state:JSON.stringify(state)});
+  assert.equal(r.quote_request,'ROOM_ID|varanda');
+  assert.equal(JSON.parse(r.state).subject,'Suíte Varanda Térreo');
+  assert.equal(JSON.parse(r.state).turns.at(-1).text,r.conversation_text);
+  assert.deepEqual(JSON.parse(r.state).facts,state.facts);
 });
 
 test('ocupação filtra apartamentos e Réveillon parcial propõe cotação completa sem telefone', async () => {

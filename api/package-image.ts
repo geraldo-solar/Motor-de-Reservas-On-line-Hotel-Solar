@@ -1,5 +1,9 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { roomImages } from '../utils/roomMedia.js';
+import sharp from 'sharp';
+import {extraCode,extraImage} from '../utils/extraMedia.js';
+import {sitePhotoUrl} from '../utils/hotelInfo.js';
 
 type PackageRecord = {
   name?: string;
@@ -62,30 +66,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const reference = req.query.code;
+  const siteImage=sitePhotoUrl(String(reference||''));
+  const extraMatch=String(reference||'').match(/^EXTRA_ID\|(BARCO|MESA|LUA|BIKE)(?:\|[A-Z,]*\|(INCLUDED|PAID))?$/);
+  const serviceCode=extraMatch?.[1];
+  const roomMatch = String(reference || '').match(/^ROOM_ID\|([0-9a-f]{8}-[0-9a-f-]{27,})(?:\|[0-9a-f,-]{1,800})?$/i);
+  const roomId = roomMatch?.[1];
   const packageId = parsePackageId(reference);
   const code = parsePackageCode(reference);
-  if ((!packageId && !code) || !supabaseUrl || !supabaseKey) {
+  if ((!siteImage && !serviceCode && !roomId && !packageId && !code) || !supabaseUrl || !supabaseKey) {
     return res.status(400).json({ error: 'Invalid package reference or missing configuration.' });
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey);
-  const { data: packages, error } = await supabase.from('packages').select('*').eq('active', true);
+  let query = supabase.from(serviceCode ? 'extras' : roomId ? 'room_types' : 'packages').select('*').eq('active', true);
+  // Embedded photos are large: fetch the requested category, not every gallery.
+  if (roomId || packageId) query = query.eq('id', roomId || packageId!);
+  const { data: packages, error } = siteImage ? {data:[],error:null} : await query;
   if (error) return res.status(500).json({ error: error.message });
 
-  const pkg = packageId
+  const pkg = serviceCode ? (packages||[]).find(item=>extraCode(item.name||'')===serviceCode) : roomId
+    ? (packages || []).find(item => String(item.id) === roomId)
+    : packageId
     ? (packages || []).find(item => String(item.id) === packageId)
     : findPackageByCode(packages || [], code!);
-  if (!pkg?.image_url) return res.status(404).json({ error: 'Package image not found.' });
+  const selectedImage = siteImage || (serviceCode ? extraImage(pkg,serviceCode) : roomId && pkg ? roomImages(pkg)[0] : pkg?.image_url);
+  if (!selectedImage) return res.status(404).json({ error: 'Image not found.' });
 
   try {
-    const image = pkg.image_url.trim();
+    const image = selectedImage.trim();
     res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
+
+    const sendImage = async (bytes: Buffer, contentType: string) => {
+      if (!siteImage && !roomId && !serviceCode) {
+        res.setHeader('Content-Type', contentType);
+        return res.status(200).send(bytes);
+      }
+      // WhatsApp photos must be JPEG/PNG under 5 MB. Never modify the original.
+      const optimized = await sharp(bytes, {limitInputPixels: 60_000_000})
+        .rotate().resize({width: 1280, height: 1280, fit: 'inside', withoutEnlargement: true})
+        .flatten({background: '#ffffff'}).jpeg({quality: 80}).toBuffer();
+      if (optimized.length > 4_500_000) return res.status(422).json({error: 'Image exceeds WhatsApp size limit.'});
+      res.setHeader('Content-Type', 'image/jpeg');
+      return res.status(200).send(optimized);
+    };
 
     if (image.startsWith('data:image/')) {
       const match = image.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/s);
       if (!match) return res.status(422).json({ error: 'Invalid embedded image.' });
-      res.setHeader('Content-Type', match[1]);
-      return res.status(200).send(Buffer.from(match[2], 'base64'));
+      return await sendImage(Buffer.from(match[2], 'base64'), match[1]);
     }
 
     const imageUrl = image.startsWith('/')
@@ -96,8 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(502).json({ error: 'Unable to load package image.' });
     }
 
-    res.setHeader('Content-Type', imageResponse.headers.get('content-type') || 'image/jpeg');
-    return res.status(200).send(Buffer.from(await imageResponse.arrayBuffer()));
+    return await sendImage(Buffer.from(await imageResponse.arrayBuffer()), imageResponse.headers.get('content-type') || 'image/jpeg');
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }

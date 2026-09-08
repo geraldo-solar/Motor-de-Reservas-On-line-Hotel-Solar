@@ -1,21 +1,31 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { extraCodes } from '../utils/extraMedia.js';
+import { eventInquiry, eventContactText } from '../utils/hotelInfo.js';
+import { advanceEvent, readEvent, type EventState } from '../utils/eventInquiry.js';
+import { publicEventInquiry, publicEventFollowup, publicEventContext, publicEventAnswer } from '../utils/publicEvents.js';
 
 // No bookings, stock queries, outbound messages, personal-data storage or LLM calls.
-// State is a bounded user-only record held in the contact's ManyChat custom field.
+// User facts and conversational turns are separate. Assistant text NEVER updates facts.
 type Facts = { check_in?: string; check_out?: string; guests?: number; extras: string[]; children_pending?: boolean };
 type Quote = { version: number; id: string; created_at: number; check_in: string; check_out: string; guests: number; extras: string[]; options: { name: string; capacity: number; total: number }[] };
-type State = { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; };
+type State = { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'public_events'; topic_at?: number; subject?: string; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
 const json = (v: unknown): any => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
 const months = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const numbers: Record<string, number> = { uma: 1, um: 1, duas: 2, dois: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8, nove: 9, dez: 10 };
 const count = (s: string) => numbers[s] || Number(s);
 const numberPattern = '(\\d{1,2}|uma|um|duas|dois|tres|quatro|cinco|seis|sete|oito|nove|dez)';
-const lodging = (s: string) => /\b(vaga|vagas|disponibilidade|hospedagem|estadia|diaria|diarias|reservar|reserva|quarto|quartos|apto|apartamento|loft|suite|cotacao|orcamento|pessoas|hospedes|casal|adultos)\b/.test(s);
+// "Reserva Solar" is the proper name of the beach restaurant. Its word
+// "reserva" must never start the lodging funnel, even if an upstream AI
+// classifier proposes a quote. Restaurant/table questions stay informational.
+const restaurantInquiry = (s: string) => /\breserva solar\b/.test(s) || /\b(cardapio|menu|restaurante|solar 73|avuado)\b/.test(s);
+const lodging = (s: string) => !restaurantInquiry(s) && /\b(vaga|vagas|disponibilidade|hospedagem|estadia|diaria|diarias|reservar|reserva|quarto|quartos|apto|apartamento|loft|suite|cotacao|orcamento|pessoas|hospedes|casal|adultos)\b/.test(s);
 const recommendation = (s: string) => /\b(indica|indicam|indicado|recomenda|recomendam|melhor|sugere|sugestao)\b/.test(s);
 const question = (s: string) => s.includes('?') || /\b(qual|quais|quanto|quantos|como|onde|quando|indica|recomenda|poderia|pode me|gostaria de saber|tem vaga|tem disponibilidade|inclui|incluido)\b/.test(s);
 const human = (s: string) => /\b(atendente|falar com (uma pessoa|alguem|a recepcao|um humano)|(?:chama|chame|chamar|encaminhar)(?:r?\s+(?:para|a|o))?\s+(?:recepcao|atendente)|atendimento humano|reclamacao|quero reclamar|cancelar minha reserva|reembolso|nao quero informar|prefiro nao informar)\b/.test(s) || s === 'recepcao';
 const greeting = (s: string) => /^(oi|ola|bom dia|boa tarde|boa noite|tudo bem)([ ,.!?]*(tudo bem|bom dia|boa tarde|boa noite))?[ ,.!?]*$/.test(s);
+// Asking to see something is informational, even with "quero" and a room name.
+const mediaRequest = (s: string) => /\b(fotos?|fotografias?|imagem|imagens|videos?|galeria|album)\b/.test(s);
 const personal = (s: string) => /@|\b(?:\d[.\s-]*){11,}\b|\b(cpf|meu nome|me chamo)\b/i.test(s);
 
 function loadState(value: unknown): State {
@@ -28,8 +38,46 @@ function loadState(value: unknown): State {
   if (typeof f.check_in === 'string' && /^20\d{2}-\d{2}-\d{2}$/.test(f.check_in)) facts.check_in = f.check_in;
   if (typeof f.check_out === 'string' && /^20\d{2}-\d{2}-\d{2}$/.test(f.check_out)) facts.check_out = f.check_out;
   if (Number.isInteger(f.guests) && f.guests > 0 && f.guests <= 60) facts.guests = f.guests;
+  // Legacy test state may have treated event participants as room occupants.
+  const lastMessage = String(parsed.history.at(-1) || '');
+  if (eventInquiry(lastMessage) && new RegExp(`\\b${facts.guests}\\s*(pessoas|convidados|participantes)\\b`).test(norm(lastMessage))) delete facts.guests;
   if (typeof f.children_pending === 'boolean') facts.children_pending = f.children_pending;
-  return { version: 2, history: parsed.history.filter((s: unknown) => typeof s === 'string' && !personal(s as string)).slice(-12).map((s: string) => s.slice(0, 500)), facts, greeted: parsed.greeted === true, first_turn: parsed.first_turn === true, changed: parsed.changed === true, ...(typeof parsed.pending?.quote_id === 'string' && typeof parsed.pending?.option === 'string' ? { pending: parsed.pending } : {}) };
+  return { version: 2, history: parsed.history.filter((s: unknown) => typeof s === 'string' && !personal(s as string)).slice(-12).map((s: string) => s.slice(0, 500)), facts, greeted: parsed.greeted === true, first_turn: parsed.first_turn === true, changed: parsed.changed === true, ...(typeof parsed.pending?.quote_id === 'string' && typeof parsed.pending?.option === 'string' ? { pending: parsed.pending } : {}),
+    turns: Array.isArray(parsed.turns) ? parsed.turns.filter((t: any) => ['user', 'assistant'].includes(t?.role) && typeof t.text === 'string' && !personal(t.text)).slice(-16).map((t: any) => ({role:t.role, text:t.text.slice(0,900)})) : [],
+    extra_photo_requests: Array.isArray(parsed.extra_photo_requests) ? [...new Set<string>(parsed.extra_photo_requests.filter((c:unknown)=>['BARCO','MESA','LUA','BIKE'].includes(String(c))))] : [],
+    ...(readEvent(parsed.event) ? {event:readEvent(parsed.event)} : {}),
+    ...(['room_photos', 'public_events'].includes(parsed.topic) ? {topic: parsed.topic, topic_at: Number(parsed.topic_at) || 0} : {}),
+    ...(typeof parsed.subject === 'string' && !personal(parsed.subject) ? {subject: parsed.subject.slice(0,100)} : {}),
+    ...(['guests','dates'].includes(parsed.awaiting) ? {awaiting: parsed.awaiting} : {}),
+    ...(typeof parsed.resolved_message === 'string' && !personal(parsed.resolved_message) ? {resolved_message: parsed.resolved_message.slice(0,500)} : {}),
+  };
+}
+
+function remember(state: State, role: 'user' | 'assistant', text: string, replace = false) {
+  if (!text || personal(text)) return;
+  const turns = state.turns || [];
+  if (replace && turns.at(-1)?.role === 'assistant') turns.pop();
+  state.turns = [...turns, {role, text: text.slice(0,900)}].slice(-16);
+}
+
+// Resolve short follow-ups only within an explicit, recent photo conversation.
+// New topics and booking choices must not inherit the previous photo intent.
+function resolveFollowup(state: State, raw: string, now: number): string {
+  const s = norm(raw);
+  if (state.topic_at && now - state.topic_at > 30 * 60000) { delete state.topic; delete state.subject; }
+  const roomWords = /\b(aptos?|apartamentos?|quartos?|acomodacoes|acomodacao|suites?|loft|varanda|terreo|quadruplo|triplo|sacada|casal)\b/;
+  const shortPhotoChoice = (value: string) => /^(?:(?:e|agora|a|o|da|do|das|dos|de|suite|me mande|me manda|mande|manda|quero ver|quero|por favor|pfv)\s+)*(?:todos|todas|loft|casal|triplo|quadruplo|varanda terreo|sacada vista mar)(?:\s+(?:os|as|aptos|apartamentos|quartos|suites|acomodacoes|pfv|por favor))*[.!?]*$/.test(value);
+  const previous = norm([...state.history].slice(-4).reverse().find(message => !shortPhotoChoice(norm(message))) || '');
+  // Migrate the existing user-only state once, without importing any bot facts.
+  const active = state.topic === 'room_photos' || (!state.turns?.length && mediaRequest(previous) && roomWords.test(previous));
+  const shortChoice = shortPhotoChoice(s);
+  let resolved = active && !mediaRequest(s) && shortChoice ? `Fotos de ${raw}` : raw;
+  if (mediaRequest(s) && /\b(dess[ae]|dest[ae]|del[ae])\b/.test(s) && state.subject && !/restaurante|reserva solar/.test(s)) resolved = `Fotos de ${state.subject}`;
+  if (mediaRequest(norm(resolved)) && (roomWords.test(norm(resolved)) || (active && /\btod[oa]s\b/.test(s)))) {
+    state.topic = 'room_photos'; state.topic_at = now;
+    if (/\btod[oa]s\b/.test(s)) resolved = 'Fotos de todos os apartamentos';
+  } else { delete state.topic; }
+  return resolved;
 }
 
 function iso(day: number, month: number, year: number): string | undefined {
@@ -76,15 +124,18 @@ function parseDates(s: string, now: number): string[] {
 function updateFacts(state: State, message: string, now: number) {
   const before = JSON.stringify(state.facts);
   const s = norm(message);
+  if (mediaRequest(s) || eventInquiry(s) || publicEventInquiry(s) || restaurantInquiry(s)) { state.changed = false; return; }
+  if (extraCodes(s).length && question(s) && !/\b(diarias?|hospedagem|reservar|reserva|cotacao|aptos?|loft|suite)\b/.test(s)) { state.changed=false; return; }
   const total = s.match(new RegExp(`${numberPattern}\\s*(pessoas|hospedes)\\b`));
   const adults = s.match(new RegExp(`${numberPattern}\\s*adult[oa]s?\\b`));
   const children = s.match(new RegExp(`${numberPattern}\\s*criancas?\\b`));
   const group = s.match(new RegExp(`\\b(?:somos|seremos|vamos em|agora somos)\\s+${numberPattern}\\b`));
+  const shortCount = s.match(new RegExp(`^(?:para\\s+)?${numberPattern}[.!]?$`));
   if (total) state.facts.guests = count(total[1]);
   else if (adults) state.facts.guests = count(adults[1]) + (children ? count(children[1]) : 0);
   else if (group) state.facts.guests = count(group[1]);
   else if (/\b(somos|para|vai|um) casal\b/.test(s)) state.facts.guests = 2;
-  else if (!state.facts.guests && new RegExp(`^${numberPattern}[.!]?$`).test(s)) state.facts.guests = count(s.replace(/[.!]/g, ''));
+  else if (shortCount && (!state.facts.guests || state.awaiting === 'guests')) state.facts.guests = count(shortCount[1]);
   if (/crianca|bebe/.test(s) && !/sem crianca/.test(s)) state.facts.children_pending = !/\d+\s*(anos?|meses?)\b/.test(s);
   if (state.facts.children_pending && /\d+\s*(anos?|meses?)\b/.test(s)) state.facts.children_pending = false;
   if (/sem crianca|so adultos|apenas adultos/.test(s)) state.facts.children_pending = false;
@@ -145,11 +196,31 @@ export function control(body: any, now = Date.now()) {
     state.first_turn = !state.greeted;
     state.greeted = true;
     delete state.pending; // Any new typed message invalidates an older confirmation card.
-    updateFacts(state, raw, now);
+    const wasPublic = state.topic === 'public_events';
+    const publicFollowup = wasPublic && Number.isFinite(state.topic_at) && now >= state.topic_at! && now - state.topic_at! <= 30 * 60000 && publicEventFollowup(raw);
+    if (!human(s) && (publicEventInquiry(raw) || publicFollowup)) {
+      state.resolved_message = personal(raw) ? 'Programação musical de Heraldo Ramos no Reserva Solar' : publicFollowup && !publicEventInquiry(raw) ? `Programação musical de Heraldo Ramos no Reserva Solar: ${raw}` : raw;
+      state.topic = 'public_events'; state.topic_at = now; state.changed = false;
+      delete state.awaiting; delete state.subject;
+      // A public show is not an answer/consent to a private-event lead in progress.
+    } else {
+      state.resolved_message = personal(raw) ? '[Dado pessoal omitido]' : resolveFollowup(state, raw, now);
+      const event = wasPublic && !eventInquiry(raw) ? undefined : advanceEvent(state.event,raw,String(body.subscriber_id||state.event?.source||''),now);
+      if(event) {state.event=event;state.changed=false;delete state.awaiting;delete state.topic;}
+      else {delete state.event;updateFacts(state, state.resolved_message, now);}
+    }
     if (raw && !personal(raw)) state.history = [...state.history, raw.slice(0, 500)].slice(-12);
+    remember(state, 'user', raw);
     const currentQuote = validQuote(body.quote_state, state, now);
-    const context = JSON.stringify({ primeira_resposta: state.first_turn, fatos_informados_pelo_cliente: state.facts, mensagens_do_cliente: state.history, ultima_mensagem: personal(raw) ? '[Dado pessoal omitido; não repetir nem guardar]' : raw, cotacao_valida_para_estes_dados: currentQuote, data_atual: new Date(now - 3 * 3600000).toISOString().slice(0, 10), regra: 'Datas e ocupação só valem se estão nos fatos do cliente. Oferta de pacote não é escolha do cliente. Nunca pedir dados pessoais: isso pertence à confirmação por botão. Nunca afirmar encaminhamento sem ação real.' });
+    const context = JSON.stringify({ primeira_resposta: state.first_turn, fatos_informados_pelo_cliente: state.facts, mensagens_do_cliente: state.history, conversa_recente: state.turns, assunto_ativo: state.topic || '', acomodacao_em_foco: state.subject || '', interpretacao_da_ultima_mensagem: personal(raw) ? '[Dado pessoal omitido]' : state.resolved_message, ultima_mensagem: personal(raw) ? '[Dado pessoal omitido; não repetir nem guardar]' : raw, cotacao_valida_para_estes_dados: currentQuote, data_atual: new Date(now - 3 * 3600000).toISOString().slice(0, 10), programacao_musical_confirmada: publicEventContext(now), regra: 'Reserva Solar é o nome próprio do restaurante pé na areia, nunca um pedido de reserva de hospedagem. Cardápio, menu, pratos, horários, mesa e informações do Reserva Solar ficam no atendimento de gastronomia e não iniciam cotação. Datas e ocupação só valem se estão nos fatos do cliente. Oferta de pacote não é escolha do cliente. Histórico do atendimento serve para entender referências, nunca comprova aceite ou entrega de mídia. Nunca pedir dados pessoais: isso pertence à confirmação por botão. Nunca afirmar encaminhamento sem ação real. Programação musical pública não é pedido de orçamento privado para Luiza nem escolha de datas de hospedagem. Respeite as datas, situação temporal e limites da programação confirmada; não deduza couvert, entrada ou duração pelas regras gerais do restaurante.' });
     return { state: JSON.stringify(state), context, can_collect: 'NAO', quote_request: 'NOQUOTE' };
+  }
+  if (body.operation === 'remember_response') {
+    remember(state, 'assistant', String(body.response_text || ''), true);
+    if(Array.isArray(body.extra_photo_requests)) state.extra_photo_requests=[...new Set([...(state.extra_photo_requests||[]),...body.extra_photo_requests.filter((c:string)=>['BARCO','MESA','LUA','BIKE'].includes(c))])];
+    if (body.clear_subject === true) delete state.subject;
+    if (typeof body.room_name === 'string' && body.room_name) state.subject = body.room_name.slice(0,100);
+    return {state: JSON.stringify(state)};
   }
   const quote = validQuote(body.quote_state, state, now);
   if (body.operation === 'confirm') {
@@ -162,8 +233,27 @@ export function control(body: any, now = Date.now()) {
   }
   if (body.operation !== 'route') return { error: 'Invalid operation' };
   const proposed = String(body.proposed || '').trim();
+  const publicMessage = state.history.at(-1) === raw ? state.resolved_message || raw : raw;
   if (human(s)) decision = 'HUMANO';
+  else if (publicEventInquiry(publicMessage)) {answer=publicEventAnswer(publicMessage,now);delete state.pending;}
+  else if (state.event) {answer=state.event.answer;delete state.pending;}
+  else if (eventInquiry(s) && !mediaRequest(s)) {
+    delete state.pending;
+    answer = eventContactText;
+  }
   else if (greeting(s)) answer = state.first_turn ? 'Olá! Que bom receber seu contato no Hotel Solar. ☀️ Como posso ajudar?' : 'Estou por aqui! Como posso ajudar?';
+  else if (restaurantInquiry(s)) {
+    // Keep the ChatGPT factual answer. This explicit branch also neutralizes a
+    // mistaken QUOTE proposal caused by the word "reserva" in the venue name.
+    delete state.pending;
+  }
+  else if (mediaRequest(s) || mediaRequest(norm(state.resolved_message || '')) && state.topic === 'room_photos') {
+    // Continue to ManyChat's media branch; do not quote, select or collect data.
+    delete state.pending;
+  }
+  else if ((extraCodes(s).length || /\b(extras|servicos adicionais|servicos extras|experiencias)\b/.test(s)) && !state.changed) {
+    delete state.pending; // Informational extra offers are not room recommendations or acceptance.
+  }
   else {
     const selected = quote ? selection(s, quote) : undefined;
     const selecting = /\b(quero|prefiro|escolho|escolhi|aceito|pode ser|fico com|vou ficar|vou querer)\b/.test(s);
@@ -192,7 +282,13 @@ export function control(body: any, now = Date.now()) {
   if (question(s)) delete state.pending;
   if (decision !== 'COLETAR') confirmationText = '';
   if (state.first_turn && decision === 'NOQUOTE' && answer && !/^(olá|oi|bom dia|boa tarde|boa noite)/i.test(answer)) answer = 'Olá! Que bom receber seu contato no Hotel Solar. ☀️\n\n' + answer;
-  return { state: JSON.stringify(state), quote_request: decision, can_collect: 'NAO', confirmation_text: confirmationText, answer };
+  delete state.awaiting;
+  if (decision === 'NOQUOTE' && !mediaRequest(norm(state.resolved_message || raw))) {
+    remember(state, 'assistant', answer);
+    if (/quantas pessoas/.test(answer)) state.awaiting = 'guests';
+    else if (/datas de entrada e sa[ií]da/.test(answer)) state.awaiting = 'dates';
+  }
+  return { state: JSON.stringify(state), resolved_message: state.resolved_message || raw, quote_request: decision, can_collect: 'NAO', confirmation_text: confirmationText, answer };
 }
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
