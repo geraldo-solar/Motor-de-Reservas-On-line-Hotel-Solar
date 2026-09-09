@@ -1,3 +1,5 @@
+import { childPolicyQuestion, childAgeFollowup } from './packageChildInquiry.js';
+
 // A catalog reference is conversational context, never a quote or consent.
 export type PackageContext = {id: string; name: string; start_date: string; end_date: string; updated_at: number};
 const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -30,6 +32,7 @@ export function packageFollowup(message: string) {
   if (/\b(comprovante|paguei)\b|pagamento.{0,30}(confirmad|recebid)|(?:confirmad|recebid).{0,30}pagamento/.test(s)) return false;
   if (/\b(fotos?|imagens?|fotografias?|galeria|album|cardapio|menu|reserva solar|solar 73|academia|playground|parquinho|piscinas?|hidromassagem|bicicletas?|bikes?)\b/.test(s)) return false;
   if (/\b(outro assunto|esquece|esqueca|mudar de assunto|nao quero esse|nao quero o pacote)\b/.test(s)) return false;
+  if (childPolicyQuestion(message) || childAgeFollowup(message)) return true;
   if (/\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/.test(s)) return true;
   return /\b(indica|indicam|recomenda|recomendam|melhor|sugere|sugestao|pessoas|hospedes|adultos?|casal|criancas?|bebe|familia|valores?|precos?|custa|custos?|mais barato|mais economico|quanto|pagamento|parcelamento|parcelar|parcelas|inclui|inclus[oa]s?|inclusoes|ceia|open bar|programacao|horarios?|barco|catamara|regras|periodo|noites|diarias|datas|entrada|saida|loft|suites?|quartos?|acomodacoes|acomodacao|informacoes|detalhes|reservar|prosseguir)\b/.test(s)
     || /^(sim|nao|pode ser|quero|pode mostrar|quais opcoes|\d{1,2})[.!?]*$/.test(s);

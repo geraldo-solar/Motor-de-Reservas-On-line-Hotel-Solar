@@ -2,7 +2,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { resolveRoomMedia, nextRoomMedia } from '../utils/roomMedia.js';
 import { control } from './conversation-control.js';
-import { PHOTO_CLARIFY, documentPhotoInquiry, photoRetryRequest } from '../utils/photoIntent.js';
+import { PHOTO_CLARIFY, documentPhotoInquiry, photoClarificationQuestion, photoRetryRequest } from '../utils/photoIntent.js';
 import { requestedExtraCodes, extraCodes, extraPhotoRequest, extraMediaResult, nextExtraMedia, normalizeExtra } from '../utils/extraMedia.js';
 import { eventInquiry, eventContactText, reservaPhotoRequest, sitePhotoResult } from '../utils/hotelInfo.js';
 import { readEvent } from '../utils/eventInquiry.js';
@@ -14,6 +14,9 @@ import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
 import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
 import { namedPackageInquiry, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext } from '../utils/packageContext.js';
 import { packagePrices, packageRecommendation } from '../utils/packageReply.js';
+import { childPolicyQuestion, childAgeFollowup, packageChildReply } from '../utils/packageChildInquiry.js';
+import { stayDateClarification } from '../utils/stayDuration.js';
+import { guestServiceRequest } from '../utils/guestService.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -238,6 +241,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({...routed, answer:message, quote_text:message, conversation_text:message,
       matched:false, match_type:'attachment', availability_checked:false});
   }
+  let serviceMessage = incomingMessage;
+  if (isAudioInput(incomingMessage)) {
+    try {
+      const state = typeof req.body?.state === 'string' ? JSON.parse(req.body.state) : req.body?.state;
+      serviceMessage = audioMessage(incomingMessage, state) || '';
+    } catch { serviceMessage = ''; }
+  }
+  if (!req.query?.operation && guestServiceRequest(serviceMessage)) {
+    // Use the same existing handoff code even when invoked directly. No
+    // catalog, private-event delivery, document issuance or service order runs.
+    const routed = control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    const answer = 'answer' in routed ? routed.answer : '';
+    return res.status(200).json({...routed,quote_text:answer,conversation_text:answer,
+      matched:false,match_type:'guest_service',availability_checked:false});
+  }
   if (!supabaseUrl || !supabaseKey) {
     return res.status(500).json({ error: 'Missing Supabase configuration.' });
   }
@@ -256,10 +274,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!userMessage) {
     return res.status(400).json({ error: 'Missing user_message.' });
   }
+  // Reuse the controller's state/privacy/TTL validation. The response must
+  // belong to this actual user turn, not merely be the last assistant text
+  // left over from an earlier meal, photo, quote or conversation.
+  const checked = control({operation:'remember_response',state:req.body?.state});
+  const safeState = 'state' in checked && checked.state ? JSON.parse(checked.state) : null;
+  const sourceMessage = isAudioInput(incomingMessage)
+    ? audioMessage(incomingMessage,safeState) || '' : incomingMessage;
+  const currentInput = sourceMessage.slice(0,2000);
+  const currentState = safeState?.history?.at(-1) === currentInput.slice(0,500)
+    && safeState?.resolved_message === userMessage.slice(0,500);
+  const previous = safeState?.turns?.at(-2);
+  const latest = safeState?.turns?.at(-1);
+  const currentAnswer = currentState
+    && (!conversationState?.guest_inquiry || safeState?.guest_inquiry)
+    && (!conversationState?.stay_date_pending || safeState?.stay_date_pending)
+    && previous?.role === 'user' && previous.text === currentInput.slice(0,900)
+    && latest?.role === 'assistant' && latest.text?.trim()
+    && !photoClarificationQuestion(latest.text) ? latest.text : '';
+  const informationResult = (fallback: string, match_type: string) => {
+    const answer = currentAnswer || fallback;
+    return {quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
+      matched:false,match_type,availability_checked:false,
+      ...control({operation:'remember_response',state:safeState,response_text:answer})};
+  };
+  if (!req.query?.operation) {
+    if (currentState && safeState?.stay_date_pending) {
+      // A paid-extra mention such as "lua de mel" must not replace the
+      // unresolved date question with a kit photo or a price. Candidates are
+      // still not confirmed room facts, and an expired state cannot block.
+      return res.status(200).json(informationResult(stayDateClarification(safeState.stay_date_pending),'stay_date_clarification'));
+    }
+    if (currentState && safeState?.guest_inquiry) {
+      const fallback = safeState.guest_inquiry.kind === 'dining'
+        ? 'Pode detalhar sua dúvida sobre a refeição ou a visita ao restaurante?'
+        : safeState.guest_inquiry.kind === 'day_use'
+        ? 'Pode detalhar sua dúvida sobre o Day Use?'
+        : 'Pode detalhar qual informação do hotel você deseja esclarecer?';
+      return res.status(200).json(informationResult(fallback,'guest_information'));
+    }
+  }
+  if (req.query?.operation === 'offers' && safeState?.stay_date_pending
+    && latest?.role === 'assistant' && latest.text === currentInput
+    && previous?.role === 'user' && safeState.history?.at(-1) === previous.text.slice(0,500)) {
+    return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',
+      matched:false,match_type:'stay_date_clarification',availability_checked:false,state:JSON.stringify(safeState)});
+  }
   // A question about the customer's document is not a hotel photo request.
   // Leave the attachment conversation to its existing response/human flow.
   if (!req.query?.operation && documentPhotoInquiry(userMessage)) {
-    return res.status(200).json({quote_request:'NO_PACKAGE',quote_text:'',conversation_text:'',matched:false,availability_checked:false,...control({operation:'remember_response',state:req.body?.state})});
+    return res.status(200).json(informationResult('Pode detalhar sua dúvida sobre o anexo?','document_information'));
   }
 
   // A retry with no recent, identified photo must ask its subject, not select
@@ -319,6 +383,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const differentDates = (facts.check_in && facts.check_in !== pkg.start_iso_date) || (facts.check_out && facts.check_out !== pkg.end_iso_date);
     const answer = differentDates
       ? `O pacote ${pkg.name} tem período de ${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}. As datas que você informou são diferentes${pkg.full_period_required ? ', e esse pacote exige o período completo' : ''}. Você quer continuar consultando esse pacote ou deseja outra estadia? Não alterei suas datas nem confirmei uma reserva.`
+      : childPolicyQuestion(userMessage) || childAgeFollowup(userMessage)
+      ? packageChildReply(pkg,userMessage)
       : packageBookingRequest(userMessage)
       ? `Vamos continuar com o pacote ${pkg.name}, de ${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}. ${!facts.guests ? 'Quantas pessoas vão se hospedar, contando adultos e crianças?' : facts.children_pending ? 'Quais são as idades das crianças?' : 'Para seguir com a opção escolhida, peça para falar com a recepção, que confere as condições e a disponibilidade.'} Ainda não há reserva confirmada.`
       : packageRecommendationInquiry(userMessage)
@@ -361,6 +427,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({quote_request:'ROOM_LIST',quote_text:PHOTO_CLARIFY,conversation_text:PHOTO_CLARIFY,matched:false,availability_checked:false,...remember(PHOTO_CLARIFY,'',true)});
   }
   if (packageError) return res.status(500).json({ error: packageError.message });
+  if (!isPackageIntent(userMessage, bestPackageScore)) {
+    return res.status(200).json(informationResult('Pode detalhar como podemos ajudar com sua dúvida sobre o hotel?','general_information'));
+  }
   if (!packages?.length) {
     return res.status(200).json({
       quote_request: 'NO_PACKAGE',
@@ -376,10 +445,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .sort((a, b) => b.score - a.score);
   const best = ranked[0];
 
-  if (!isPackageIntent(userMessage, best.score)) {
-    return res.status(200).json({ quote_request: 'NO_PACKAGE', quote_text: '', conversation_text: '', matched: false, ...remember('') });
-  }
-
   if (best.score < 20) {
     return res.status(200).json({
       quote_request: 'PACKAGE_LIST',
@@ -392,6 +457,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const pkg = best.pkg;
+  if (childPolicyQuestion(userMessage)) {
+    const answer=packageChildReply(pkg,userMessage);
+    return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
+      package_id:pkg.id,package_name:pkg.name,matched:true,match_type:'package_child_information',availability_checked:false,
+      ...control({operation:'remember_response',state:req.body?.state,response_text:answer,
+        package_context:{id:pkg.id,name:pkg.name,start_date:pkg.start_iso_date,end_date:pkg.end_iso_date}})});
+  }
   const reference = `PACKAGE_ID|${pkg.id}`;
   return res.status(200).json({
     quote_request: reference,

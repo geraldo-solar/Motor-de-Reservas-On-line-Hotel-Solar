@@ -309,7 +309,8 @@ test('lista, ausência de pacote e texto longo também expõem saída conversaci
   assert.equal(list.match_type, 'list');
   assert.equal(list.conversation_text, list.quote_text);
   const faq = await request(handler, { user_message: 'bom dia' });
-  assert.equal(faq.conversation_text, '');
+  assert.equal(faq.quote_request, 'ROOM_LIST');
+  assert.equal(faq.conversation_text, 'Pode detalhar como podemos ajudar com sua dúvida sobre o hotel?');
   const longHandler = await loadHandler('api/resolve-package.ts', [{ ...packages[0], description: 'Detalhes da programação. '.repeat(200) }]);
   const long = await request(longHandler, { user_message: 'Independência Solar' });
   assert.ok(long.conversation_text.length <= 1901);

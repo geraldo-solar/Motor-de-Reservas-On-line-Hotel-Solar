@@ -278,7 +278,8 @@ test('Como envio foto do comprovante preserva o roteamento documental sem consul
   const p = prepare(message,prepare('Fotos da hidromassagem').state);
   const r = route(message,p.state,'Pode enviar o comprovante por aqui para conferência da equipe.');
   const resolved = await request({user_message:message,state:r.state},undefined,noDataResolver);
-  assert.equal(resolved.quote_request,'NO_PACKAGE');
+  assert.equal(resolved.quote_request,'ROOM_LIST');
+  assert.ok(resolved.conversation_text.trim());
   assert.doesNotMatch(resolved.quote_request,/^(?:EXTRA_ID|ROOM_ID|SITE_ID)\|/);
   assert.doesNotMatch(resolved.conversation_text,/espaço do hotel|hidromassagem|Loft|quantas pessoas|datas de entrada/i);
   assert.equal(resolved.matched,false);

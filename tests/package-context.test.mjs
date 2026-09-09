@@ -166,13 +166,13 @@ test('pergunta Criança paga não afirma presença de criança nem cria pendênc
   assert.doesNotMatch(result.conversation_text,/idades das crianças|gratuit[oa]|não paga/i);
 });
 
-test('contagem de casal soma crianças; total informado e adultos explícitos mantêm prioridade',()=>{
+test('contagem de casal soma crianças; composição explícita consistente respeita o total',()=>{
   for (const [message,expected] of [
     ['somos um casal e uma criança de 5 anos',3],
     ['um casal e uma criança de 5 anos',3],
     ['somos um casal',2],
     ['um casal e duas crianças de 5 e 8 anos',4],
-    ['Somos 4 pessoas: um casal e uma criança de 5 anos',4],
+    ['Somos 3 pessoas: um casal e uma criança de 5 anos',3],
     ['São 3 adultos e uma criança de 5 anos, incluindo um casal',4],
     ['Somos dois adultos e uma criança de 5 anos',3],
   ]) {
@@ -183,6 +183,17 @@ test('contagem de casal soma crianças; total informado e adultos explícitos ma
     assert.equal(state.pending,undefined,message);
     assert.equal(p.can_collect,'NAO',message);
   }
+});
+
+test('total que diverge da composição exige esclarecimento antes de cotar',()=>{
+  const p=prepare('Somos 4 pessoas: um casal e uma criança de 5 anos',initial);
+  const state=JSON.parse(p.state);
+  assert.equal(state.facts.guests,undefined);
+  assert.equal(state.family_clarification,'party_composition');
+  assert.equal(state.facts.children_pending,true);
+  const r=control({operation:'route',user_message:'Somos 4 pessoas: um casal e uma criança de 5 anos',state:p.state,proposed:'QUOTE|2026-10-20|2026-10-25|4|NONE'},now);
+  assert.equal(r.quote_request,'NOQUOTE');
+  assert.equal(r.can_collect,'NAO');
 });
 
 test('contexto de pacote expira em 30 minutos e não aceita timestamp inválido ou futuro',async()=>{

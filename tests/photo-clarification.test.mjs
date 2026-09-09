@@ -196,7 +196,9 @@ test('foto do comprovante não inicia nem mantém clarificação de mídia do ho
     const p=prepare(message,state);
     const r=route(message,p.state,'Pode enviar o comprovante por aqui para a equipe conferir.');
     const result=await request(message,r.state);
-    assert.equal(result.quote_request,'NO_PACKAGE');
+    assert.equal(result.quote_request,'ROOM_LIST');
+    assert.ok(result.conversation_text.trim());
+    assert.doesNotMatch(result.conversation_text,/de qual espaço|fotos do hotel|hidromassagem|Loft/i);
     assert.notEqual(JSON.parse(result.state).topic,'photo_clarification');
     assert.notEqual(JSON.parse(result.state).topic,'extra_photos');
     assert.deepEqual(JSON.parse(result.state).facts,facts);
