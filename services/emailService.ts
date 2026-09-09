@@ -13,7 +13,7 @@ import { formatDisplayDate } from '../utils/dateUtils';
 // Configurações do Hotel
 export const HOTEL_CONFIG = {
   name: 'Hotel Solar',
-  email: 'geraldo@hotelsolar.tur.br',
+  email: 'reserva@hotelsolar.tur.br',
   adminEmail: 'reserva@hotelsolar.tur.br',
   phone: '(91) 98100-0800',
   address: 'Belém, PA',

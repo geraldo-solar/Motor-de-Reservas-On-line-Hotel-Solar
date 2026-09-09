@@ -168,7 +168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       emailDebugInfo = { attempted: true };
       
       const adminEmail = 'reserva@hotelsolar.tur.br';
-      const hotelEmail = 'geraldo@hotelsolar.tur.br';
+      const hotelEmail = 'reserva@hotelsolar.tur.br';
       const shortId = reservationId.replace('RES-', '').replace(/-/g, '').substring(0, 8).toUpperCase();
       
       const roomsHtml = rooms.map((r: any) => `<li><b>${r.name}</b> - ${formatCurrency(r.priceSnapshot)}</li>`).join('');
@@ -294,7 +294,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           </h3>
           <ol style="color: #475569; margin: 0; padding-left: 20px; line-height: 1.8;">
             <li>Realize o pagamento via PIX no valor de <strong style="color: #1a3c34;">${formatCurrencyLocal(totalPrice)}</strong></li>
-            <li>Envie o comprovante para: <a href="mailto:geraldo@hotelsolar.tur.br" style="color: #d4a853; text-decoration: none;">geraldo@hotelsolar.tur.br</a></li>
+            <li>Envie o comprovante para: <a href="mailto:reserva@hotelsolar.tur.br" style="color: #d4a853; text-decoration: none;">reserva@hotelsolar.tur.br</a></li>
             <li>Após recebermos o comprovante, enviaremos a confirmação</li>
           </ol>
         </div>
@@ -337,7 +337,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           <div style="margin-top: 20px; padding: 16px; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
             <p style="color: #166534; margin: 0 0 12px 0; font-weight: bold;">✅ Após realizar a transferência:</p>
             <ol style="color: #166534; margin: 0; padding-left: 20px; line-height: 1.8; font-size: 13px;">
-              <li>Envie o comprovante para: <a href="mailto:geraldo@hotelsolar.tur.br" style="color: #1a3c34; font-weight: bold; text-decoration: none;">geraldo@hotelsolar.tur.br</a></li>
+              <li>Envie o comprovante para: <a href="mailto:reserva@hotelsolar.tur.br" style="color: #1a3c34; font-weight: bold; text-decoration: none;">reserva@hotelsolar.tur.br</a></li>
               <li>Sua reserva será confirmada em até 24 horas úteis.</li>
             </ol>
           </div>
@@ -513,7 +513,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!isCreditCard) {
         await executeBrevoStictly({
           sender: { name: 'Hotel Solar', email: hotelEmail },
-          to: [{ email: mainGuest.email || 'geraldo@hotelsolar.tur.br', name: mainGuest.name }],
+          to: [{ email: mainGuest.email || 'reserva@hotelsolar.tur.br', name: mainGuest.name }],
           subject: `Confirmação de Reserva #${shortId} - Hotel Solar`,
           htmlContent: luxuryClientHtml,
         });
