@@ -93,6 +93,25 @@ test('café para visitante → pessoas → data → aniversário mantém a respo
   }
 });
 
+test('entrada no Reserva Solar em feriado preserva política confirmada sem buscar pacotes',async()=>{
+  for (const message of [
+    'No feriado preciso pagar para entrar no Reserva Solar?',
+    'Quanto custa a entrada no Reserva Solar no Réveillon?',
+    'Nas férias a entrada do Reserva Solar é gratuita?',
+  ]) {
+    queries.length=0;
+    const {routed}=turn(message,initial,'A entrada custa R$ 40.');
+    const result=await resolve(message,routed.state);
+    assert.equal(result.quote_request,'ROOM_LIST',message);
+    assert.equal(result.match_type,'guest_information',message);
+    assert.equal(result.conversation_text,routed.answer,message);
+    assert.match(result.conversation_text,/gratuita como regra/);
+    assert.doesNotMatch(result.conversation_text,/R\$|40|quantas pessoas|pacote/i);
+    assert.deepEqual(JSON.parse(result.state).facts,oldFacts,message);
+    assert.deepEqual(queries,[],message);
+  }
+});
+
 test('áudio transcrito retorna a resposta informativa pertencente ao arquivo atual',async()=>{
   queries.length=0;
   const source='https://media.example.test/voice.ogg';

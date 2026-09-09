@@ -3,6 +3,7 @@ import { eventInquiry } from './hotelInfo.js';
 import { namedPackageInquiry, packageInquiry } from './packageContext.js';
 import { publicEventInquiry } from './publicEvents.js';
 import { guestFacilityInquiry } from './guestFacilities.js';
+import { diningPolicyAnswer } from './diningPolicy.js';
 
 export type GuestInquiry = 'lodging_faq' | 'day_use' | 'dining';
 
@@ -126,6 +127,9 @@ export function guestInquiry(message: string): GuestInquiry | undefined {
   const s = normalize(message);
   if (!s || mediaWords.test(s) || humanWords.test(s)
     || eventInquiry(message) || publicEventInquiry(message)) return;
+  // A holiday in an admission FAQ is not a lodging-package request.
+  // Reuse the narrow policy guard so meals, events and bookings stay distinct.
+  if (diningPolicyAnswer(message)) return 'dining';
   // "Esse valor é por diária ou pelo pacote?" explains the previous amount;
   // the generic word pacote must not turn it into a fresh catalog request.
   if (packageInquiry(message) && (!quotedAmountQuestion(s) || namedPackageInquiry(message))) return;
