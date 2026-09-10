@@ -31,10 +31,41 @@ const steps=[
 const labels:Record<string,string>={tipo:'Evento/grupo',data:'Data e flexibilidade',participantes:'Participantes',horario_local:'Horário e local',servicos:'Alimentação, bebidas e estrutura desejada',hospedagem:'Hospedagem',observacoes:'Orçamento e observações'};
 export function eventSummary(e:EventState) { return steps.map(([key])=>`${labels[key]}: ${e.fields[key]||'A definir'}`).join('; '); }
 export function eventConsent(e:EventState) { return `Anotei seu pedido: ${eventSummary(e).slice(0,1150)}.\n\nPosso compartilhar seu nome de contato, WhatsApp e esses detalhes com a Luiza para ela continuar o orçamento? Responda “autorizo” ou “não”.`; }
+const units='(?:um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove)';
+const tens='(?:dez|onze|doze|treze|quatorze|catorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte|trinta|quarenta|cinquenta|sessenta|setenta|oitenta|noventa)';
+const numberWord=`(?:${units}|${tens}|cem|cento|duzent[oa]s|trezent[oa]s|quatrocent[oa]s|quinhent[oa]s|seiscent[oa]s|setecent[oa]s|oitocent[oa]s|novecent[oa]s|mil)`;
+// Keep the entire stated phrase; do not reduce "duzentas e vinte pessoas"
+// to its last two digits or infer a numeric total from a composition.
+const countWords=`${numberWord}(?: (?:e )?${numberWord})*`;
+function participants(raw:string) {
+  const n=normalized(raw);
+  const match=new RegExp(`\\b(?:\\d{1,4}|${countWords})\\s+(?:pessoas|participantes|convidad[oa]s|adultos|hospedes)(?:\\s+com\\s+criancas?)?\\b`).exec(n);
+  return match ? {text:clean(raw.slice(match.index,match.index+match[0].length)),index:match.index,length:match[0].length} : undefined;
+}
+function participantCorrection(raw:string) {
+  const match=participants(raw);if(!match)return false;
+  const rest=normalized(raw.slice(0,match.index)+' '+raw.slice(match.index+match.length));
+  return /^(?:(?:na verdade|agora|corrigindo|serao|sao|para|pra|somos|seremos|ao todo)|[\s,.!])*$/.test(rest);
+}
+// Only a signed, active collection can give a short venue/service reply its
+// meaning. An explicit FAQ or a new topic must retain its normal route.
+export function eventFieldReply(value:any,raw:string,now=Date.now()):boolean {
+  const e=readEvent(value,now);if(!e || !['collecting','consent'].includes(e.status))return false;
+  const n=normalized(raw);
+  if(e.last===raw)return true;
+  if(e.status!=='collecting')return false;
+  if(participantCorrection(raw))return true;
+  if(/^(?:ainda )?a definir[.!?]*$|^(?:nao sei|pular|ainda nao sei)[.!?]*$/.test(n))return true;
+  if(/[?]|\b(?:qual|quais|quanto|quantos|como|onde|quando|tem|funciona|abre|fecha|aceita|aceitam|custa|gratuito|incluso|outra coisa|mudando de assunto|fotos?|imagens?|cardapio|menu)\b/.test(n))return false;
+  if(e.stage===3)return /\b(?:reserva solar|hotel solar|solar 73|\d{1,2}\s*(?:h|horas)|de manha|a tarde|a noite)\b/.test(n);
+  if(e.stage===4)return /\b(?:jantar|almoco|buffet|coquetel|bebidas?|refrigerantes?|decoracao|musica|equipamentos?|coffee break|alimentacao)\b/.test(n);
+  if(e.stage===5)return /^(?:sem|nao|com|sim)\b/.test(n) || /\b(?:precisamos|precisaremos|quero|queremos)\b.*\b(?:hospedagem|quartos?)\b/.test(n);
+  return false;
+}
 function infer(e:EventState,raw:string) {
   const n=normalized(raw);
   if(!e.fields.tipo && eventInquiry(raw)) e.fields.tipo=clean(raw);
-  if(!e.fields.participantes) { const m=raw.match(/\b(\d{1,4})\s*(pessoas|participantes|convidad[oa]s|adultos|hospedes|hóspedes)\b/i); if(m)e.fields.participantes=clean(m[0]); }
+  if(!e.fields.participantes) { const m=participants(raw); if(m)e.fields.participantes=m.text; }
   if(!e.fields.data) { const m=raw.match(/\b\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?\b|\b\d{1,2}\s+de\s+(?:janeiro|fevereiro|março|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)(?:\s+de\s+\d{4})?/i); if(m)e.fields.data=m[0]; }
 }
 export function advanceEvent(existing:any,raw:string,source:string,now=Date.now()):EventState|undefined {
@@ -59,7 +90,10 @@ export function advanceEvent(existing:any,raw:string,source:string,now=Date.now(
     } else if(e.last) {
       // Store the customer's own answer to the question asked, never an AI guess.
       const key=steps[e.stage]?.[0];
-      if(key) e.fields[key]=/^(nao sei|a definir|pular|nao tenho|ainda nao sei)[.! ]*$/.test(n)?'A definir':clean(raw);
+      if(key!=='participantes' && participantCorrection(raw)) {
+        // A count correction does not answer the pending venue/service/date.
+        e.fields.participantes=participants(raw)!.text;
+      } else if(key) e.fields[key]=/^(nao sei|a definir|ainda a definir|pular|nao tenho|ainda nao sei)[.! ]*$/.test(n)?'A definir':clean(raw);
     }
   }
   infer(e,raw);

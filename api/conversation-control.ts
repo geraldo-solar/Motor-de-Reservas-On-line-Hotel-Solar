@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { EXTRA_MEDIA_CODES, extraCodes, extraPhotoRequest } from '../utils/extraMedia.js';
 import { PHOTO_CLARIFY, PHOTO_LOOKUP, documentPhotoInquiry, photoClarificationQuestion, photoDeliveryClaim, photoRetryRequest, shortPhotoRetry } from '../utils/photoIntent.js';
 import { eventInquiry, eventContactText } from '../utils/hotelInfo.js';
-import { advanceEvent, readEvent, type EventState } from '../utils/eventInquiry.js';
+import { advanceEvent, readEvent, eventFieldReply, type EventState } from '../utils/eventInquiry.js';
 import { publicEventInquiry, publicEventFollowup, publicEventContext, publicEventAnswer } from '../utils/publicEvents.js';
 import { isAudioInput, transcribeAudio } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage, audioSourceHash, readAudioTurn, type AudioTurn } from '../utils/audioInput.js';
@@ -477,7 +477,8 @@ export function control(body: any, now = Date.now()) {
     return {state:JSON.stringify(state),resolved_message:safeMessage,quote_request:'NOQUOTE',
       can_collect:'NAO',confirmation_text:'',answer:hotelContactAnswer};
   }
-  const service = guestServiceRequest(raw);
+  const continuingEvent = eventFieldReply(state.event,raw,now);
+  const service = continuingEvent ? undefined : guestServiceRequest(raw);
   if (service && ['prepare', 'route', 'confirm'].includes(body.operation)) {
     // An active guest request must not enter new-stay qualification or turn
     // a group's pending document into a new private-event lead.
@@ -533,6 +534,14 @@ export function control(body: any, now = Date.now()) {
       state.resolved_message = AUDIO_UNAVAILABLE;
       state.changed = false;
       delete state.topic; delete state.topic_at; delete state.subject; delete state.extra_photo_subjects; delete state.guest_inquiry;
+    } else if (!human(s) && continuingEvent) {
+      const event=advanceEvent(state.event,raw,String(body.subscriber_id||state.event?.source||''),now);
+      if(event) state.event=event;
+      clearStayDuration(state);
+      state.resolved_message=personal(raw)?'[Dado pessoal omitido]':raw;
+      state.changed=false;
+      delete state.awaiting;delete state.topic;delete state.topic_at;delete state.package_context;
+      delete state.subject;delete state.extra_photo_subjects;delete state.guest_inquiry;
     } else if (!human(s) && (publicEventInquiry(raw) || publicFollowup)) {
       clearStayDuration(state);
       state.resolved_message = personal(raw) ? 'Programação musical de Heraldo Ramos no Reserva Solar' : publicFollowup && !publicEventInquiry(raw) ? `Programação musical de Heraldo Ramos no Reserva Solar: ${raw}` : raw;
@@ -669,6 +678,7 @@ export function control(body: any, now = Date.now()) {
       delete state.pending;
     } else if (paymentDispute(s)) answer = 'Essa cobrança precisa ser conferida pela equipe. Vou chamar um atendente para verificar com você, sem confirmar ou alterar o pagamento por aqui.';
   }
+  else if (continuingEvent && state.event) {answer=state.event.answer;delete state.pending;}
   else if (facilityAnswer) {
     answer = facilityAnswer;
     delete state.pending;

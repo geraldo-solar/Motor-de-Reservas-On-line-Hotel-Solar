@@ -5,7 +5,7 @@ import { control } from './conversation-control.js';
 import { PHOTO_CLARIFY, documentPhotoInquiry, photoClarificationQuestion, photoRetryRequest } from '../utils/photoIntent.js';
 import { requestedExtraCodes, extraCodes, extraPhotoRequest, extraMediaResult, nextExtraMedia, normalizeExtra } from '../utils/extraMedia.js';
 import { eventInquiry, eventContactText, reservaPhotoRequest, sitePhotoResult } from '../utils/hotelInfo.js';
-import { readEvent } from '../utils/eventInquiry.js';
+import { readEvent, eventFieldReply } from '../utils/eventInquiry.js';
 import { deliverEvent, deliveryFailed, acceptEventReceipt } from '../utils/eventDelivery.js';
 import { publicEventInquiry, publicEventAnswer } from '../utils/publicEvents.js';
 import { isAudioInput } from '../utils/audioTranscription.js';
@@ -258,7 +258,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       quote_text:hotelContactAnswer,conversation_text:hotelContactAnswer,
       matched:false,match_type:'hotel_contact',availability_checked:false});
   }
-  if (!req.query?.operation && guestServiceRequest(serviceMessage)) {
+  let eventReply=false;
+  try {const state=typeof req.body?.state==='string'?JSON.parse(req.body.state):req.body?.state;eventReply=eventFieldReply(state?.event,serviceMessage);} catch { /* Invalid state cannot establish event context. */ }
+  if (!req.query?.operation && !eventReply && guestServiceRequest(serviceMessage)) {
     // Use the same existing handoff code even when invoked directly. No
     // catalog, private-event delivery, document issuance or service order runs.
     const routed = control({operation:'route',user_message:incomingMessage,state:req.body?.state});
