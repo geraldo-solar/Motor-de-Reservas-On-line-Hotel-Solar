@@ -17,6 +17,7 @@ import { packagePrices, packageRecommendation } from '../utils/packageReply.js';
 import { childPolicyQuestion, childAgeFollowup, packageChildReply } from '../utils/packageChildInquiry.js';
 import { stayDateClarification } from '../utils/stayDuration.js';
 import { guestServiceRequest } from '../utils/guestService.js';
+import { hotelPhoneInquiry, hotelContactAnswer } from '../utils/hotelContact.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -59,6 +60,9 @@ const STOP_WORDS = new Set([
   'feriados', 'informacao', 'informacoes', 'detalhe', 'detalhes', 'programacao',
   'dia', 'dias', 'bom', 'boa', 'tarde', 'noite', 'ola', 'oi', 'salinas', 'pessoas',
   'familia', 'praia', 'ferias', 'valor', 'valores', 'preco', 'precos', 'obrigado',
+  // Function words and generic commercial terms cannot identify a holiday.
+  'com', 'sem', 'pra', 'pro', 'pelo', 'pela', 'pelos', 'pelas', 'que', 'voces',
+  'vcs', 'desconto', 'descontos',
 ]);
 
 const normalize = (value: string) => value
@@ -247,6 +251,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const state = typeof req.body?.state === 'string' ? JSON.parse(req.body.state) : req.body?.state;
       serviceMessage = audioMessage(incomingMessage, state) || '';
     } catch { serviceMessage = ''; }
+  }
+  if (!req.query?.operation && hotelPhoneInquiry(serviceMessage)) {
+    const routed = control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    return res.status(200).json({...routed,quote_request:'ROOM_LIST',
+      quote_text:hotelContactAnswer,conversation_text:hotelContactAnswer,
+      matched:false,match_type:'hotel_contact',availability_checked:false});
   }
   if (!req.query?.operation && guestServiceRequest(serviceMessage)) {
     // Use the same existing handoff code even when invoked directly. No

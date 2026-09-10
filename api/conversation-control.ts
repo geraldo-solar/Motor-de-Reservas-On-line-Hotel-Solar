@@ -14,6 +14,7 @@ import { confirmedDiningPolicy, diningPolicyAnswer } from '../utils/diningPolicy
 import { childPolicyQuestion, childAgeFollowup } from '../utils/packageChildInquiry.js';
 import { multiRoomRequest } from '../utils/lodgingScope.js';
 import { guestServiceRequest, guestServiceContext, guestServiceAnswer } from '../utils/guestService.js';
+import { hotelPhoneInquiry, hotelContactAnswer } from '../utils/hotelContact.js';
 import { confirmedGuestFacilitiesPolicy, guestFacilityInquiry, guestFacilityAnswer } from '../utils/guestFacilities.js';
 import { readFamilyParty, updateFamilyParty, type FamilyParty, type FamilyPartyResult } from '../utils/familyParty.js';
 import { readStayDuration, readStayDatePending, stayDurationRequest, conflictingStayDuration, stayDateClarification, relativeStayDateMention, unparsedStayDateDeclaration, calendarDateMention, explicitStayEntry, explicitStayExit, type StayDuration, type StayDatePending } from '../utils/stayDuration.js';
@@ -451,6 +452,31 @@ export function control(body: any, now = Date.now()) {
   const audio = isAudioInput(input);
   const raw = (audio ? audioMessage(input, state, now) || AUDIO_UNAVAILABLE : input).slice(0, 2000);
   const s = norm(raw);
+  if (hotelPhoneInquiry(raw) && ['prepare', 'route', 'confirm'].includes(body.operation)) {
+    // A direct request for the public phone is not a booking, consent or
+    // handoff. Ignore stale quote/package/media choices and model proposals.
+    state.changed = false;
+    clearStayDuration(state);
+    delete state.pending; delete state.awaiting; delete state.topic; delete state.topic_at;
+    delete state.package_context; delete state.guest_inquiry; delete state.subject;
+    delete state.extra_photo_subjects; delete state.event;
+    const safeMessage = personal(raw) ? 'Qual o telefone do Hotel Solar?' : raw;
+    state.resolved_message = safeMessage;
+    if (body.operation === 'prepare') {
+      delete state.audio;
+      state.first_turn = !state.greeted;
+      state.greeted = true;
+      state.history = [...state.history, safeMessage.slice(0,500)].slice(-12);
+      remember(state, 'user', safeMessage);
+      return {state: JSON.stringify(state), can_collect:'NAO', quote_request:'NOQUOTE',
+        context: JSON.stringify({primeira_resposta:state.first_turn, ultima_mensagem:safeMessage,
+          contato_publico_solicitado:true, cotacao_valida_para_estes_dados:null,
+          regra:'O cliente pediu explicitamente o telefone público do hotel. A regra de não desviar reservas para outro canal não proíbe responder esse pedido. Não consultar pacotes, encaminhar, ligar ou coletar dados. Responda: '+hotelContactAnswer})};
+    }
+    remember(state, 'assistant', hotelContactAnswer);
+    return {state:JSON.stringify(state),resolved_message:safeMessage,quote_request:'NOQUOTE',
+      can_collect:'NAO',confirmation_text:'',answer:hotelContactAnswer};
+  }
   const service = guestServiceRequest(raw);
   if (service && ['prepare', 'route', 'confirm'].includes(body.operation)) {
     // An active guest request must not enter new-stay qualification or turn
