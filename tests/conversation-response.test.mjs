@@ -406,3 +406,93 @@ test('parentesco não identifica feriado, mas o nome completo do Dia das Crianç
     assert.equal(result.match_type,'specific');
   }
 });
+
+test('regra familiar: pergunta idades antes de recomendar e usa a categoria compatível sem reduzir hóspedes', async()=>{
+  const bundled=await build({entryPoints:['api/conversation-control.ts'],bundle:true,write:false,platform:'node',format:'esm'});
+  const {control}=await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
+  const catalog=[...rooms,{id:'triplo',name:'Suíte Triplo',capacity:3,base_price:700}];
+  const handler=await loadHandler('api/get-prices.ts',[],catalog);
+  for(const [party,total,first,price] of [
+    ['um casal e uma criança de 5 anos',3,'Suíte Casal',1000],
+    ['um casal e 1 CHD de 5 anos',3,'Suíte Casal',1000],
+    ['um casal e uma criança de seis anos',3,'Suíte Casal',1000],
+    ['2 adultos e 1 criança de 6 anos e 11 meses',3,'Suíte Casal',1000],
+    ['2 adultos e 1 criança de 7 anos',3,'Loft',1800],
+    ['2 adultos e 3 crianças de 5, 8 e 10 anos',5,'Loft',1800],
+    ['2 adultos e 3 crianças de 2, 4 e 6 anos',5,'Loft',1800],
+    ['4 adultos e 1 criança de 6 anos',5,'Loft',1800],
+    ['2 adultos e 2 crianças de 2 e 5 anos',4,'Loft',1800],
+  ]) {
+    const p=control({operation:'prepare',user_message:'Quero hospedagem de 20/09/2026 a 22/09/2026 para '+party});
+    const result=await request(handler,{checkIn:'2026-09-20',checkOut:'2026-09-22',guests:total,state:p.state});
+    const q=JSON.parse(result.quote_state);
+    assert.equal(q.guests,total,party);
+    assert.equal(q.options[0].name,first,party);
+    assert.equal(q.options[0].total,price,party);
+    assert.ok(q.options.every(o=>o.capacity>=total),party);
+    assert.equal(result.availability_checked,false);
+    if(total===5)assert.ok(q.options.every(o=>o.name!=='Suíte Triplo'&&o.name!=='Suíte Casal'),party);
+    if(total===4)assert.ok(q.options.every(o=>o.name!=='Suíte Casal'),party);
+    if(first==='Suíte Casal') {
+      assert.match(result.conversation_text,/Categoria Casal, com a criança em cortesia/);
+      assert.match(result.conversation_text,/Categoria maior opcional/);
+    }
+  }
+  const p=control({operation:'prepare',user_message:'Quero hospedagem de 20/09/2026 a 22/09/2026 para 2 adultos e 3 crianças'});
+  const ask=control({operation:'prepare',user_message:'Qual apartamento você me indica?',state:p.state});
+  const routed=control({operation:'route',user_message:'Qual apartamento você me indica?',state:ask.state,proposed:'NOQUOTE',ai_response:'Reserve dois apartamentos.'});
+  assert.match(routed.answer,/idades das crianças/);
+  assert.doesNotMatch(routed.answer,/Loft|Reserve dois/);
+  assert.equal(routed.can_collect,'NAO');
+  const blocked=await request(handler,{checkIn:'2026-09-20',checkOut:'2026-09-22',guests:5,state:p.state});
+  assert.equal(blocked.quote_state,'');
+  assert.match(blocked.conversation_text,/idades das crianças/);
+  assert.doesNotMatch(blocked.conversation_text,/R\$/);
+});
+
+test('cinco sem criança elegível dividem; uma criança não gera duas cortesias na combinação',async()=>{
+  const bundled=await build({entryPoints:['api/conversation-control.ts'],bundle:true,write:false,platform:'node',format:'esm'});
+  const {control}=await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
+  for(const [party,total,catalog] of [
+    ['2 adultos e 3 crianças de 7, 8 e 10 anos',5,rooms],
+    ['5 adultos sem crianças',5,[...rooms,{id:'bad',name:'Capacidade antiga',capacity:6,base_price:800}]],
+    ['5 adultos e 1 criança de 5 anos',6,[rooms[0]]],
+    ['4 adultos e 2 crianças de 5 e 6 anos',6,[rooms[0]]],
+  ]) {
+    const p=control({operation:'prepare',user_message:'Quero hospedagem de 20/09/2026 a 22/09/2026 para '+party});
+    const handler=await loadHandler('api/get-prices.ts',[],catalog);
+    const result=await request(handler,{checkIn:'2026-09-20',checkOut:'2026-09-22',guests:total,state:p.state});
+    const q=JSON.parse(result.quote_state);
+    assert.ok(q.options.length,party);
+    assert.ok(q.options.every(o=>/\dx /.test(o.name)),party);
+    if(party.startsWith('5 adultos e 1')) assert.equal(q.options[0].name,'3x Suíte Casal');
+    if(party.startsWith('4 adultos e 2')) assert.equal(q.options[0].name,'2x Suíte Casal');
+    if(party.startsWith('2 adultos')) assert.match(result.conversation_text,/precisamos dividir o grupo/);
+  }
+});
+
+test('cotação familiar mantém confirmação por botão e troca de idade invalida o preço anterior',async()=>{
+  const bundled=await build({entryPoints:['api/conversation-control.ts'],bundle:true,write:false,platform:'node',format:'esm'});
+  const {control}=await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
+  const handler=await loadHandler('api/get-prices.ts',[],rooms);
+  const p=control({operation:'prepare',user_message:'Quero hospedagem de 20/09/2026 a 22/09/2026 para um casal e uma criança de 5 anos'});
+  const quote=await request(handler,{checkIn:'2026-09-20',checkOut:'2026-09-22',guests:3,state:p.state});
+  const chosen=control({operation:'prepare',user_message:'Quero a Suíte Casal',state:p.state,quote_state:quote.quote_state});
+  const routed=control({operation:'route',user_message:'Quero a Suíte Casal',state:chosen.state,quote_state:quote.quote_state});
+  assert.equal(routed.quote_request,'COLETAR');
+  assert.equal(routed.can_collect,'NAO');
+  assert.match(routed.confirmation_text,/3 hóspedes/);
+  assert.match(routed.confirmation_text,/criança\(s\) de até 6 anos em cortesia/);
+  assert.equal(control({operation:'confirm',state:routed.state,quote_state:quote.quote_state}).can_collect,'SIM');
+  const corrected=control({operation:'prepare',user_message:'Corrigindo, a criança tem 7 anos',state:routed.state,quote_state:quote.quote_state});
+  const oldClick=control({operation:'confirm',state:corrected.state,quote_state:quote.quote_state});
+  assert.equal(oldClick.can_collect,'NAO');
+  const newQuote=await request(handler,{checkIn:'2026-09-20',checkOut:'2026-09-22',guests:3,state:corrected.state});
+  assert.ok(JSON.parse(newQuote.quote_state).options.every(o=>o.name!=='Suíte Casal'));
+  const stale=JSON.parse(p.state);
+  stale.family_party.updated_at=Date.now()-31*60000;
+  const blocked=await request(handler,{checkIn:'2026-09-20',checkOut:'2026-09-22',guests:3,state:stale});
+  assert.equal(blocked.quote_state,'');
+  const wrongDates=await request(handler,{checkIn:'2026-09-21',checkOut:'2026-09-22',guests:3,state:p.state});
+  assert.equal(wrongDates.quote_state,'');
+});

@@ -76,6 +76,7 @@ test('idades em serviço de visitante não completam as idades da hospedagem',()
 test('pedido de quarto para casal preserva família e cotação; escolha explícita de categoria conserva confirmação',()=>{
   const first=turn('Quero hospedagem de 11/10 a 13/10 para 3 adultos e 1 criança de 5 anos');
   const quote={version:1,id:'family-room-choice',created_at:now,...facts(first),
+    family_key:JSON.stringify([3,1,[60]]),
     options:[{name:'Loft',capacity:4,total:2000},{name:'Suíte Quádruplo',capacity:4,total:1600}]};
   for(const [message,expected] of [['Quero uma suíte para casal','NOQUOTE'],['Quero um quarto para um casal','NOQUOTE'],
     ['Quero o Loft','COLETAR'],['Prefiro a Suíte Quádruplo','COLETAR']]) {

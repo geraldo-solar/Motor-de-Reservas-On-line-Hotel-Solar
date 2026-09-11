@@ -1,6 +1,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { withDailyGreeting } from '../utils/dailyGreeting.js';
+import { familyAccommodation, baseRoomCapacity, familyAgeQuestion, familyRoomExplanation } from '../utils/familyAccommodation.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -109,6 +110,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (nights <= 0 || nights > 30 || ci.toISOString().slice(0, 10) !== checkIn || co.toISOString().slice(0, 10) !== checkOut) {
       return res.status(400).json({ error: 'Check-out date must be after check-in date.' });
     }
+    let state: any;
+    try { state = typeof body.state === 'string' ? JSON.parse(body.state) : body.state; } catch { state = undefined; }
+    const family = familyAccommodation(state, guestCount);
+    const familyDatesMismatch = !!state?.family_party?.children && (state?.facts?.guests !== guestCount
+      || state?.facts?.check_in !== checkIn || state?.facts?.check_out !== checkOut);
+    if (family.pending || familyDatesMismatch) {
+      const answer = familyDatesMismatch ? 'Preciso conferir as datas e a composição da família antes de simular. Quais são as datas de entrada e saída, quantos adultos e quais as idades das crianças?' : familyAgeQuestion;
+      return res.status(200).json({quote_request:'NOQUOTE',quote_state:'',can_collect:'NAO',
+        conversation_text:answer,whatsapp_text:answer,prices_summary:answer,
+        availability_checked:false,requires_human_confirmation:true});
+    }
 
     // Busca preços do Supabase. O orçamento é uma simulação comercial e não
     // consulta estoque, bloqueios, restrições de check-in ou disponibilidade.
@@ -200,11 +212,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       total + (extra.code === 'BARCO' && packageIncludesBoat ? 0 : extra.price)
     ), 0);
 
-    const allRoomQuotes: Array<{ name: string; capacity: number; finalPrice: number }> = [];
+    const allRoomQuotes: Array<{ name: string; capacity: number; base_capacity: number; finalPrice: number }> = [];
 
     for (const room of rooms) {
-      const capacity = Number(room.capacity || 0);
-      if (!capacity) continue;
+      const base_capacity = baseRoomCapacity(Number(room.capacity || 0));
+      if (!base_capacity) continue;
+      const capacity = base_capacity + Math.min(1, family.eligible);
 
       let total = 0;
       const current = new Date(ci);
@@ -221,18 +234,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         finalPrice = total * (1 - (activePackage.discount_percentage / 100));
       }
 
-      allRoomQuotes.push({ name: room.name, capacity, finalPrice });
+      allRoomQuotes.push({ name: room.name, capacity, base_capacity, finalPrice });
     }
 
     // Acomodação premium primeiro: entre as opções compatíveis, apresenta os
     // maiores valores antes das opções econômicas para favorecer o upsell.
     const roomQuotes = allRoomQuotes.filter(room => guestCount <= room.capacity);
-    roomQuotes.sort((a, b) => b.finalPrice - a.finalPrice);
-    const quoteOptions: Array<{ name: string; capacity: number; total: number }> = [];
+    const coupleWithChild = guestCount === 3 && family.children === 1 && family.eligible === 1;
+    roomQuotes.sort((a, b) => (coupleWithChild ? Number(b.base_capacity === 2) - Number(a.base_capacity === 2) : 0) || b.finalPrice - a.finalPrice);
+    const quoteOptions: Array<{ name: string; capacity: number; total: number; child_allowance?: number }> = [];
 
     if (roomQuotes.length === 0) {
-      const maxCapacity = Math.max(...allRoomQuotes.map(room => room.capacity));
-      const roomsNeeded = Math.ceil(guestCount / maxCapacity);
+      const maxCapacity = Math.max(...allRoomQuotes.map(room => room.base_capacity));
+      let roomsNeeded = Math.ceil(guestCount / maxCapacity);
+      while (roomsNeeded > 1 && (roomsNeeded - 1) * maxCapacity + Math.min(roomsNeeded - 1, family.eligible) >= guestCount) roomsNeeded--;
       const combinations: Array<{
         rooms: typeof allRoomQuotes;
         capacity: number;
@@ -241,7 +256,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const buildCombinations = (startIndex: number, selected: typeof allRoomQuotes) => {
         if (selected.length === roomsNeeded) {
-          const capacity = selected.reduce((sum, room) => sum + room.capacity, 0);
+          const capacity = selected.reduce((sum, room) => sum + room.base_capacity, 0) + Math.min(selected.length, family.eligible);
           if (capacity >= guestCount) {
             combinations.push({
               rooms: [...selected],
@@ -277,7 +292,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .map(([name, quantity]) => `${quantity}x ${name}`)
           .join(' + ');
         const combinedTotal = combination.finalPrice + extrasTotal;
-        quoteOptions.push({ name: description, capacity: combination.capacity, total: combinedTotal });
+        quoteOptions.push({ name: description, capacity: combination.capacity, total: combinedTotal,
+          ...(family.eligible ? {child_allowance:Math.min(combination.rooms.length,family.eligible)} : {}) });
 
         summaryText += `- ${index === 0 ? '⭐ Recomendação premium — ' : ''}${description}: R$ ${money(combination.finalPrice)} em hospedagem`;
         whatsappText += `${index === 0 ? '⭐ *Recomendação premium*\n' : ''}• ${description}: *R$ ${money(combination.finalPrice)}* em hospedagem`;
@@ -290,10 +306,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     } else {
       roomQuotes.forEach((room, index) => {
-        quoteOptions.push({ name: room.name, capacity: room.capacity, total: room.finalPrice + extrasTotal });
-        const premiumLabel = index === 0 ? '⭐ Recomendação premium — ' : '';
-        summaryText += `- ${premiumLabel}${room.name} (até ${room.capacity} pessoas): R$ ${money(room.finalPrice)} em hospedagem`;
-        whatsappText += `${index === 0 ? '⭐ *Recomendação premium*\n' : ''}• ${room.name} (até ${room.capacity} pessoas): *R$ ${money(room.finalPrice)}* em hospedagem`;
+        quoteOptions.push({ name: room.name, capacity: room.capacity, total: room.finalPrice + extrasTotal,
+          ...(family.eligible ? {child_allowance:1} : {}) });
+        const label = coupleWithChild ? (room.base_capacity === 2 ? 'Categoria Casal, com a criança em cortesia' : 'Categoria maior opcional') : index === 0 ? '⭐ Recomendação premium' : '';
+        const capacityLabel = family.eligible ? `até ${room.base_capacity} pessoas mais 1 criança de até 6 anos em cortesia` : `até ${room.capacity} pessoas`;
+        summaryText += `- ${label ? label+' — ' : ''}${room.name} (${capacityLabel}): R$ ${money(room.finalPrice)} em hospedagem`;
+        whatsappText += `${label ? '*'+label+'*\n' : ''}• ${room.name} (${capacityLabel}): *R$ ${money(room.finalPrice)}* em hospedagem`;
         if (extrasTotal > 0) {
           summaryText += `; R$ ${money(room.finalPrice + extrasTotal)} com os extras escolhidos`;
           whatsappText += ` — *R$ ${money(room.finalPrice + extrasTotal)}* com os extras escolhidos`;
@@ -301,6 +319,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         summaryText += '.\n';
         whatsappText += '.\n\n';
       });
+    }
+
+    if (family.children) {
+      const explanation = familyRoomExplanation(guestCount, family.eligible, roomQuotes.length === 0);
+      summaryText += explanation + '\n';
+      whatsappText += explanation + '\n\n';
     }
 
     if (selectedExtras.length > 0) {
@@ -351,7 +375,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         prices_summary: safeSummary,
         whatsapp_text: whatsappText,
         conversation_text: conversationText,
-        quote_state: JSON.stringify({ version: 1, id: crypto.randomUUID(), created_at: Date.now(), check_in: checkIn, check_out: checkOut, guests: guestCount, extras: selectedExtras.map(extra => extra.code), options: quoteOptions }),
+        quote_state: JSON.stringify({ version: 1, id: crypto.randomUUID(), created_at: Date.now(), check_in: checkIn, check_out: checkOut, guests: guestCount, family_key:family.key, extras: selectedExtras.map(extra => extra.code), options: quoteOptions }),
         discount_applied: activePackage ? true : false,
         package_name: activePackage ? activePackage.name : null,
         check_in: checkIn,
@@ -362,7 +386,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         requires_human_confirmation: true,
         extras_total: extrasTotal,
         selected_extras: selectedExtras.map(extra => extra.code),
-        recommendation_order: 'highest_compatible_price_first'
+        recommendation_order: coupleWithChild ? 'couple_category_then_optional_upgrades' : 'highest_compatible_price_first'
     });
 
   } catch (error: any) {

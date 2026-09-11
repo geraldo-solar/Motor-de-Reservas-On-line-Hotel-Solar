@@ -18,13 +18,14 @@ import { guestServiceRequest, guestServiceContext, guestServiceAnswer } from '..
 import { hotelPhoneInquiry, hotelContactAnswer } from '../utils/hotelContact.js';
 import { confirmedGuestFacilitiesPolicy, guestFacilityInquiry, guestFacilityAnswer } from '../utils/guestFacilities.js';
 import { readFamilyParty, updateFamilyParty, type FamilyParty, type FamilyPartyResult } from '../utils/familyParty.js';
+import { familyAccommodation, familyAccommodationPolicy, familyAgeQuestion, familyRoomRule } from '../utils/familyAccommodation.js';
 import { readStayDuration, readStayDatePending, stayDurationRequest, conflictingStayDuration, stayDateClarification, relativeStayDateMention, unparsedStayDateDeclaration, calendarDateMention, explicitStayEntry, explicitStayExit, type StayDuration, type StayDatePending } from '../utils/stayDuration.js';
 
 // No bookings, stock queries or outbound messages. The HTTP adapter interprets
 // audio/attachments; the conversation controller remains deterministic.
 // User facts and conversational turns are separate. Assistant text NEVER updates facts.
 type Facts = { check_in?: string; check_out?: string; guests?: number; extras: string[]; children_pending?: boolean };
-type Quote = { version: number; id: string; created_at: number; check_in: string; check_out: string; guests: number; extras: string[]; options: { name: string; capacity: number; total: number }[] };
+type Quote = { version: number; id: string; created_at: number; check_in: string; check_out: string; guests: number; family_key?: string; extras: string[]; options: { name: string; capacity: number; total: number; child_allowance?: number }[] };
 type GuestInquiryState = { kind: GuestInquiry; at: number };
 type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPartyResult['clarification'] };
 type State = FamilyState & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
@@ -351,6 +352,7 @@ function updateStayDates(state: State, s: string, now: number) {
 
 function updateFacts(state: State, message: string, now: number) {
   const before = JSON.stringify(state.facts);
+  const familyBefore = familyAccommodation(state, state.facts.guests || 0, now).key;
   const s = norm(message);
   if (human(s) || mediaRequest(s) || eventInquiry(s) || publicEventInquiry(s) || restaurantInquiry(s) || childPolicyQuestion(s)) { state.changed = false; return; }
   if (extraCodes(s).length && question(s) && !/\b(diarias?|hospedagem|reservar|reserva|cotacao|aptos?|loft|suite)\b/.test(s)) { state.changed=false; return; }
@@ -380,7 +382,7 @@ function updateFacts(state: State, message: string, now: number) {
     if (/retir|remov|sem |nao quero|exclu/.test(s)) state.facts.extras = state.facts.extras.filter(x => x !== code);
     else if (!question(s) && /quero|inclu|adicion|coloca|acrescenta/.test(s) && !state.facts.extras.includes(code)) state.facts.extras.push(code);
   }
-  state.changed = before !== JSON.stringify(state.facts);
+  state.changed = before !== JSON.stringify(state.facts) || familyBefore !== familyAccommodation(state, state.facts.guests || 0, now).key;
   if (state.changed) delete state.pending;
 }
 
@@ -391,6 +393,8 @@ function validQuote(value: unknown, state: State, now: number): Quote | null {
   if (state.topic === 'package_info' && state.package_context && (q?.check_in !== state.package_context.start_date || q?.check_out !== state.package_context.end_date)) return null;
   if (q?.version !== 1 || typeof q.id !== 'string' || !Number.isFinite(q.created_at) || now - q.created_at < 0 || now - q.created_at > 30 * 60000 || !Array.isArray(q.options) || !q.options.length || !Array.isArray(q.extras)) return null;
   if (q.check_in !== f.check_in || q.check_out !== f.check_out || q.guests !== f.guests || f.children_pending || JSON.stringify([...q.extras || []].sort()) !== JSON.stringify([...f.extras].sort())) return null;
+  const family = familyAccommodation(state, f.guests || 0, now);
+  if (family.pending || q.family_key !== family.key) return null;
   if (!q.options.every((o: any) => o && typeof o.name === 'string' && Number.isFinite(o.capacity) && o.capacity >= q.guests && Number.isFinite(o.total) && o.total > 0)) return null;
   return q;
 }
@@ -411,7 +415,8 @@ const dateLabel = (s: string) => s.split('-').reverse().join('/');
 const amount = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 function confirmation(q: Quote, name: string) {
   const option = q.options.find(o => o.name === name)!;
-  return `Confira sua escolha:\n\n${option.name}\n${dateLabel(q.check_in)} a ${dateLabel(q.check_out)} · ${q.guests} hóspedes\nTotal da simulação: ${amount(option.total)}${q.extras.length ? ' (com os extras escolhidos)' : ''}.\n\nAinda não confirma disponibilidade nem reserva. Para solicitar que a recepção verifique as vagas e continue por aqui, toque em “Confirmar opção”. Só então pediremos nome completo, e-mail e CPF.`;
+  const childNote = option.child_allowance ? `\nA simulação considera ${option.child_allowance} criança(s) de até 6 anos em cortesia, no máximo 1 por apartamento, conforme as idades informadas. Todos continuam incluídos no total de hóspedes. Não garante cama extra ou berço.` : '';
+  return `Confira sua escolha:\n\n${option.name}\n${dateLabel(q.check_in)} a ${dateLabel(q.check_out)} · ${q.guests} hóspedes\nTotal da simulação: ${amount(option.total)}${q.extras.length ? ' (com os extras escolhidos)' : ''}.${childNote}\n\nAinda não confirma disponibilidade nem reserva. Para solicitar que a recepção verifique as vagas e continue por aqui, toque em “Confirmar opção”. Só então pediremos nome completo, e-mail e CPF.`;
 }
 
 function controlTurn(body: any, now = Date.now()) {
@@ -587,7 +592,8 @@ function controlTurn(body: any, now = Date.now()) {
       primeira_resposta: state.first_turn, fatos_informados_pelo_cliente: state.facts,
       composicao_familiar_informada: state.family_party ? { adultos:state.family_party.adults, criancas:state.family_party.children, total:state.family_party.total, idades_em_meses:state.family_party.ages_months } : null,
       pendencia_composicao_familiar: state.family_clarification || null,
-      regra_composicao_familiar: 'Conte todos os ocupantes, inclusive bebês, sem deduzir pagantes ou descontos. Idades são somente declarações do cliente; uma idade não completa várias crianças. Se a composição estiver inconsistente, confirme quantos adultos e crianças são ao todo antes de cotar. Não deduza necessidade de acessibilidade ou saúde pelas idades.',
+      regra_composicao_familiar: 'Conte todos os ocupantes, inclusive bebês. Idades são somente declarações do cliente; uma idade não completa várias crianças. Se a composição estiver inconsistente, confirme quantos adultos e crianças são ao todo antes de cotar. Não deduza necessidade de acessibilidade ou saúde pelas idades. ' + familyRoomRule,
+      politica_acomodacao_familiar: familyAccommodationPolicy,
       mensagens_do_cliente: state.history, conversa_recente: state.turns,
       marketing_recusa: marketingOptOut(s),
       solicitacao_varios_apartamentos: multiRoomRequest(s),
@@ -739,17 +745,21 @@ function controlTurn(body: any, now = Date.now()) {
     } else if (quote && state.pending?.quote_id === quote.id && /^(sim|confirmo|pode prosseguir|quero prosseguir)[.!]?$/.test(s)) {
       confirmationText = confirmation(quote, state.pending.option);
       decision = 'COLETAR';
-    } else if (recommendation(s) && state.facts.guests && state.facts.guests <= 4) {
+    } else if (recommendation(s) && (state.facts.children_pending || familyAccommodation(state,state.facts.guests || 0,now).pending)) {
+      answer = familyAgeQuestion;
+    } else if (recommendation(s) && state.facts.guests && (state.facts.guests <= 4 || state.facts.guests === 5 && familyAccommodation(state,5,now).eligible > 0)) {
       const premium = quote?.options[0];
       answer = premium
         ? `Minha primeira indicação é ${premium.name}, por ${amount(premium.total)} no período informado${quote!.extras.length ? ', com os extras escolhidos' : ''}. Se preferir uma opção mais econômica, também podemos comparar as demais acomodações da simulação. Qual combina melhor com sua viagem?`
+        : state.family_party?.children
+        ? familyRoomRule + ' Quais são as datas de entrada e saída?'
         : 'Minha primeira indicação é o Loft: tem cama King, sala integrada e sacada com vista para o mar, para quem busca mais espaço e conforto. Se preferirem algo mais econômico, podemos comparar com outra suíte. Quais são as datas de entrada e saída?';
     } else if (lodging(s) || /^QUOTE\|/.test(proposed) || state.changed
       || state.facts.children_pending && (childAgeFollowup(raw) || /^\d{1,2}[.!]?$/.test(s))) {
       const f = state.facts;
       if (state.family_clarification === 'party_composition') answer = 'Para conferir a ocupação, quantos adultos e quantas crianças vão se hospedar ao todo?';
       else if (!f.guests) answer = 'Para quantas pessoas será a estadia?';
-      else if (f.children_pending) answer = 'Quais são as idades das crianças? Assim consigo considerar a ocupação corretamente.';
+      else if (f.children_pending) answer = familyAgeQuestion;
       else if (!f.check_in || !f.check_out) answer = 'Quais são as datas de entrada e saída? Pode informar no formato dia/mês.';
       else if (f.check_out <= f.check_in || (Date.parse(`${f.check_out}T12:00:00Z`) - Date.parse(`${f.check_in}T12:00:00Z`)) / 86400000 > 30) answer = 'Preciso conferir as datas: a saída deve ser depois da entrada, e esta simulação aceita até 30 diárias. Quais datas deseja?';
       else if (!quote || state.changed || /^QUOTE\|/.test(proposed)) decision = `QUOTE|${f.check_in}|${f.check_out}|${f.guests}|${f.extras.join(',') || 'NONE'}`;

@@ -19,6 +19,7 @@ import { childPolicyQuestion, childAgeFollowup, packageChildReply } from '../uti
 import { stayDateClarification } from '../utils/stayDuration.js';
 import { guestServiceRequest } from '../utils/guestService.js';
 import { hotelPhoneInquiry, hotelContactAnswer } from '../utils/hotelContact.js';
+import { familyAccommodation, familyAgeQuestion } from '../utils/familyAccommodation.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -406,15 +407,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,availability_checked:false,...control({operation:'remember_response',state:req.body?.state,response_text:answer,clear_package:true})});
     }
     const facts = conversationState?.facts || {};
+    const family = familyAccommodation(conversationState, facts.guests || 0);
     const differentDates = (facts.check_in && facts.check_in !== pkg.start_iso_date) || (facts.check_out && facts.check_out !== pkg.end_iso_date);
     const answer = differentDates
       ? `O pacote ${pkg.name} tem período de ${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}. As datas que você informou são diferentes${pkg.full_period_required ? ', e esse pacote exige o período completo' : ''}. Você quer continuar consultando esse pacote ou deseja outra estadia? Não alterei suas datas nem confirmei uma reserva.`
-      : childPolicyQuestion(userMessage) || childAgeFollowup(userMessage)
+      : family.pending && !childPolicyQuestion(userMessage)
+      ? familyAgeQuestion
+      : childPolicyQuestion(userMessage) || childAgeFollowup(userMessage) && !family.key
       ? packageChildReply(pkg,userMessage)
+      : childAgeFollowup(userMessage) && family.key
+      ? packageRecommendation(pkg,rooms || [],facts.guests,conversationState)
       : packageBookingRequest(userMessage)
       ? `Vamos continuar com o pacote ${pkg.name}, de ${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}. ${!facts.guests ? 'Quantas pessoas vão se hospedar, contando adultos e crianças?' : facts.children_pending ? 'Quais são as idades das crianças?' : 'Para seguir com a opção escolhida, peça para falar com a recepção, que confere as condições e a disponibilidade.'} Ainda não há reserva confirmada.`
       : packageRecommendationInquiry(userMessage)
-      ? packageRecommendation(pkg,rooms || [],conversationState?.facts?.guests)
+      ? packageRecommendation(pkg,rooms || [],conversationState?.facts?.guests,conversationState)
       : formatPackageDetails(pkg,rooms || [],true);
     return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
       package_id:pkg.id,package_name:pkg.name,match_type:'package_followup',availability_checked:false,

@@ -23,6 +23,7 @@ const words: Record<string,number> = {zero:0,um:1,uma:1,dois:2,duas:2,tres:3,qua
 const number = '(\\d{1,2}|zero|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)';
 const quantity = (value: string) => /^\d+$/.test(value) ? Number(value) : words[value];
 const norm = (value: string) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()
+  .replace(/\bchds?\b/g,'criancas')
   .replace(/\r/g,'').replace(/([a-z])(\d)/g,'$1 $2').replace(/(\d)([a-z])/g,'$1 $2').trim();
 const validCount = (value: unknown, max=60) => Number.isInteger(value) && Number(value)>=0 && Number(value)<=max;
 
@@ -42,7 +43,7 @@ export function readFamilyParty(value: any, now=Date.now()): FamilyParty | undef
 // Units are required. "2 anos e 6 meses" is one age; bare 2/6 are not
 // presumed to mean years. A comma/e list can share its explicit final unit.
 function declaredAges(message: string) {
-  let remaining=message;
+  let remaining=message.replace(new RegExp(`\\b(${Object.keys(words).join('|')})\\b`,'g'), word=>String(words[word]));
   const ages:number[]=[];
   remaining=remaining.replace(/\b(\d{1,2})\s*anos?\s*e\s*(\d{1,2})\s*meses?\b/g,(_all,years,months)=>{
     if(Number(months)<12)ages.push(Number(years)*12+Number(months));

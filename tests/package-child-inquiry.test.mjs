@@ -118,7 +118,7 @@ test('caso real filha de nove anos responde a política e não transforma um adu
   assert.deepEqual(queries,['packages','room_types']);
 });
 
-test('idades em mensagens separadas permanecem no pacote, sem preço novo, foto ou cotação',async()=>{
+test('idades em mensagens separadas permanecem no pacote; só grupo completo permite indicar categoria',async()=>{
   for(const messages of [
     ['Somos um casal e duas crianças','2 e 6 anos'],
     ['Somos um casal e duas crianças','Uma tem 2 anos','A outra tem 6 anos'],
@@ -132,8 +132,14 @@ test('idades em mensagens separadas permanecem no pacote, sem preço novo, foto 
       assert.equal(response.routed.quote_request,'NOQUOTE',message);
       assert.equal(response.result.match_type,'package_followup',message);
       assert.equal(JSON.parse(state).package_context.id,'reveillon',message);
-      assert.match(response.result.conversation_text,/0 a 6 anos/,message);
-      assert.doesNotMatch(response.result.conversation_text,/R\$|datas de entrada|foto|CONFIRMAR/,message);
+      if(JSON.parse(state).facts.children_pending) {
+        assert.match(response.result.conversation_text,/idades das crianças/,message);
+        assert.doesNotMatch(response.result.conversation_text,/R\$/,message);
+      } else {
+        assert.match(response.result.conversation_text,/até 6 anos em cortesia/,message);
+        assert.match(response.result.conversation_text,/Loft/,message);
+      }
+      assert.doesNotMatch(response.result.conversation_text,/datas de entrada|foto|CONFIRMAR/,message);
     }
   }
 });

@@ -144,7 +144,9 @@ test('reprodução Réveillon: indicação para três → casal e criança de ci
   if (Array.isArray(facts.children_ages)) assert.deepEqual(facts.children_ages,[5]);
   if (Array.isArray(facts.child_ages)) assert.deepEqual(facts.child_ages,[5]);
   assert.match(result.conversation_text,/8\.400,00|6\.300,00/);
-  assert.doesNotMatch(result.conversation_text,/1 hóspede|1 hospede|1 pessoa|Suíte Casal/);
+  assert.doesNotMatch(result.conversation_text,/1 hóspede|1 hospede|1 pessoa/);
+  assert.match(result.conversation_text,/Categoria Casal.*Suíte Casal.*4\.500,00/);
+  assert.match(result.conversation_text,/Categoria maior opcional/);
 });
 
 test('troca explícita para Natal substitui contexto e valores nos acompanhamentos',async()=>{
