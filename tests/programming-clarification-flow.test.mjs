@@ -4,10 +4,13 @@ import { build } from 'esbuild';
 
 const now = Date.parse('2026-09-11T16:00:00-03:00');
 const realNow = Date.now;
+const realFetch = globalThis.fetch;
 Date.now = () => now;
 process.env.SUPABASE_URL = 'https://test.invalid';
 process.env.SUPABASE_ANON_KEY = 'synthetic-only';
-globalThis.fetch = async () => { throw new Error('Offline regression must not send a request'); };
+// Avoid assigning an inferred () => Promise<never> declaration to the global
+// fetch symbol when the deployment compiler includes allowJs test files.
+Reflect.set(globalThis, 'fetch', async () => { throw new Error('Offline regression must not send a request'); });
 const pkg = {id:'criancas',name:'Dia das Crianças',start_iso_date:'2026-10-09',end_iso_date:'2026-10-12',active:true,includes:['Café da manhã']};
 const bundled = await build({stdin:{contents:`export { control, handleConversation } from './api/conversation-control.ts'; export { default as resolver } from './api/resolve-package.ts';`,resolveDir:process.cwd()},
   bundle:true,write:false,platform:'node',format:'esm',plugins:[{name:'catalog-fixture',setup(b){
@@ -94,4 +97,4 @@ test('pergunta com dados pessoais guarda somente o dia da semana, inclusive no n
   assert.match(JSON.parse(p.state).programming_pending.question,/programação de sabado/);
 });
 
-test.after(()=>{Date.now=realNow;});
+test.after(()=>{Date.now=realNow;Reflect.set(globalThis,'fetch',realFetch);});
