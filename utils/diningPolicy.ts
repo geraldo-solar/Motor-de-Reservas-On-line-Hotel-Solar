@@ -3,7 +3,7 @@ import { isPrivateEventRequest, publicEventInquiry } from './publicEvents.js';
 // Latest explicit owner confirmation supersedes older seasonal Day Use copy.
 // A calendar holiday or vacation period is NOT authorization to charge entry.
 export const confirmedDiningPolicy = {
-  confirmed_at: '2026-09-08',
+  confirmed_at: '2026-09-11',
   confirmed_by: 'Geraldo Barros, responsável pelo Hotel Solar',
   source: 'Confirmação explícita do responsável no atendimento de configuração da IA.',
   hours: {
@@ -28,16 +28,28 @@ export const confirmedDiningPolicy = {
   },
   breakfast_visitors: {
     available: true,
-    price_brl_per_person: 75,
+    age_basis: 'Idade em anos completos.',
+    prices_brl_by_age: [
+      { min_age_years: 0, max_age_years: 6, price_brl_per_person: 0 },
+      { min_age_years: 7, max_age_years: 12, price_brl_per_person: 35 },
+      { min_age_years: 13, max_age_years: null, price_brl_per_person: 75 },
+    ],
+    price_note: 'Até 6 anos: cortesia; de 7 a 12 anos: R$35; a partir de 13 anos: R$75. Os mesmos valores se aplicam ao buffet e ao à la carte.',
     hours: { opens: '07:00', closes: '10:00' },
     service_note: 'Durante a semana, conforme o movimento, o serviço pode ser à la carte. Não garantir buffet para uma data sem confirmação.',
-    visitor_children_price_confirmed: false,
-    source: 'Resposta da equipe no atendimento geral em 08/09/2026; preço também encontrado nos atendimentos de 01/07 e 01/08. Horário da base vigente.',
-    observed_at: '2026-09-08',
+    weekday_booking: {
+      required: true,
+      channel: 'recepção',
+      applies_to: ['buffet', 'à la carte'],
+      note: 'Para não hóspedes, é necessário agendar previamente com a recepção durante a semana, inclusive quando o serviço é à la carte. Orientar a consulta não confirma agendamento, disponibilidade ou funcionamento na data.',
+    },
+    visitor_children_price_confirmed: true,
+    source: 'Confirmação explícita do responsável em 11/09/2026: preços por idade, mesmos valores no buffet e no à la carte e agendamento prévio durante a semana. Horário da base vigente.',
+    confirmed_at: '2026-09-11',
   },
   restaurant_visits: {
     ordinary_seating: 'Por ordem de chegada; não prometer reserva de mesa no atendimento comum.',
-    scope: 'Visitas comuns ao restaurante. Eventos, Mesa Posta e outras experiências agendadas mantêm confirmação própria com a equipe.',
+    scope: 'Visitas comuns ao restaurante. O café avulso para não hóspedes durante a semana exige agendamento prévio com a recepção. Eventos, Mesa Posta e outras experiências agendadas mantêm confirmação própria com a equipe.',
     source: 'Resposta da equipe no atendimento geral em 08/09/2026 a uma pergunta sobre necessidade de reserva para visitar o restaurante.',
     observed_at: '2026-09-08',
   },
@@ -46,7 +58,8 @@ export const confirmedDiningPolicy = {
     'Não deduzir cobrança apenas porque é feriado, férias ou fim de semana.',
     'Sem programação autorizada cadastrada, prevalece a regra de entrada gratuita.',
     'Esta regra de entrada não informa preço de refeições, café da manhã, consumo, couvert ou eventos.',
-    'Café para visitantes é separado da entrada gratuita no Reserva Solar e da cortesia de hospedagem. Não estender automaticamente a cortesia infantil da hospedagem ao café avulso.',
+    'A tabela infantil confirmada do café avulso vale somente para esse serviço, no buffet ou à la carte. Não aplicar esses valores a diárias, ceias ou outros serviços; a entrada gratuita no Reserva Solar é uma regra separada.',
+    'Agendamento do café avulso durante a semana deve ser consultado com a recepção. Não afirmar agendamento executado, vaga garantida ou funcionamento em tempo real.',
     'Os horários gerais não comprovam funcionamento em tempo real nem horários especiais de uma data.',
   ],
 } as const;

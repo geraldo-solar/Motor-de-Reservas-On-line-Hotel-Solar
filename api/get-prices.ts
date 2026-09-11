@@ -1,7 +1,8 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { withDailyGreeting } from '../utils/dailyGreeting.js';
-import { familyAccommodation, baseRoomCapacity, familyAgeQuestion, familyRoomExplanation } from '../utils/familyAccommodation.js';
+import { familyAccommodation, baseRoomCapacity, familyAgeQuestion, familyRoomExplanation, coupleRoomConfigurationText } from '../utils/familyAccommodation.js';
+import { explicitPackageBoatBenefit, safeBoatPackageCopy } from '../utils/extraMedia.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -112,6 +113,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     let state: any;
     try { state = typeof body.state === 'string' ? JSON.parse(body.state) : body.state; } catch { state = undefined; }
+    // The conversational integration may not quote a fixed third-party boat
+    // price. Preserve the public motor's existing explicit-date API behavior.
+    const conversationQuote = typeof body.quote_request === 'string' || state?.version === 2;
     const family = familyAccommodation(state, guestCount);
     const familyDatesMismatch = !!state?.family_party?.children && (state?.facts?.guests !== guestCount
       || state?.facts?.check_in !== checkIn || state?.facts?.check_out !== checkOut);
@@ -173,13 +177,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let whatsappText = `☀️ Fiz uma simulação para ${nights} ${nights === 1 ? 'diária' : 'diárias'}, de ${formatDate(checkIn)} a ${formatDate(checkOut)}, para ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}:\n\n`;
 
     if (activePackage) {
+      const displayPackage = conversationQuote ? safeBoatPackageCopy(activePackage) : activePackage;
       let pkgInfo = `\n🎉 PACOTE ESPECIAL ATIVO: ${activePackage.name}\n`;
-      if (activePackage.description) pkgInfo += `Detalhes: ${activePackage.description}\n`;
-      if (activePackage.benefits && activePackage.benefits.length > 0) {
-        pkgInfo += `Benefícios Inclusos:\n- ${activePackage.benefits.join('\n- ')}\n`;
+      if (displayPackage.description) pkgInfo += `Detalhes: ${displayPackage.description}\n`;
+      if (displayPackage.benefits && displayPackage.benefits.length > 0) {
+        pkgInfo += `Benefícios Inclusos:\n- ${displayPackage.benefits.join('\n- ')}\n`;
       }
-      if (activePackage.includes && activePackage.includes.length > 0) {
-        pkgInfo += `Programação/Inclusos:\n- ${activePackage.includes.join('\n- ')}\n`;
+      if (displayPackage.includes && displayPackage.includes.length > 0) {
+        pkgInfo += `Programação/Inclusos:\n- ${displayPackage.includes.join('\n- ')}\n`;
       }
       summaryText = pkgInfo + '\n' + summaryText;
       whatsappText += `🎉 Pacote especial: ${activePackage.name}\n\n`;
@@ -190,9 +195,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ...(activePackage?.benefits || []),
       activePackage?.description || '',
     ].map((item: string) => normalize(item));
-    const packageIncludesBoat = activePackageItems.some((item: string) =>
-      item.includes('barco') || item.includes('catamara')
-    );
+    const packageIncludesBoat = conversationQuote ? explicitPackageBoatBenefit(activePackage)
+      : activePackageItems.some((item: string) => item.includes('barco') || item.includes('catamara'));
+
+    if (conversationQuote && requestedExtraCodes.includes('BARCO') && !packageIncludesBoat) {
+      const answer = 'O passeio de barco é realizado por terceiros, sob consulta. Valores, horários, duração e disponibilidade precisam ser consultados com a recepção; não incluí um preço fixo de passeio nesta simulação. Para continuar a simulação da hospedagem sem o passeio, diga “retirar o passeio de barco”. O passeio poderá ser tratado separadamente com a recepção.';
+      return res.status(200).json({ quote_request: 'NOQUOTE', quote_state: '', can_collect: 'NAO',
+        conversation_text: answer, whatsapp_text: answer, prices_summary: answer,
+        availability_checked: false, requires_human_confirmation: true });
+    }
 
     const configuredExtras = FALLBACK_EXTRAS.map(fallback => {
       const databaseExtra = extras?.find(extra => getExtraCode(extra.name || '') === fallback.code);
@@ -327,6 +338,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       whatsappText += explanation + '\n\n';
     }
 
+    if (quoteOptions.some(option => /\bcasal\b/.test(normalize(option.name)))) {
+      summaryText += coupleRoomConfigurationText + '\n';
+      whatsappText += coupleRoomConfigurationText + '\n\n';
+    }
+
     if (selectedExtras.length > 0) {
       whatsappText += `✨ *Extras escolhidos*\n`;
       selectedExtras.forEach(extra => {
@@ -347,6 +363,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       configuredExtras
         .filter(extra => !(extra.code === 'BARCO' && packageIncludesBoat))
         .forEach(extra => {
+        if (conversationQuote && extra.code === 'BARCO') {
+          whatsappText += '• Passeio de barco com terceiros, sob consulta. Valores, horários, duração e disponibilidade com a recepção.\n';
+          return;
+        }
         const unit = extra.pricing === 'fixed_up_to_4' ? ' por grupo de até 4 pessoas' : '';
         whatsappText += `• ${extra.name}: R$ ${money(extra.price)}${unit}\n`;
       });

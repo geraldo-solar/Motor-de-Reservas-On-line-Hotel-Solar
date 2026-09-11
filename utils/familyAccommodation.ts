@@ -1,16 +1,23 @@
 import { readFamilyParty } from './familyParty.js';
 
 // Owner-confirmed on 2026-09-11. Counts stay physical: the child is not
-// removed from guests, and the allowance does not promise an extra bed.
+// removed from guests. Bedding policies do not reserve items or confirm
+// availability/configuration for a particular apartment.
 export const familyAccommodationPolicy = {
   confirmed_at: '2026-09-11',
   confirmed_by: 'Responsável pelo Hotel Solar',
   max_base_capacity: 4,
   max_complimentary_children_per_room: 1,
   child_age_months_exclusive: 84,
+  crib: { complimentary: true, request_to_reception: true, availability_required: true },
+  extra_bed: { complimentary_for_allowance_child_only: true, request_to_reception: true,
+    availability_and_room_compatibility_required: true },
+  casal_category: { twin_single_beds_on_request: true, availability_and_configuration_required: true },
 };
+export const familyBeddingRule = 'O berço é gratuito, mediante solicitação à recepção e disponibilidade. Para a criança de até 6 anos em cortesia, também há cama extra gratuita; ela não precisa obrigatoriamente compartilhar a cama dos responsáveis. A recepção deve conferir a disponibilidade dos itens e a compatibilidade com o apartamento. Nenhum item está reservado ou instalado por esta orientação.';
+export const coupleRoomConfigurationText = 'A categoria Casal também pode ser oferecida como duplo com duas camas de solteiro, quando solicitado. A recepção precisa confirmar a configuração e a disponibilidade; a simulação não reserva essa unidade.';
 export const familyAgeQuestion = 'Quais são as idades das crianças? Preciso da idade de todas para verificar se vocês cabem em um apartamento ou se será necessário dividir o grupo. Cada categoria admite sua ocupação normal mais 1 criança de até 6 anos em cortesia, com limite de 4 pessoas mais essa criança no mesmo apartamento.';
-export const familyRoomRule = 'Cada categoria admite sua ocupação normal mais 1 criança de até 6 anos em cortesia, com limite de 4 pessoas mais essa criança por apartamento. Um casal com 1 criança nessa faixa pode ficar na categoria Casal pelo valor de casal; uma categoria maior é opcional. Precisamos das idades de todas as crianças antes de indicar a acomodação ou dividir o grupo. Isso não garante cama extra, berço ou disponibilidade.';
+export const familyRoomRule = 'Cada categoria admite sua ocupação normal mais 1 criança de até 6 anos em cortesia, com limite de 4 pessoas mais essa criança por apartamento. Um casal com 1 criança nessa faixa pode ficar na categoria Casal pelo valor de casal; uma categoria maior é opcional. Precisamos das idades de todas as crianças antes de indicar a acomodação ou dividir o grupo. ' + familyBeddingRule + ' ' + coupleRoomConfigurationText;
 
 export function familyAccommodation(state: any, guests: number, now = Date.now()) {
   const party = readFamilyParty(state?.family_party, now);
@@ -35,7 +42,7 @@ export function baseRoomCapacity(value: number) {
 }
 
 export function familyRoomExplanation(guests: number, eligible: number, divided = false) {
-  if (divided) return `Para ${guests} hóspedes, precisamos dividir o grupo entre apartamentos. A cortesia é de no máximo 1 criança de até 6 anos por apartamento; as demais pessoas contam na ocupação normal de cada categoria. A distribuição será conferida com a recepção.`;
+  if (divided) return `Para ${guests} hóspedes, precisamos dividir o grupo entre apartamentos. A cortesia é de no máximo 1 criança de até 6 anos por apartamento; as demais pessoas contam na ocupação normal de cada categoria. A distribuição será conferida com a recepção.${eligible ? ' ' + familyBeddingRule : ''}`;
   if (!eligible) return `Para ${guests} hóspedes, usamos a ocupação normal da categoria: não há criança na faixa de até 6 anos para aplicar a cortesia adicional.`;
-  return `As idades informadas permitem acomodar os ${guests} hóspedes em um apartamento compatível, considerando no máximo 1 criança de até 6 anos em cortesia. As demais pessoas contam na ocupação normal da categoria. Um casal com 1 criança nessa faixa pode usar o valor da categoria Casal; uma categoria maior é opcional. Isso não garante cama extra ou berço.`;
+  return `As idades informadas permitem acomodar os ${guests} hóspedes em um apartamento compatível, considerando no máximo 1 criança de até 6 anos em cortesia. As demais pessoas contam na ocupação normal da categoria. Um casal com 1 criança nessa faixa pode usar o valor da categoria Casal; uma categoria maior é opcional. ${familyBeddingRule}`;
 }

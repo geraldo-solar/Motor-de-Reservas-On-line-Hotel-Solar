@@ -11,7 +11,7 @@ const { confirmedDiningPolicy, diningPolicyAnswer } = await import(
 );
 
 test('política auditável registra confirmação atual e horários mantidos pelo responsável', () => {
-  assert.equal(confirmedDiningPolicy.confirmed_at, '2026-09-08');
+  assert.equal(confirmedDiningPolicy.confirmed_at, '2026-09-11');
   assert.match(confirmedDiningPolicy.confirmed_by, /Geraldo Barros/);
   assert.equal(confirmedDiningPolicy.hours.solar_73.opens, '11:00');
   assert.equal(confirmedDiningPolicy.hours.solar_73.closes, '23:00');
@@ -31,16 +31,52 @@ test('nenhuma tarifa automática ou data de cobrança é inventada a partir de f
   assert.deepEqual(policy.authorized_charge_dates, []);
 });
 
-test('café para visitantes usa informação atual da equipe e não promete buffet nem cortesia infantil', () => {
+test('café avulso usa as faixas infantis confirmadas sem apresentar R$75 como preço universal', () => {
   const breakfast = confirmedDiningPolicy.breakfast_visitors;
   assert.equal(breakfast.available, true);
-  assert.equal(breakfast.price_brl_per_person, 75);
-  assert.equal(breakfast.observed_at, '2026-09-08');
-  assert.match(breakfast.source, /Resposta da equipe/);
+  assert.match(breakfast.age_basis, /anos completos/);
+  assert.equal(breakfast.confirmed_at, '2026-09-11');
+  assert.match(breakfast.source, /Confirmação explícita do responsável/);
+  assert.deepEqual(breakfast.prices_brl_by_age, [
+    { min_age_years: 0, max_age_years: 6, price_brl_per_person: 0 },
+    { min_age_years: 7, max_age_years: 12, price_brl_per_person: 35 },
+    { min_age_years: 13, max_age_years: null, price_brl_per_person: 75 },
+  ]);
+  for (const [age, price] of [[0, 0], [6, 0], [7, 35], [12, 35], [13, 75], [65, 75]]) {
+    const matching = breakfast.prices_brl_by_age.filter(band => age >= band.min_age_years
+      && (band.max_age_years === null || age <= band.max_age_years));
+    assert.equal(matching.length, 1, `A idade ${age} deve pertencer a uma única faixa`);
+    assert.equal(matching[0].price_brl_per_person, price);
+  }
+  assert.equal(breakfast.price_brl_per_person, undefined);
+  assert.equal(breakfast.visitor_children_price_confirmed, true);
+});
+
+test('café mantém os mesmos preços no buffet e à la carte sem garantir modalidade ou funcionamento', () => {
+  const breakfast = confirmedDiningPolicy.breakfast_visitors;
+  assert.match(breakfast.price_note, /Até 6 anos: cortesia; de 7 a 12 anos: R\$35; a partir de 13 anos: R\$75/);
+  assert.match(breakfast.price_note, /mesmos valores se aplicam ao buffet e ao à la carte/);
   assert.match(breakfast.service_note, /pode ser à la carte/);
-  assert.equal(breakfast.visitor_children_price_confirmed, false);
+  assert.match(breakfast.service_note, /Não garantir buffet/);
+  assert.deepEqual(breakfast.hours, { opens: '07:00', closes: '10:00' });
+  assert.ok(confirmedDiningPolicy.limits.some(limit => /horários gerais não comprovam funcionamento em tempo real/.test(limit)));
+  assert.ok(confirmedDiningPolicy.limits.some(limit => /Não aplicar esses valores a diárias, ceias ou outros serviços/.test(limit)));
+});
+
+test('café de visitantes durante a semana exige agendamento com recepção inclusive no à la carte', () => {
+  const booking = confirmedDiningPolicy.breakfast_visitors.weekday_booking;
+  assert.equal(booking.required, true);
+  assert.equal(booking.channel, 'recepção');
+  assert.deepEqual(booking.applies_to, ['buffet', 'à la carte']);
+  assert.match(booking.note, /agendar previamente com a recepção durante a semana/);
+  assert.match(booking.note, /não confirma agendamento, disponibilidade ou funcionamento na data/);
+  assert.ok(confirmedDiningPolicy.limits.some(limit => /Não afirmar agendamento executado/.test(limit)));
+});
+
+test('agendamento do café não muda a gratuidade do Reserva Solar nem a ordem de chegada de visitas comuns', () => {
   assert.equal(confirmedDiningPolicy.reserva_solar_admission.default, 'free');
   assert.match(confirmedDiningPolicy.restaurant_visits.ordinary_seating, /ordem de chegada/);
+  assert.match(confirmedDiningPolicy.restaurant_visits.scope, /café avulso.*durante a semana exige agendamento prévio/);
   assert.match(confirmedDiningPolicy.restaurant_visits.scope, /Eventos, Mesa Posta/);
 });
 

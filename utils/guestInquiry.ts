@@ -4,6 +4,7 @@ import { namedPackageInquiry, packageInquiry } from './packageContext.js';
 import { publicEventInquiry } from './publicEvents.js';
 import { guestFacilityInquiry } from './guestFacilities.js';
 import { diningPolicyAnswer } from './diningPolicy.js';
+import { hotelPolicyInquiry } from './hotelPolicy.js';
 
 export type GuestInquiry = 'lodging_faq' | 'day_use' | 'dining';
 
@@ -97,6 +98,7 @@ export function explicitLodgingRequest(message: string): boolean {
 }
 
 function lodgingFaq(s: string): boolean {
+  if (hotelPolicyInquiry(s)) return true;
   if (quotedAmountQuestion(s) || roomRequirementQuestion(s) || guestFacilityInquiry(s)) return true;
   const includedMeal = mealWords.test(s)
     && /\b(?:inclus[oa]s?|incluid[oa]s?|inclui|inclusao|diarias?|hospedagem|estadia)\b/.test(s);

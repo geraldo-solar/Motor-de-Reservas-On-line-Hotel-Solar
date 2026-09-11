@@ -17,6 +17,7 @@ import { multiRoomRequest } from '../utils/lodgingScope.js';
 import { guestServiceRequest, guestServiceContext, guestServiceAnswer } from '../utils/guestService.js';
 import { hotelPhoneInquiry, hotelContactAnswer } from '../utils/hotelContact.js';
 import { confirmedGuestFacilitiesPolicy, guestFacilityInquiry, guestFacilityAnswer } from '../utils/guestFacilities.js';
+import { confirmedHotelPolicy, locmilAnswer } from '../utils/hotelPolicy.js';
 import { readFamilyParty, updateFamilyParty, type FamilyParty, type FamilyPartyResult } from '../utils/familyParty.js';
 import { familyAccommodation, familyAccommodationPolicy, familyAgeQuestion, familyRoomRule } from '../utils/familyAccommodation.js';
 import { readStayDuration, readStayDatePending, stayDurationRequest, conflictingStayDuration, stayDateClarification, relativeStayDateMention, unparsedStayDateDeclaration, calendarDateMention, explicitStayEntry, explicitStayExit, type StayDuration, type StayDatePending } from '../utils/stayDuration.js';
@@ -415,7 +416,7 @@ const dateLabel = (s: string) => s.split('-').reverse().join('/');
 const amount = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 function confirmation(q: Quote, name: string) {
   const option = q.options.find(o => o.name === name)!;
-  const childNote = option.child_allowance ? `\nA simulação considera ${option.child_allowance} criança(s) de até 6 anos em cortesia, no máximo 1 por apartamento, conforme as idades informadas. Todos continuam incluídos no total de hóspedes. Não garante cama extra ou berço.` : '';
+  const childNote = option.child_allowance ? `\nA simulação considera ${option.child_allowance} criança(s) de até 6 anos em cortesia, no máximo 1 por apartamento, conforme as idades informadas. Todos continuam incluídos no total de hóspedes. Há cama extra gratuita para essa criança e berço gratuito, mediante solicitação e disponibilidade; esta simulação não confirma o item nem sua instalação.` : '';
   return `Confira sua escolha:\n\n${option.name}\n${dateLabel(q.check_in)} a ${dateLabel(q.check_out)} · ${q.guests} hóspedes\nTotal da simulação: ${amount(option.total)}${q.extras.length ? ' (com os extras escolhidos)' : ''}.${childNote}\n\nAinda não confirma disponibilidade nem reserva. Para solicitar que a recepção verifique as vagas e continue por aqui, toque em “Confirmar opção”. Só então pediremos nome completo, e-mail e CPF.`;
 }
 
@@ -608,6 +609,7 @@ function controlTurn(body: any, now = Date.now()) {
       regra_atendimento_informativo: 'O foco informativo vem somente do cliente. Dúvidas sobre café da manhã para visitantes, refeições e Day Use não são hospedagem. Mantenha respostas curtas de quantidade de pessoas, data, idade ou ocasião familiar no mesmo assunto, sem convertê-las em hóspedes, check-in, check-out ou evento privado. Uma menção ao aniversário do pai não solicita festa ou orçamento de evento. Perguntas sobre regras, inclusão de café, pets, pagamento ou horário do quarto devem receber a informação disponível, sem iniciar cotação nem pedir dados da estadia. Não invente preços, políticas, disponibilidade, agendamento, confirmação de mesa ou encaminhamento. Para cotar hospedagem, o cliente precisa pedir hospedagem; o foco informativo não é escolha nem consentimento de reserva.',
       politica_gastronomia_confirmada: confirmedDiningPolicy,
       politica_instalacoes_confirmada: confirmedGuestFacilitiesPolicy,
+      politicas_hotel_confirmadas: confirmedHotelPolicy,
       regra_instalacoes: 'A copa baby e seu micro-ondas são de uso dos hóspedes para aquecer alimentos, sem horário específico. Isso não confirma equipamento dentro de quartos, acesso de visitantes, outros eletrodomésticos ou serviço prestado por funcionários. Não transformar uma dúvida sobre comida de bebê em nova criança na ocupação. Pedido efetivo para a equipe aquecer ou entregar deve seguir ao humano, sem afirmar execução.',
       regra_politica_gastronomia: 'A política de gastronomia confirmada mais recentemente pelo responsável prevalece sobre respostas antigas do histórico ou instruções sazonais anteriores. Não aplicar cobrança de entrada automaticamente em feriados, férias ou datas de grande movimento: somente datas previamente autorizadas e informadas pelo responsável podem ter cobrança. Não inventar tarifa nem converter preço de entrada em preço de café, refeições ou couvert. Os horários gerais não comprovam funcionamento em tempo real.',
       lazer_em_foco: state.extra_photo_subjects || [],
@@ -669,7 +671,7 @@ function controlTurn(body: any, now = Date.now()) {
   const publicMessage = state.history.at(-1) === raw ? state.resolved_message || raw : raw;
   const inquiry = currentGuestInquiry(state, publicMessage);
   const diningAnswer = diningPolicyAnswer(publicMessage);
-  const facilityAnswer = inquiry === 'lodging_faq' ? guestFacilityAnswer(publicMessage) : undefined;
+  const facilityAnswer = inquiry === 'lodging_faq' ? guestFacilityAnswer(publicMessage) || locmilAnswer(publicMessage) : undefined;
   if (raw === AUDIO_UNAVAILABLE) {
     answer = AUDIO_RETRY;
     state.resolved_message = AUDIO_UNAVAILABLE;

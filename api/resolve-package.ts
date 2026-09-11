@@ -4,7 +4,7 @@ import { resolveRoomMedia, nextRoomMedia } from '../utils/roomMedia.js';
 import { control } from './conversation-control.js';
 import { withDailyGreeting } from '../utils/dailyGreeting.js';
 import { PHOTO_CLARIFY, documentPhotoInquiry, photoClarificationQuestion, photoRetryRequest } from '../utils/photoIntent.js';
-import { requestedExtraCodes, extraCodes, extraPhotoRequest, extraMediaResult, nextExtraMedia, normalizeExtra } from '../utils/extraMedia.js';
+import { requestedExtraCodes, extraCodes, extraPhotoRequest, extraMediaResult, nextExtraMedia, normalizeExtra, explicitPackageBoatBenefit, safeBoatCopy, safeBoatPackageCopy } from '../utils/extraMedia.js';
 import { eventInquiry, eventContactText, reservaPhotoRequest, sitePhotoResult } from '../utils/hotelInfo.js';
 import { readEvent, eventFieldReply } from '../utils/eventInquiry.js';
 import { deliverEvent, deliveryFailed, acceptEventReceipt } from '../utils/eventDelivery.js';
@@ -177,11 +177,20 @@ const formatPackageList = (packages: PackageRecord[], conversational = false) =>
   ].join('\n'), conversational);
 };
 
+async function catalogBoatBenefit(supabase: any, focus: ReturnType<typeof readPackageContext>) {
+  if (!focus) return false;
+  const { data: packages, error } = await supabase.from('packages').select('*').eq('active', true);
+  const pkg = !error && (packages || []).find((item: PackageRecord) => item.id === focus.id
+    && item.start_iso_date === focus.start_date && item.end_iso_date === focus.end_date);
+  return !!pkg && explicitPackageBoatBenefit(pkg);
+}
+
 const formatPackageDetails = (
   pkg: PackageRecord,
   rooms: RoomRecord[],
   conversational = false,
 ) => {
+  pkg = safeBoatPackageCopy(pkg);
   const period = pkg.start_iso_date && pkg.end_iso_date
     ? `${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}`
     : 'Consulte o período no motor de reservas';
@@ -384,7 +393,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.query?.operation === 'next' && userMessage.startsWith('EXTRA_ID|')) {
     const {data: extras,error}=await supabase.from('extras').select('*').eq('active',true);
     if(error) return res.status(500).json({error:'Unable to load extra media.'});
-    return res.status(200).json(nextExtraMedia(userMessage,extras||[]));
+    const pendingBoat = (userMessage.split('|')[2] || '').split(',').includes('BARCO');
+    const included = pendingBoat && userMessage.endsWith('|INCLUDED')
+      && await catalogBoatBenefit(supabase, readPackageContext(conversationState?.package_context));
+    const reference = pendingBoat && !included ? userMessage.replace(/\|INCLUDED$/, '|PAID') : userMessage;
+    return res.status(200).json(nextExtraMedia(reference,extras||[]));
   }
   if (req.query?.operation === 'next') {
     const {data: rooms, error} = await supabase.from('room_types').select('id,name').eq('active', true);
@@ -401,11 +414,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       supabase.from('room_types').select('*').eq('active',true),
     ]);
     if (packageError || roomError) return res.status(500).json({error:'Unable to load package information.'});
-    const pkg = (packages || []).find((item: PackageRecord) => item.id === focusedPackage.id);
-    if (!pkg) {
+    const catalogPackage = (packages || []).find((item: PackageRecord) => item.id === focusedPackage.id);
+    if (!catalogPackage) {
       const answer = 'Esse pacote não está mais disponível no catálogo ativo. Qual período ou pacote você gostaria de consultar?';
       return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,availability_checked:false,...control({operation:'remember_response',state:req.body?.state,response_text:answer,clear_package:true})});
     }
+    const pkg = safeBoatPackageCopy(catalogPackage);
     const facts = conversationState?.facts || {};
     const family = familyAccommodation(conversationState, facts.guests || 0);
     const differentDates = (facts.check_in && facts.check_in !== pkg.start_iso_date) || (facts.check_out && facts.check_out !== pkg.end_iso_date);
@@ -432,10 +446,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if(codes.length) {
     const {data: extras,error}=await supabase.from('extras').select('*').eq('active',true);
     if(error) return res.status(500).json({error:'Unable to load extra media.'});
-    const includedBoat=/barco[^\n]{0,60}(ja incluido|sem cobranca adicional)/.test(normalizeExtra(assistant));
+    let includedBoat = false;
+    if (codes.includes('BARCO') && focusedPackage) {
+      includedBoat = await catalogBoatBenefit(supabase, focusedPackage);
+    }
     const result=extraMediaResult(codes,extras||[],includedBoat);
     if(!offersOnly && assistant && !extraCodes(userMessage).length && !/extras|servicos|experiencias/.test(normalizeExtra(userMessage))) {
-      result.conversation_text=(assistant.slice(0,800)+'\n\n'+result.conversation_text).slice(0,1900);
+      const safeAssistant = codes.includes('BARCO') ? safeBoatCopy(assistant, includedBoat) : assistant;
+      result.conversation_text=(safeAssistant.slice(0,800)+'\n\n'+result.conversation_text).slice(0,1900);
       result.quote_text=result.conversation_text;
     }
     const remembered=control({operation:'remember_response',state:req.body?.state,response_text:result.conversation_text,extra_photo_requests:result.photo_codes});
@@ -488,7 +506,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const pkg = best.pkg;
+  const pkg = safeBoatPackageCopy(best.pkg);
   if (childPolicyQuestion(userMessage)) {
     const answer=packageChildReply(pkg,userMessage);
     return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,

@@ -22,6 +22,67 @@ export const extraCodes = (text:string) => {
     }).filter(match=>match.index>=0).sort((a,b)=>a.index-b.index).map(match=>match.code);
 };
 export const extraCode = (name:string) => extraCodes(name)[0];
+// A description that merely mentions a third-party boat is not a benefit.
+// Use only current catalog fields, never a previous assistant assertion.
+export function explicitPackageBoatBenefit(pkg?: { includes?: string[]; benefits?: string[]; description?: string }) {
+  const boat = /\bbarco\b|catamara/;
+  const affirmative = (value: string) => {
+    const text = normalizeExtra(value).replace(/sem (?:cobranca|custo) adicional/g, 'incluido');
+    return boat.test(text) && !/\bnao\b|\bsem\b|\bexceto\b|\ba parte\b|cobrad|opcional|sob consulta/.test(text);
+  };
+  const clauses = (value: string) => value.split(/[.!?;]\s+|\n+/);
+  if ([...(pkg?.includes || []), ...(pkg?.benefits || [])].some(value => typeof value === 'string' && clauses(value).some(affirmative))) return true;
+  const description = typeof pkg?.description === 'string' ? pkg.description : '';
+  return clauses(description).some(clause => affirmative(clause)
+    && /(?:\bbarco\b|catamara).{0,70}(?:inclus[oa]|incluid[oa]|sem (?:cobranca|custo) adicional)|(?:inclui|inclus[oa]|incluid[oa]).{0,70}(?:\bbarco\b|catamara)/.test(normalizeExtra(clause)));
+}
+// Presentation-only: keep package/room/other-extra amounts and catalog records
+// intact. Rewrite a boat-specific clause, not the whole commercial message.
+export function safeBoatCopy(value: string, includedBoat = false) {
+  let boatContext = false;
+  return String(value).split(/(\n+|;\s*|[.!?](?!\d)\s*|,\s*(?=(?:passeio|barco|catamarã|kit|mesa|pacote|hospedagem)\b)|\s+e\s+(?=(?:o |a )?(?:passeio|barco|catamarã|kit|mesa|pacote|hospedagem)\b))/i)
+    .map(clause => {
+      const s = normalizeExtra(clause);
+      if (!/[a-z0-9]/.test(s)) return clause;
+      const mentionsBoat = /\bbarco\b|catamara/.test(s);
+      const continuation = boatContext && !mentionsBoat && /^\s*[•*-]?\s*(?:valor|preco|custo|duracao|horarios?|saida)\s*[:—-]/.test(s);
+      if (!mentionsBoat && !continuation) { boatContext = false; return clause; }
+      boatContext = true;
+      const money = /r\$\s*[\d.,]+|\b\d+(?:[.,]\d+)?\s*reais\b/.test(s);
+      const timed = /\b\d+\s*(?:h|horas?|minutos?)\b|mare cheia/.test(s);
+      const inclusion = /inclu|sem (?:cobranca|custo) adicional/.test(s);
+      // "Pacote R$2500 com barco incluído" is a package amount, not a
+      // boat tariff. A separate explicit boat price remains sanitizable.
+      const boatAt = continuation ? 0 : s.search(/\bbarco\b|catamara/);
+      const before = s.slice(0, boatAt);
+      const after = s.slice(boatAt);
+      const packageAmount = money && /pacote\b[^$]*\bcom(?: o)? (?:passeio de )?$/.test(before)
+        && !/custa|preco|valor|cobrad/.test(after.split(/r\$|\breais\b/)[0]);
+      if (packageAmount && !timed) return clause;
+      const onlyOtherAmount = money && !/r\$|\breais\b/.test(after)
+        && /pacote|kit|mesa posta|hospedagem|diaria/.test(before);
+      if (onlyOtherAmount && !timed && (includedBoat || !inclusion)) return clause;
+      if (!money && !timed && (includedBoat || !inclusion)) return clause;
+      if (onlyOtherAmount) {
+        // Preserve the unrelated amount before the boat mention.
+        return clause.slice(0, boatAt) + 'barco com terceiros, sob consulta à recepção';
+      }
+      const previousAmount = /r\$|\breais\b/.test(before) && /pacote|kit|mesa posta|hospedagem|diaria/.test(before);
+      const subjectAt = previousAmount ? before.search(/(?:passeio de |extra de |valor do )?$/) : 0;
+      const prefix = previousAmount ? clause.slice(0, subjectAt) : clause.match(/^\s*[•*-]?\s*/)?.[0] || '';
+      return prefix + (includedBoat
+        ? 'Passeio de barco incluído no pacote, sem cobrança adicional; horários, duração e disponibilidade com a recepção'
+        : 'Passeio de barco com terceiros, sob consulta; valores, horários, duração e disponibilidade com a recepção');
+    }).join('');
+}
+export function safeBoatPackageCopy<T extends { includes?: string[]; benefits?: string[]; description?: string }>(pkg: T): T {
+  const included = explicitPackageBoatBenefit(pkg);
+  return { ...pkg,
+    ...(pkg.description ? { description: safeBoatCopy(pkg.description, included) } : {}),
+    ...(pkg.includes ? { includes: pkg.includes.map(text => safeBoatCopy(text, included)) } : {}),
+    ...(pkg.benefits ? { benefits: pkg.benefits.map(text => safeBoatCopy(text, included)) } : {}),
+  };
+}
 // Existing Hotel Solar ManyChat media, visually verified in the named flows.
 // The motor's current image takes precedence whenever it is configured.
 const MANYCHAT_MEDIA: Record<string,string> = {
@@ -53,7 +114,9 @@ export function extraCaption(code:string,extras:ExtraRecord[],includedBoat=false
   if(code==='PISCINA') return 'Piscina principal do Hotel Solar 📷';
   if(code==='HIDRO') return 'Uma das piscinas de hidromassagem do Hotel Solar 📷';
   if(code==='BIKE') return '🚲 Bicicletas\nCortesia gratuita da Cia. Marítima e do Hotel Solar, exclusiva para hóspedes. Retirada na recepção mediante formulário.';
-  if(code==='BARCO') return 'Passeio de barco\nPasseio pelos manguezais, com saída no trapiche do hotel e parada na Praia Ponta do Espadarte. Duração aproximada de 2h, na maré cheia.\n'+(includedBoat?'Já incluído no pacote informado, sem cobrança adicional.':'R$ 350,00 por grupo de até 4 pessoas. Para mais participantes, a recepção confirma o valor.');
+  if(code==='BARCO') return 'Passeio de barco com terceiros, sob consulta.\n'+(includedBoat
+    ? 'Já incluído no pacote informado, sem cobrança adicional. Horários, duração e disponibilidade devem ser consultados com a recepção.'
+    : 'Valores, horários, duração e disponibilidade devem ser consultados com a recepção.');
   const price=Number(extra?.price);
   const value=Number.isFinite(price)&&price>=0 ? price.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : 'Valor a confirmar com a recepção';
   if(code==='MESA') return `Mesa Posta\nUma decoração especial para o jantar.\n${value} pela decoração/montagem; o consumo do jantar é cobrado à parte.`;

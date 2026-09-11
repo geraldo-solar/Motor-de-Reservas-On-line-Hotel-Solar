@@ -23,7 +23,7 @@ test('saudação diária chega ao texto final de preços, pacotes e fotos sem mu
   const state=p.state;
   const expected=JSON.parse(p.context).saudacao_do_horario+'!\n\n';
   const prices=await loadHandler('api/get-prices.ts',[]);
-  const input={checkIn:'2026-10-20',checkOut:'2026-10-22',guests:2};
+  const input={quote_request:'QUOTE|2026-10-20|2026-10-22|2|NONE'};
   const ordinary=await request(prices,input);
   const greeted=await request(prices,{...input,state});
   assert.equal(greeted.conversation_text,expected+ordinary.conversation_text);
@@ -214,9 +214,9 @@ function assertSameAmounts(legacy, conversational) {
   assert.doesNotMatch(conversational, /98100|wa\.me|ligue|pelo WhatsApp/i);
 }
 
-test('cotação mantém valores, ordenação premium, extras e formato legado', async () => {
+test('motor público mantém valores, ordenação premium, extras e formato legado', async () => {
   const handler = await loadHandler('api/get-prices.ts');
-  const result = await request(handler, { quote_request: 'QUOTE|2026-09-20|2026-09-25|2|BARCO,MESA' });
+  const result = await request(handler, { checkIn: '2026-09-20', checkOut: '2026-09-25', guests: 2, extras: ['BARCO', 'MESA'] });
   assertSameAmounts(result.whatsapp_text, result.conversation_text);
   assert.match(result.whatsapp_text, /98100-0800/);
   assert.match(result.conversation_text, /Qual acomodação você prefere/);

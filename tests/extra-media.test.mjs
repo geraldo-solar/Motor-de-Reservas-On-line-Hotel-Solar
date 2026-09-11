@@ -17,13 +17,15 @@ test('oferta específica, contextual e todos; não repete automaticamente, mas r
  assert.deepEqual(requestedExtraCodes('Foto do Loft','Também há passeio de barco'),[]);
  assert.deepEqual(requestedExtraCodes('Pacote Independência','Inclui barco'),[]);
 });
-test('fila finita com legenda e valores corretos, bicicletas gratuitas e barco por grupo',()=>{
+test('fila finita com valores corretos, bicicletas gratuitas e barco terceirizado sob consulta',()=>{
  let r=extraMediaResult(['BARCO','MESA','LUA','BIKE'],extras); const captions=[];
  for(let i=0;r.quote_request.startsWith('EXTRA_ID|');i++) {
   assert.ok(i<4);captions.push(r.conversation_text); r=nextExtraMedia(r.quote_request,extras);
  }
  assert.equal(r.quote_request,'ROOM_DONE');assert.equal(captions.length,4);
- assert.match(captions[0],/350,00 por grupo de até 4/);assert.doesNotMatch(captions[0],/100,00/);
+ assert.match(captions[0],/terceiros, sob consulta/);
+ assert.match(captions[0],/Valores, horários, duração e disponibilidade.*recepção/);
+ assert.doesNotMatch(captions[0],/R\$|350|100|2h|maré cheia/);
  assert.match(captions[1],/180,00/);assert.match(captions[2],/350,00/);
  assert.match(captions[3],/Cortesia gratuita/);assert.doesNotMatch(captions[3],/50,00/);
  assert.match(extraMediaResult(['BARCO'],extras,true).conversation_text,/sem cobrança adicional/);
