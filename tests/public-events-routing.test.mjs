@@ -47,7 +47,7 @@ test('continua amanhã/couvert/horário com proteção temporal e sai para hospe
 test('não repete saudação; humano e organização privada mantêm prioridade',()=>{
   const p=control({operation:'prepare',user_message:'Tem música ao vivo hoje?'},now);
   const first=control({operation:'route',state:p.state,user_message:'Tem música ao vivo hoje?'},now);
-  assert.match(first.answer,/^Olá!/);
+  assert.match(first.answer,/^Bom dia!/);
   const next=turn('E amanhã?',first.state).r;
   assert.doesNotMatch(next.answer,/^Olá/);
   assert.equal(turn('Quero falar com a recepção sobre o Heraldo',next.state).r.quote_request,'HUMANO');

@@ -2,6 +2,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { resolveRoomMedia, nextRoomMedia } from '../utils/roomMedia.js';
 import { control } from './conversation-control.js';
+import { withDailyGreeting } from '../utils/dailyGreeting.js';
 import { PHOTO_CLARIFY, documentPhotoInquiry, photoClarificationQuestion, photoRetryRequest } from '../utils/photoIntent.js';
 import { requestedExtraCodes, extraCodes, extraPhotoRequest, extraMediaResult, nextExtraMedia, normalizeExtra } from '../utils/extraMedia.js';
 import { eventInquiry, eventContactText, reservaPhotoRequest, sitePhotoResult } from '../utils/hotelInfo.js';
@@ -233,6 +234,12 @@ const formatPackageDetails = (
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Only the first response of a user turn: carousel pages / suggested media
+  // are internal continuations and must not send the greeting again.
+  if (!req.query?.operation) {
+    const sendJson = res.json.bind(res);
+    res.json = ((payload: any) => sendJson(withDailyGreeting(payload, req.body?.state))) as typeof res.json;
+  }
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed. Use POST.' });
   }

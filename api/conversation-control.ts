@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { belemClock, readDailyGreeting, parseGreetingState, withDailyGreeting } from '../utils/dailyGreeting.js';
 import { EXTRA_MEDIA_CODES, extraCodes, extraPhotoRequest } from '../utils/extraMedia.js';
 import { PHOTO_CLARIFY, PHOTO_LOOKUP, documentPhotoInquiry, photoClarificationQuestion, photoDeliveryClaim, photoRetryRequest, shortPhotoRetry } from '../utils/photoIntent.js';
 import { eventInquiry, eventContactText } from '../utils/hotelInfo.js';
@@ -148,6 +149,7 @@ function loadState(value: unknown, now = Date.now()): State {
   if (parsed.stay_date_pending) delete facts.check_out;
   if (['relative_dates', 'unparsed_dates'].includes(parsed.stay_date_pending?.reason)) delete facts.check_in;
   return { version: 2, history: parsed.history.filter((s: unknown) => typeof s === 'string' && !personal(s as string)).slice(-12).map((s: string) => s.slice(0, 500)), facts, greeted: parsed.greeted === true, first_turn: parsed.first_turn === true, changed: parsed.changed === true, ...(typeof parsed.pending?.quote_id === 'string' && typeof parsed.pending?.option === 'string' ? { pending: parsed.pending } : {}),
+    ...(readDailyGreeting(parsed.daily_greeting) ? {daily_greeting: readDailyGreeting(parsed.daily_greeting)} : {}),
     turns: Array.isArray(parsed.turns) ? parsed.turns.filter((t: any) => ['user', 'assistant'].includes(t?.role) && typeof t.text === 'string' && !personal(t.text)).slice(-16).map((t: any) => ({role:t.role, text:t.text.slice(0,900)})) : [],
     extra_photo_requests: Array.isArray(parsed.extra_photo_requests) ? [...new Set<string>(parsed.extra_photo_requests.filter(knownMediaCode))] : [],
     ...(Array.isArray(parsed.extra_photo_subjects) ? {extra_photo_subjects: [...new Set<string>(parsed.extra_photo_subjects.filter(knownMediaCode))]} : {}),
@@ -412,7 +414,7 @@ function confirmation(q: Quote, name: string) {
   return `Confira sua escolha:\n\n${option.name}\n${dateLabel(q.check_in)} a ${dateLabel(q.check_out)} · ${q.guests} hóspedes\nTotal da simulação: ${amount(option.total)}${q.extras.length ? ' (com os extras escolhidos)' : ''}.\n\nAinda não confirma disponibilidade nem reserva. Para solicitar que a recepção verifique as vagas e continue por aqui, toque em “Confirmar opção”. Só então pediremos nome completo, e-mail e CPF.`;
 }
 
-export function control(body: any, now = Date.now()) {
+function controlTurn(body: any, now = Date.now()) {
   const state = loadState(body.state, now);
   const input = String(body.user_message || '').trim();
   const attachment = isAttachmentInput(input);
@@ -767,6 +769,23 @@ export function control(body: any, now = Date.now()) {
     else if (!inquiry && /datas de entrada e sa[ií]da/.test(answer)) state.awaiting = 'dates';
   }
   return { state: JSON.stringify(state), resolved_message: state.resolved_message || raw, quote_request: decision, can_collect: 'NAO', confirmation_text: confirmationText, answer };
+}
+
+export function control(body: any, now = Date.now()) {
+  const result = controlTurn(body, now);
+  if (body.operation === 'prepare' && 'state' in result && result.state && 'context' in result) {
+    const state = parseGreetingState(result.state);
+    const previous = readDailyGreeting(parseGreetingState(body.state)?.daily_greeting);
+    const clock = belemClock(now);
+    state.daily_greeting = {day: clock.day, first: previous?.day !== clock.day};
+    const context = parseGreetingState(result.context);
+    context.primeira_resposta_do_dia = state.daily_greeting.first;
+    context.saudacao_do_horario = clock.greeting;
+    context.fuso_horario = 'America/Belem';
+    context.regra_saudacao = 'Na primeira resposta do dia, cumprimente com a saudação do horário informada e continue o assunto normalmente. Nas demais respostas do mesmo dia, não repita saudações nem boas-vindas. Isso não reinicia a conversa, não apaga fatos e não autoriza ações.';
+    return {...result, state:JSON.stringify(state), context:JSON.stringify(context)};
+  }
+  return body.operation === 'route' ? withDailyGreeting(result, body.state, now) : result;
 }
 
 export async function handleConversation(body: any, authorization = '', transcribe = transcribeAudio, now = Date.now(), analyze = analyzeAttachment) {

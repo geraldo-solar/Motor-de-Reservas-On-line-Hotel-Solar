@@ -1,5 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import { withDailyGreeting } from '../utils/dailyGreeting.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -44,6 +45,8 @@ const periodsOverlap = (
 ) => requestedCheckIn < packageCheckOut && requestedCheckOut > packageCheckIn;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const sendJson = res.json.bind(res);
+  res.json = ((payload: any) => sendJson(withDailyGreeting(payload, req.body?.state))) as typeof res.json;
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed. Use POST.' });
   }

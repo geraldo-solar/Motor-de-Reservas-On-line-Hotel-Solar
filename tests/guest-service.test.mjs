@@ -26,8 +26,8 @@ const withoutDatabase = (await load('api/resolve-package.ts')).default;
 const withDatabase = (await load('api/resolve-package.ts',true)).default;
 const now = Date.now();
 const facts = {guests:2,check_in:'2026-10-20',check_out:'2026-10-25',extras:['MESA']};
-const initial = {version:2,history:[],facts,greeted:true};
-const empty = {version:2,history:[],facts:{extras:[]},greeted:true};
+const initial = {version:2,history:[],facts,greeted:true,daily_greeting:{day:new Date(now-3*3600000).toISOString().slice(0,10),first:false}};
+const empty = {version:2,history:[],facts:{extras:[]},greeted:true,daily_greeting:{day:new Date(now-3*3600000).toISOString().slice(0,10),first:false}};
 const unsafeAnswer = 'Já emiti os documentos, fiz o pedido, acionei a manutenção, entreguei as toalhas e encontrei sua blusa.';
 const examples = [
   ['Estou hospedado, preciso de toalhas no quarto','housekeeping'],

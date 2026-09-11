@@ -6,7 +6,7 @@ const bundled = await build({entryPoints:['api/conversation-control.ts'],bundle:
 const {control,handleConversation} = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
 const now = Date.parse('2026-09-08T16:00:00Z');
 const facts = {extras:['MESA'],guests:2,check_in:'2026-09-20',check_out:'2026-09-25'};
-const initial = {version:2,history:[],facts,greeted:true};
+const initial = {version:2,history:[],facts,greeted:true,daily_greeting:{day:new Date(now-3*3600000).toISOString().slice(0,10),first:false}};
 const prepare = (user_message,state=initial,time=now) => control({operation:'prepare',user_message,state},time);
 const route = (user_message,state,time=now) => control({operation:'route',user_message,state,ai_response:'Não temos fotos.',proposed:'QUOTE|2026-09-20|2026-09-25|2|MESA'},time);
 

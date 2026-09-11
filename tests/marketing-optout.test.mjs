@@ -11,7 +11,7 @@ const { control, handleConversation } = await import(
 );
 const now = Date.parse('2026-09-08T16:00:00Z');
 const facts = { guests: 2, check_in: '2026-09-20', check_out: '2026-09-25', extras: ['MESA'] };
-const state = { version: 2, history: [], facts, greeted: true };
+const state = { version: 2, history: [], facts, greeted:true,daily_greeting:{day:new Date(now-3*3600000).toISOString().slice(0,10),first:false} };
 const wrongQuote = 'QUOTE|2026-09-20|2026-09-25|2|MESA';
 const answer = 'Entendi seu pedido de não receber mensagens promocionais. Vou chamar a equipe para providenciar isso.';
 

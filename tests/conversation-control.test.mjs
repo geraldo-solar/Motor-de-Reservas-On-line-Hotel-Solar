@@ -83,7 +83,7 @@ test('Bom dia ignora resumo legado contaminado e oferta do robô', () => {
   assert.equal(context.cotacao_valida_para_estes_dados, null);
   const r = route('Bom dia ☀️', p.state);
   assert.equal(r.quote_request, 'NOQUOTE');
-  assert.match(r.answer, /^Olá!/);
+  assert.match(r.answer, /^Boa tarde!/);
   assert.doesNotMatch(r.answer, /outubro|Crianças|CPF/);
 });
 
@@ -137,7 +137,7 @@ test('fotos de apartamentos nunca viram aceite, cotação ou coleta', () => {
       assert.equal(r.can_collect, 'NAO', msg);
       assert.equal(r.confirmation_text, '', msg);
       assert.equal(JSON.parse(r.state).pending, undefined, msg);
-      assert.equal(r.answer.replace(/^Olá![\s\S]*?\n\n/, ''), 'Resposta de teste.', msg);
+      assert.equal(r.answer.replace(/^Boa tarde!\n\n/, ''), 'Resposta de teste.', msg);
     }
   }
 });

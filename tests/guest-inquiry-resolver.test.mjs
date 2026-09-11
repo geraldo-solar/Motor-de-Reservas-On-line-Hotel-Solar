@@ -35,7 +35,7 @@ const {control,handleConversation} = await load('api/conversation-control.ts');
 const handler = (await load('api/resolve-package.ts')).default;
 const now = Date.now();
 const oldFacts = {guests:4,check_in:'2026-09-20',check_out:'2026-09-25',extras:['MESA'],children_pending:true};
-const initial = {version:2,history:[],facts:oldFacts,greeted:true};
+const initial = {version:2,history:[],facts:oldFacts,greeted:true,daily_greeting:{day:new Date(now-3*3600000).toISOString().slice(0,10),first:false}};
 function turn(user_message,state=initial,answer='Continuamos com a informação solicitada.',proposed='QUOTE|2026-09-15|2026-09-16|3|MESA') {
   const prepared = control({operation:'prepare',user_message,state},now);
   const routed = control({operation:'route',user_message,state:prepared.state,ai_response:answer,proposed},now);

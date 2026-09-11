@@ -12,8 +12,8 @@ const { control, guestInquiry, explicitLodgingRequest, multiRoomRequest } = awai
 );
 const now = Date.parse('2026-09-08T16:00:00Z');
 const facts = { guests: 2, check_in: '2026-10-20', check_out: '2026-10-25', extras: [] };
-const previous = { version: 2, history: [], facts, greeted: true };
-const empty = { version: 2, history: [], facts: { extras: [] }, greeted: true };
+const previous = { version: 2, history: [], facts, greeted:true,daily_greeting:{day:new Date(now-3*3600000).toISOString().slice(0,10),first:false} };
+const empty = { version: 2, history: [], facts: { extras: [] }, greeted:true,daily_greeting:{day:new Date(now-3*3600000).toISOString().slice(0,10),first:false} };
 const oldQuote = 'QUOTE|2026-10-20|2026-10-25|2|NONE';
 const informativeAnswer = 'Resposta factual sintética, sem preço ou disponibilidade confirmada.';
 

@@ -4,7 +4,7 @@ import {build} from 'esbuild';
 
 const now = Date.now();
 const facts = {guests:2,check_in:'2026-09-20',check_out:'2026-09-25',extras:['MESA'],children_pending:true};
-const initial = {version:2,history:[],facts,greeted:true};
+const initial = {version:2,history:[],facts,greeted:true,daily_greeting:{day:new Date(now-3*3600000).toISOString().slice(0,10),first:false}};
 const clarifyText = 'De qual espaço do hotel você gostaria de ver fotos?';
 const fixtures = {extras:[],packages:[],room_types:[
   {id:'loft',name:'Loft',capacity:4,images:['https://fixture.invalid/loft.jpg'],active:true},

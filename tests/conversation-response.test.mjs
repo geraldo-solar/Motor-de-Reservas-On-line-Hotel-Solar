@@ -15,6 +15,33 @@ const packages = [
   { id: 'reveillon', name: 'Réveillon Solar 2027', start_iso_date: '2026-12-31', end_iso_date: '2027-01-03', description: 'Celebração de Ano-Novo.', includes: [], benefits: [], room_prices: [], no_checkin_dates: [], no_checkout_dates: [] },
 ];
 
+test('saudação diária chega ao texto final de preços, pacotes e fotos sem mudar valores ou mídia', async()=>{
+  const {outputFiles}=await build({entryPoints:['api/conversation-control.ts'],bundle:true,write:false,platform:'node',format:'esm'});
+  const {control}=await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
+  const now=Date.now();
+  const p=control({operation:'prepare',user_message:'Quero me hospedar de 20 a 22 de outubro para duas pessoas'},now);
+  const state=p.state;
+  const expected=JSON.parse(p.context).saudacao_do_horario+'!\n\n';
+  const prices=await loadHandler('api/get-prices.ts',[]);
+  const input={checkIn:'2026-10-20',checkOut:'2026-10-22',guests:2};
+  const ordinary=await request(prices,input);
+  const greeted=await request(prices,{...input,state});
+  assert.equal(greeted.conversation_text,expected+ordinary.conversation_text);
+  assert.equal(greeted.whatsapp_text,ordinary.whatsapp_text);
+  assert.equal(greeted.prices_summary,ordinary.prices_summary);
+  assert.deepEqual(JSON.parse(greeted.quote_state).options,JSON.parse(ordinary.quote_state).options);
+  const resolver=await loadHandler('api/resolve-package.ts');
+  for(const message of ['Quero informações do Réveillon','Fotos das piscinas de hidromassagem','Qual o telefone do hotel?']) {
+    const prepared=control({operation:'prepare',user_message:message},now);
+    const result=await request(resolver,{user_message:message,state:prepared.state});
+    assert.ok(result.conversation_text.startsWith(expected),message);
+    assert.equal((result.conversation_text.match(/(?:Bom dia|Boa tarde|Boa noite)!/g)||[]).length,1,message);
+    const next=control({operation:'prepare',user_message:message,state:result.state||prepared.state},now);
+    const repeated=await request(resolver,{user_message:message,state:next.state});
+    assert.doesNotMatch(repeated.conversation_text,/^(?:Bom dia|Boa tarde|Boa noite|Olá)!/,message);
+  }
+});
+
 async function loadHandler(file, fixturePackages = packages, fixtureRooms = rooms, fixtureExtras = []) {
   const fixture = JSON.stringify({ room_types: fixtureRooms, packages: fixturePackages, extras: fixtureExtras });
   const result = await build({
