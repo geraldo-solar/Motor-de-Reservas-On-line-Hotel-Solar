@@ -19,6 +19,7 @@ import { childPolicyQuestion, childAgeFollowup, packageChildReply } from '../uti
 import { stayDateClarification } from '../utils/stayDuration.js';
 import { guestServiceRequest } from '../utils/guestService.js';
 import { hotelPhoneInquiry, hotelContactAnswer } from '../utils/hotelContact.js';
+import { locmilAnswer } from '../utils/hotelPolicy.js';
 import { familyAccommodation, familyAgeQuestion } from '../utils/familyAccommodation.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -346,6 +347,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? 'Pode detalhar sua dúvida sobre a refeição ou a visita ao restaurante?'
         : safeState.guest_inquiry.kind === 'day_use'
         ? 'Pode detalhar sua dúvida sobre o Day Use?'
+        : safeState.guest_inquiry.kind === 'lodging_faq'
+        ? locmilAnswer(userMessage) || 'Pode detalhar qual informação do hotel você deseja esclarecer?'
         : 'Pode detalhar qual informação do hotel você deseja esclarecer?';
       return res.status(200).json(informationResult(fallback,'guest_information'));
     }

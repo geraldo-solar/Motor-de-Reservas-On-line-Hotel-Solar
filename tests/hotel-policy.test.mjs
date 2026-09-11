@@ -59,3 +59,40 @@ test('contato terceirizado não toma precedência de pedido explícito de humano
   assert.equal(result.routed.quote_request, 'HUMANO');
   assert.doesNotMatch(result.routed.answer, /5591987657501/);
 });
+
+test('prepare → route → resolver preserva contato LocMil mesmo quando a memória filtra o telefone', async () => {
+  const resolverBundle = await build({
+    entryPoints: ['api/resolve-package.ts'], bundle: true, write: false, platform: 'node', format: 'esm',
+    define: { 'process.env.VITE_SUPABASE_URL': '"https://fixture.invalid"', 'process.env.VITE_SUPABASE_ANON_KEY': '"fixture"' },
+    plugins: [{ name: 'no-provider-access', setup(builder) {
+      builder.onResolve({ filter: /^@supabase\/supabase-js$/ }, () => ({ path: 'no-provider', namespace: 'test' }));
+      builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({ loader: 'js',
+        contents: 'export function createClient() { throw new Error("LocMil information must not access a provider"); }',
+      }));
+    } }],
+  });
+  const resolver = (await import(`data:text/javascript;base64,${Buffer.from(resolverBundle.outputFiles[0].text).toString('base64')}`)).default;
+  for (const user_message of ['Vocês têm passeio de quadriciclo?', 'Qual o contato da LocMil?', 'Quanto custa o quadriciclo?']) {
+    const prepared = control({ operation: 'prepare', state: prior, user_message });
+    const routed = control({ operation: 'route', state: prepared.state, user_message,
+      proposed: 'NOQUOTE', ai_response: 'Resposta sintética sem uso de modelo.' });
+    assert.equal(routed.quote_request, 'NOQUOTE');
+    assert.match(routed.answer, /https:\/\/wa\.me\/5591987657501/);
+    const filtered = JSON.parse(control({ operation: 'remember_response', state: routed.state }).state);
+    assert.ok(!filtered.turns.some(item => item.role === 'assistant' && /5591987657501/.test(item.text)),
+      'A proteção global de dados pessoais continua filtrando telefones da memória.');
+    let status, result;
+    await resolver({ method: 'POST', body: { user_message, state: routed.state } }, {
+      status(value) { status = value; return this; }, json(value) { result = value; return value; },
+    });
+    assert.equal(status, 200);
+    assert.equal(result.match_type, 'guest_information');
+    assert.equal(result.quote_request, 'ROOM_LIST');
+    assert.equal(result.availability_checked, false);
+    assert.match(result.conversation_text, /LocMil Turismo.*terceirizada.*https:\/\/wa\.me\/5591987657501/);
+    assert.match(result.conversation_text, /Valores, horários, disponibilidade e contratação.*diretamente/);
+    assert.doesNotMatch(result.conversation_text, /Pode detalhar|R\$|confirmado|agendado|reservado/i);
+    assert.deepEqual(JSON.parse(result.state).facts, facts);
+    assert.ok(!JSON.parse(result.state).turns.some(item => /5591987657501/.test(item.text)));
+  }
+});
