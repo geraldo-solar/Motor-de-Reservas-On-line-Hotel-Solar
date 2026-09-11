@@ -9,6 +9,21 @@ const EVENTS = [
 const MONTHS = ['janeiro','fevereiro','marco','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 const otherHoliday = (s: string) => /\b(reveillon|natal|ano novo|carnaval|pascoa|tiradentes|corpus christi|finados|sao joao|dia (?:das criancas|das maes|dos pais|dos namorados|do trabalho))\b/.test(s);
 const weekendMention = (s: string) => /\b(?:fim|final) de semana\b/.test(s);
+const WEEKDAY_PATTERN = '(?:domingo|segunda(?:[- ]feira)?|terca(?:[- ]feira)?|quarta(?:[- ]feira)?|quinta(?:[- ]feira)?|sexta(?:[- ]feira)?|sabado)';
+const WEEKDAYS = ['domingo','segunda','terca','quarta','quinta','sexta','sabado'];
+const weekdayMention = (s: string) => new RegExp(`\\b${WEEKDAY_PATTERN}\\b`).test(s);
+
+/** A weekday alone cannot choose between an active package and this week. */
+export function publicEventWeekdayReference(message: string): 'current' | 'ambiguous' | 'package' | 'explicit_date' | undefined {
+  const s = norm(message);
+  if (!weekdayMention(s)) return;
+  if (/\b20\d{2}-\d{2}-\d{2}\b|\b\d{1,2}\/\d{1,2}(?:\/20\d{2})?\b/.test(s)
+    || new RegExp(`\\b\\d{1,2}\\s+(?:de\\s+)?(?:${MONTHS.join('|')})\\b`).test(s)) return 'explicit_date';
+  if (/\bpacotes?\b/.test(s) || otherHoliday(s)) return 'package';
+  if (/\b(?:agora|hoje|amanha|desta semana|dessa semana|nesta semana|nessa semana|semana que vem|semana passada|passad[oa]|ultim[oa])\b/.test(s)
+    || new RegExp(`\\b(?:este|esse|neste|nesse|esta|essa|nesta|nessa|proximo|proxima)\\s+${WEEKDAY_PATTERN}\\b`).test(s)) return 'current';
+  return 'ambiguous';
+}
 
 function localClock(now: number) {
   const parts = new Intl.DateTimeFormat('en-CA', {timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'}).formatToParts(new Date(now));
@@ -41,7 +56,7 @@ export function publicEventInquiry(message: string): boolean {
   if (isPrivateEventRequest(s)) return false;
   // Those questions belong to the dynamic package catalog, not this dated agenda.
   if (!/\bheraldo\b/.test(s) && (otherHoliday(s) || /\bpacotes?\b/.test(s))) return false;
-  const temporalContext = /\b(hoje|amanha)\b/.test(s) || weekendMention(s);
+  const temporalContext = /\b(hoje|amanha)\b/.test(s) || weekendMention(s) || weekdayMention(s);
   const publicContext = temporalContext || /\b(restaurante|reserva solar|hotel)\b/.test(s);
   const otherAttraction = /\b(passeios?|barco|trilha|bicicletas?)\b/.test(s) && !/\b(heraldo|restaurante|reserva solar)\b/.test(s);
   return /\bheraldo(?:\s+ramos)?\b|\bmusica\s+ao\s+vivo\b|\bshows?\b|\bapresentacao\s+(?:musical|do musico|do cantor)\b/.test(s)
@@ -56,6 +71,7 @@ export function publicEventFollowup(message: string): boolean {
   if (isPrivateEventRequest(s) || /\b(quartos?|aptos?|apartamentos?|suites?|loft|hospedagem|diarias?|check.?in|check.?out|barco|bicicleta|cardapio)\b/.test(s)) return false;
   if (/^(?:e\s+)?(?:hoje|amanha|depois de amanha|no dia 0?[56]|dia 0?[56]|0?[56]\/0?9(?:\/2026)?)(?:\s+(?:tambem|tem|vai ter|a que horas))?$/.test(s)) return true;
   if (/^(?:e\s+)?(?:(?:neste|nesse|este|esse|no|o)\s+)?(?:proximo\s+)?(?:fim|final) de semana(?:\s+(?:agora|tambem|tem|vai ter))?$/.test(s)) return true;
+  if (new RegExp(`^(?:e\\s+)?(?:(?:neste|nesse|este|esse|no|o|nesta|nessa|esta|essa|na|a)\\s+)?(?:proxim[oa]\\s+)?${WEEKDAY_PATTERN}(?:\\s+(?:agora|tambem|tem|vai ter))?$`).test(s)) return true;
   return /^(?:e )?quem (?:toca|canta|vai tocar|vai cantar)(?: (?:hoje|amanha))?$/.test(s)
     || /^(?:(?:e|mas|entao)\s+)?(?:(?:qual|quais|o|os|a|as|tem|qual e|quais sao)\s+)?(?:o |a |os |as )?(?:horarios?|repertorio|apresentacao|programacao|couvert|valor(?: do couvert)?|preco(?: do couvert)?|entrada|ingresso)(?:\s+(?:de hoje|de amanha|da apresentacao|do show))?$/.test(s)
     || /^(?:(?:e|mas)\s+)?(?:quanto(?: custa| e| fica)?(?:\s+(?:a entrada|o ingresso|o couvert|o show))?|ate que horas(?: vai| fica| dura| vai durar)?|que horas(?: comeca| termina| vai ser)?|a que horas|qual (?:e )?o horario|quanto tempo dura|qual a duracao|e gratuito|e gratis|precisa (?:pagar|reservar)(?: mesa)?|(?:posso|como) reservar(?: uma)? mesa|ainda (?:esta|ta) acontecendo|ja comecou|ja terminou)$/.test(s);
@@ -89,6 +105,25 @@ function requestedDates(message: string, today: string): string[] {
   for (const match of s.matchAll(/\b(20\d{2})-(\d{2})-(\d{2})\b/g)) requested.push(`${match[1]}-${match[2]}-${match[3]}`);
   for (const match of s.matchAll(/\b(\d{1,2})\/(\d{1,2})(?:\/(20\d{2}))?\b/g)) requested.push(`${match[3] || today.slice(0, 4)}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`);
   for (const match of s.matchAll(new RegExp(`\\b(\\d{1,2})\\s+(?:de\\s+)?(${MONTHS.join('|')})(?:\\s+(?:de\\s+)?(20\\d{2}))?\\b`, 'g'))) requested.push(`${match[3] || today.slice(0, 4)}-${String(MONTHS.indexOf(match[2]) + 1).padStart(2, '0')}-${match[1].padStart(2, '0')}`);
+  if (!requested.length && weekdayMention(s) && publicEventWeekdayReference(s) !== 'package') {
+    const todayWeekday = new Date(`${today}T12:00:00Z`).getUTCDay();
+    for (const match of s.matchAll(new RegExp(`\\b(${WEEKDAY_PATTERN})\\b`, 'g'))) {
+      const weekday = WEEKDAYS.indexOf(match[1].split(/[- ]/)[0]);
+      let offset = (weekday - todayWeekday + 7) % 7;
+      if (/\bsemana passada\b/.test(s)) {
+        offset = -((todayWeekday + 6) % 7) - 7 + ((weekday + 6) % 7);
+      } else if (/\b(?:passad[oa]|ultim[oa])\b/.test(s)) {
+        offset = -((todayWeekday - weekday + 7) % 7 || 7);
+      } else if (/\bsemana que vem\b/.test(s)) {
+        // Calendar weeks start on Monday; do not turn next week's Friday
+        // into today's Friday, including at the local midnight boundary.
+        offset = 7 - ((todayWeekday + 6) % 7) + ((weekday + 6) % 7);
+      } else if (/\b(?:desta|dessa|nesta|nessa) semana\b/.test(s)) {
+        offset = -((todayWeekday + 6) % 7) + ((weekday + 6) % 7);
+      } else if (offset === 0 && /\bproxim[oa]\b/.test(s)) offset = 7;
+      requested.push(addDay(today, offset));
+    }
+  }
   if (!requested.length && weekendMention(s)) {
     // Saturday/Sunday in the hotel's local calendar, never the old agenda's
     // dates. On Sunday "this weekend" still means yesterday and today;

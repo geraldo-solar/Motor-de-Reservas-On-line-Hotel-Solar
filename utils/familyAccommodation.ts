@@ -17,6 +17,11 @@ export const familyAccommodationPolicy = {
 export const familyBeddingRule = 'O berço é gratuito, mediante solicitação à recepção e disponibilidade. Para a criança de até 6 anos em cortesia, também há cama extra gratuita; ela não precisa obrigatoriamente compartilhar a cama dos responsáveis. A recepção deve conferir a disponibilidade dos itens e a compatibilidade com o apartamento. Nenhum item está reservado ou instalado por esta orientação.';
 export const coupleRoomConfigurationText = 'A categoria Casal também pode ser oferecida como duplo com duas camas de solteiro, quando solicitado. A recepção precisa confirmar a configuração e a disponibilidade; a simulação não reserva essa unidade.';
 export const familyAgeQuestion = 'Quais são as idades das crianças? Preciso da idade de todas para verificar se vocês cabem em um apartamento ou se será necessário dividir o grupo. Cada categoria admite sua ocupação normal mais 1 criança de até 6 anos em cortesia, com limite de 4 pessoas mais essa criança no mesmo apartamento.';
+export function familyAgeQuestionFor(state: any) {
+  return state?.family_party?.age_subject === 'offspring'
+    ? 'Quais são as idades de todos os filhos, inclusive se algum já for adulto? Preciso dessas idades antes de indicar a acomodação ou dividir o grupo. Cada categoria admite sua ocupação normal mais 1 criança de até 6 anos em cortesia, com limite de 4 pessoas mais essa criança no mesmo apartamento.'
+    : familyAgeQuestion;
+}
 export const familyRoomRule = 'Cada categoria admite sua ocupação normal mais 1 criança de até 6 anos em cortesia, com limite de 4 pessoas mais essa criança por apartamento. Um casal com 1 criança nessa faixa pode ficar na categoria Casal pelo valor de casal; uma categoria maior é opcional. Precisamos das idades de todas as crianças antes de indicar a acomodação ou dividir o grupo. ' + familyBeddingRule + ' ' + coupleRoomConfigurationText;
 
 export function familyAccommodation(state: any, guests: number, now = Date.now()) {

@@ -1,7 +1,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { withDailyGreeting } from '../utils/dailyGreeting.js';
-import { familyAccommodation, baseRoomCapacity, familyAgeQuestion, familyRoomExplanation, coupleRoomConfigurationText } from '../utils/familyAccommodation.js';
+import { familyAccommodation, baseRoomCapacity, familyAgeQuestionFor, familyRoomExplanation, coupleRoomConfigurationText } from '../utils/familyAccommodation.js';
 import { explicitPackageBoatBenefit, safeBoatPackageCopy } from '../utils/extraMedia.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -120,7 +120,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const familyDatesMismatch = !!state?.family_party?.children && (state?.facts?.guests !== guestCount
       || state?.facts?.check_in !== checkIn || state?.facts?.check_out !== checkOut);
     if (family.pending || familyDatesMismatch) {
-      const answer = familyDatesMismatch ? 'Preciso conferir as datas e a composição da família antes de simular. Quais são as datas de entrada e saída, quantos adultos e quais as idades das crianças?' : familyAgeQuestion;
+      const answer = familyDatesMismatch
+        ? state?.family_party?.age_subject === 'offspring'
+          ? 'Preciso conferir as datas e a composição da família antes de simular. Quais são as datas de entrada e saída e quantas pessoas vão se hospedar? ' + familyAgeQuestionFor(state)
+          : 'Preciso conferir as datas e a composição da família antes de simular. Quais são as datas de entrada e saída, quantos adultos e quais as idades das crianças?'
+        : familyAgeQuestionFor(state);
       return res.status(200).json({quote_request:'NOQUOTE',quote_state:'',can_collect:'NAO',
         conversation_text:answer,whatsapp_text:answer,prices_summary:answer,
         availability_checked:false,requires_human_confirmation:true});

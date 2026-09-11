@@ -13,14 +13,15 @@ import { isAudioInput } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage } from '../utils/audioInput.js';
 import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
 import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
-import { namedPackageInquiry, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext } from '../utils/packageContext.js';
+import { namedPackageInquiry, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification } from '../utils/packageContext.js';
 import { packagePrices, packageRecommendation } from '../utils/packageReply.js';
 import { childPolicyQuestion, childAgeFollowup, packageChildReply } from '../utils/packageChildInquiry.js';
 import { stayDateClarification } from '../utils/stayDuration.js';
 import { guestServiceRequest } from '../utils/guestService.js';
 import { hotelPhoneInquiry, hotelContactAnswer } from '../utils/hotelContact.js';
 import { locmilAnswer } from '../utils/hotelPolicy.js';
-import { familyAccommodation, familyAgeQuestion } from '../utils/familyAccommodation.js';
+import { paymentStatusInquiry } from '../utils/paymentStatus.js';
+import { familyAccommodation, familyAgeQuestionFor } from '../utils/familyAccommodation.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -283,6 +284,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       quote_text:hotelContactAnswer,conversation_text:hotelContactAnswer,
       matched:false,match_type:'hotel_contact',availability_checked:false});
   }
+  let previousPaymentMessage = '';
+  let earlyState: any;
+  try {const checked=control({operation:'remember_response',state:req.body?.state});
+    earlyState = 'state' in checked ? JSON.parse(checked.state || '{}') : undefined;
+    previousPaymentMessage = earlyState?.history?.at(-1) || '';
+  } catch { /* Invalid state cannot establish payment context. */ }
+  if (!req.query?.operation && paymentStatusInquiry(serviceMessage, previousPaymentMessage)) {
+    const routed = control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    const answer = 'answer' in routed ? routed.answer : '';
+    return res.status(200).json({...routed,quote_text:answer,conversation_text:answer,
+      matched:false,match_type:'payment_verification',availability_checked:false});
+  }
   let eventReply=false;
   try {const state=typeof req.body?.state==='string'?JSON.parse(req.body.state):req.body?.state;eventReply=eventFieldReply(state?.event,serviceMessage);} catch { /* Invalid state cannot establish event context. */ }
   if (!req.query?.operation && !eventReply && guestServiceRequest(serviceMessage)) {
@@ -292,6 +305,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const answer = 'answer' in routed ? routed.answer : '';
     return res.status(200).json({...routed,quote_text:answer,conversation_text:answer,
       matched:false,match_type:'guest_service',availability_checked:false});
+  }
+  const programmingMessage = earlyState?.history?.at(-1) === serviceMessage.slice(0,500)
+    ? earlyState.resolved_message || serviceMessage : serviceMessage;
+  const weekdayQuestion = packageWeekdayClarification(programmingMessage, earlyState?.package_context);
+  if (!req.query?.operation && !eventReply && weekdayQuestion) {
+    // The final native response must retain the clarification, not replace it
+    // with public dates, a stale model answer or the package catalogue.
+    return res.status(200).json({quote_request:'ROOM_LIST',can_collect:'NAO',confirmation_text:'',
+      quote_text:weekdayQuestion,conversation_text:weekdayQuestion,matched:false,
+      match_type:'programming_clarification',availability_checked:false,
+      ...control({operation:'remember_response',state:earlyState,response_text:weekdayQuestion})});
   }
   if (!supabaseUrl || !supabaseKey) {
     return res.status(500).json({ error: 'Missing Supabase configuration.' });
@@ -429,13 +453,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const answer = differentDates
       ? `O pacote ${pkg.name} tem período de ${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}. As datas que você informou são diferentes${pkg.full_period_required ? ', e esse pacote exige o período completo' : ''}. Você quer continuar consultando esse pacote ou deseja outra estadia? Não alterei suas datas nem confirmei uma reserva.`
       : family.pending && !childPolicyQuestion(userMessage)
-      ? familyAgeQuestion
+      ? familyAgeQuestionFor(conversationState)
       : childPolicyQuestion(userMessage) || childAgeFollowup(userMessage) && !family.key
       ? packageChildReply(pkg,userMessage)
       : childAgeFollowup(userMessage) && family.key
       ? packageRecommendation(pkg,rooms || [],facts.guests,conversationState)
       : packageBookingRequest(userMessage)
-      ? `Vamos continuar com o pacote ${pkg.name}, de ${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}. ${!facts.guests ? 'Quantas pessoas vão se hospedar, contando adultos e crianças?' : facts.children_pending ? 'Quais são as idades das crianças?' : 'Para seguir com a opção escolhida, peça para falar com a recepção, que confere as condições e a disponibilidade.'} Ainda não há reserva confirmada.`
+      ? `Vamos continuar com o pacote ${pkg.name}, de ${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}. ${!facts.guests ? 'Quantas pessoas vão se hospedar, contando adultos e crianças?' : facts.children_pending ? familyAgeQuestionFor(conversationState) : 'Para seguir com a opção escolhida, peça para falar com a recepção, que confere as condições e a disponibilidade.'} Ainda não há reserva confirmada.`
       : packageRecommendationInquiry(userMessage)
       ? packageRecommendation(pkg,rooms || [],conversationState?.facts?.guests,conversationState)
       : formatPackageDetails(pkg,rooms || [],true);

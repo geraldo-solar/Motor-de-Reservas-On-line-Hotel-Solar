@@ -3,7 +3,7 @@ export type GuestService = 'housekeeping' | 'maintenance' | 'room_service' | 'bo
 const normalize = (value: string) => String(value || '').normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 const contextMessages: Record<GuestService, string> = {
-  housekeeping: 'Solicito atendimento humano para reposição de itens.',
+  housekeeping: 'Solicito atendimento humano para limpeza ou reposição de itens.',
   maintenance: 'Solicito atendimento humano para verificar um problema de manutenção.',
   room_service: 'Quero fazer um pedido de alimentação.',
   booking_document: 'Solicito atendimento humano para um documento pendente de reserva.',
@@ -23,6 +23,8 @@ export function guestServiceRequest(message: string): GuestService | undefined {
   if (guestFacilityServiceRequest(s)) return 'room_service';
   const safeCategory = (Object.keys(contextMessages) as GuestService[]).find(kind => normalize(contextMessages[kind]) === s);
   if (safeCategory) return safeCategory;
+  // Preserve turns already prepared with the earlier housekeeping category.
+  if (s === 'solicito atendimento humano para reposicao de itens.') return 'housekeeping';
   const roomContext = /\b(?:estou|estamos|estamos todos|ja estou|ja estamos) hospedad[oa]s?\b/.test(s)
     || new RegExp(`\\b(?:meu|minha|nosso|nossa|no|na|do|da|para o|para a|pro|pra|ao) ${room}\\b`).test(s)
     || new RegExp(`\\b${room} (?:[a-z]\\s*)?\\d{1,4}\\b`).test(s)
@@ -30,8 +32,9 @@ export function guestServiceRequest(message: string): GuestService | undefined {
   for (const clause of s.split(/[;.!?]|\bmas\b|\bporem\b/).map(part => part.trim())) {
     if (!clause || /\b(?:fotos?|fotografias?|imagem|imagens|videos?|cardapio|menu)\b/.test(clause)) continue;
     // A question about how the service works is not an order to perform it.
-    if (/\b(?:quero|queria|gostaria de) saber\b|\bcomo (?:funciona|solicito|solicitar|peco|pedir|posso pedir|posso solicitar|faco para pedir|faco para solicitar)\b|\bo que fazer se\b/.test(clause)) continue;
+    if (/\b(?:quero|queria|preciso|precisamos|gostaria de) saber\b|\bcomo (?:funciona|solicito|solicitar|peco|pedir|posso pedir|posso solicitar|faco para pedir|faco para solicitar)\b|\bo que fazer se\b|^(?:e )?(?:se|caso)\b|\bnao e verdade que\b/.test(clause)) continue;
     if (/\bnao (?:quero|queremos|preciso|precisamos|desejo|vamos|vou|gostaria)\b|\b(?:dispenso|desisti|cancele|cancelar|cancela|remova|remover|retire|retirar|nao mande|nao envie|nao traga)\b/.test(clause)) continue;
+    if (/\bnao (?:limpe|limpem|arrume|arrumem|higienize|higienizem)\b/.test(clause)) continue;
 
     if (!/\bnao (?:esqueci|esquecemos|perdi|perdemos|deixei|deixamos)\b/.test(clause)
       && /\b(?:esqueci|esquecemos|perdi|perdemos|deixei|deixamos)\s+(?:(?:uma?|o|a|os|as|meu|minha|meus|minhas|nosso|nossa)\s+)*(?:blusa|camisa|camiseta|casaco|roupas?|peca de roupa|objeto pessoal|vestido|chinelos?|sapatos?|tenis|oculos|bolsa|mochila|mala|carteira|celular|carregador|chaves?)\b/.test(clause)) return 'lost_item';
@@ -51,12 +54,20 @@ export function guestServiceRequest(message: string): GuestService | undefined {
     const explicitFoodOrder = /\b(?:vou querer|quero pedir|gostaria de pedir|quero fazer (?:um )?pedido)\b|\b(?:quero|mande|manda|envie|traga)\s+(?:\d{1,2}|um|uma|dois|duas)\b/.test(clause);
     if (!newStay && food.test(clause) && request.test(clause) && (roomContext || explicitFoodOrder)
       && !/\b(?:orcamento|cotacao|cotar|preco|valor)\b/.test(clause)) return 'room_service';
-    if (!roomContext) continue;
-    const appliance = /\b(?:ar condicionado|chuveiro|fechadura|frigobar|televisao|tv|descarga|pia|torneira|wifi|wi-fi|internet)\b/.test(clause);
+    if (!roomContext || newStay) continue;
+    // A stay mentioned elsewhere does not turn an event venue's requirements
+    // into an apartment-maintenance request.
+    const otherVenue = /\b(?:no|na|do|da|para o|para a) (?:auditorio|salao|espaco de eventos|sala de reunioes)\b/.test(clause);
+    if (otherVenue && !new RegExp(`\\b${room}\\b`).test(clause)) continue;
+    const cleaningOrder = /\b(?:preciso|precisamos|quero|queremos|gostaria|solicito|solicitamos)(?: de)? (?:uma |a )?(?:limpeza|arrumacao|faxina|higienizacao)\b|\b(?:pode|podem|poderia|poderiam) (?:me |nos )?(?:limpar|arrumar|higienizar)\b|\b(?:limpem|arrumem|higienizem)\b/.test(clause);
+    if (cleaningOrder) return 'housekeeping';
+    const appliance = /\b(?:ar condicionado|chuveiro|fechadura|frigobar|televisao|tv|descarga|pia|torneira|wifi|wi-fi|internet|luz|luzes|lampadas?)\b/.test(clause);
     const inspect = /\b(?:teria|tem) como (?:ver|verificar|conferir)\b|\b(?:pode|podem|poderia|poderiam) (?:me )?(?:verificar|conferir|ver)\b/.test(clause);
-    const problem = /\b(?:nao (?:esta |estao )?(?:funcionando|gelando|liga|ligam)|parou de funcionar|quebrad[oa]s?|com defeito|vazando)\b/.test(clause)
+    const problem = /\b(?:nao (?:esta |estao )?(?:funciona(?:m|ndo)?|gela(?:m|ndo)?|esquenta(?:m|ndo)?|aquece(?:m|ndo)?|liga(?:m)?)|parou de funcionar|quebrad[oa]s?|com defeito|vazando)\b/.test(clause)
       && !/\bnao (?:esta|estao|e|ficou) (?:quebrad[oa]|com defeito|vazando)\b/.test(clause);
-    if (appliance && (problem || inspect) || /\b(?:manutencao|conserto|reparo)\b/.test(clause) && request.test(clause)) return 'maintenance';
+    const powerLoss = /\b(?:esta|estao|ficou|ficaram|estou|estamos|ficamos) sem (?:luz|energia)\b|\b(?:acabou|faltou) (?:a )?(?:luz|energia)\b/.test(clause)
+      && !/\bnao (?:esta|estao|ficou|ficaram|estou|estamos|ficamos) sem (?:luz|energia)\b/.test(clause);
+    if (powerLoss || appliance && (problem || inspect) || /\b(?:manutencao|conserto|reparo)\b/.test(clause) && request.test(clause)) return 'maintenance';
   }
 }
 

@@ -1,3 +1,5 @@
+import { familyAgeFollowup, normalizeAgeNumbers } from './familyAges.js';
+
 type ChildPolicyPackage = {
   name?: string;
   description?: string;
@@ -16,7 +18,7 @@ export function childPolicyQuestion(message: string): boolean {
   const s = normalize(message);
   const quoteWithParty=/\b(?:cotacao|orcamento|diarias?|hospedagem|estadia)\b/.test(s)
     && /\b(?:(?:\d+|um|uma|dois|duas|tres|quatro|cinco|seis)\s*adult[oa]s?|casal)\b/.test(s)
-    && /\b(?:\d+|um|uma|dois|duas|tres|quatro|cinco|seis)\s*(?:criancas?|bebes?)\b/.test(s);
+    && /\b(?:(?:\d+|um|uma|dois|duas|tres|quatro|cinco|seis)\s*(?:criancas?|bebes?|filh[oa]s?)|filh[oa]s)\b/.test(s);
   const childCharge=/\b(?:paga|pagam|pagar|cobranca|cobrado|cobrada|cortesia|gratis|gratuidade|gratuito|gratuita|free|isencao|desconto)\b/.test(s)
     || /\b(?:conta|considerad[ao]|cobrad[ao])\b.{0,35}\badult[oa]\b/.test(s);
   // A question mark or the price of lodging does not erase a simultaneously
@@ -31,10 +33,7 @@ export function childPolicyQuestion(message: string): boolean {
 export function childAgeFollowup(message: string): boolean {
   const s = normalize(message);
   if (!s || s.length > 140 || media.test(s) || otherService.test(s)) return false;
-  const ages = /\b\d{1,3}(?:\s*(?:e|,)\s*\d{1,3})*\s*(?:anos?|meses?)\b/g;
-  if (!ages.test(s)) return false;
-  const remainder = s.replace(ages, '@').replace(/[.!?,]/g, ' ').trim();
-  return /^(?:(?:e|ela|ele|elas|eles|a|o|as|os|uma|um|outra|outro|minha|meu|minhas|meus|filha|filho|filhas|filhos|crianca|criancas|bebe|bebes|tem|de|com|mais|nova|novo|velha|velho|@)\s*)+$/.test(remainder);
+  return familyAgeFollowup(s);
 }
 
 const clean = (value: unknown, limit: number) => String(value || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, limit);
@@ -68,7 +67,7 @@ export function packageChildReply(pkg: ChildPolicyPackage, message: string): str
       : `Há uma condição infantil cadastrada para o ${name} que precisa ser esclarecida pela recepção antes de aplicar a regra geral.`;
     return `${specific}\n\n${base} Não apliquei desconto nem alterei valores. A recepção confirma o enquadramento do grupo nas condições do pacote, sem reserva ou disponibilidade confirmada.`;
   }
-  const s = normalize(message);
+  const s = normalizeAgeNumbers(message);
   const older = [...s.matchAll(/\b(\d{1,2})\s*anos?\b/g)].map(match => Number(match[1])).find(age => age >= 7 && age <= 120);
   const ageNote = older === undefined ? '' : ` A idade de ${older} anos está fora dessa faixa de cortesia.`;
   return `Sobre crianças no ${name}: ${base}${ageNote}\n\nO limite não dá cortesia automaticamente a todas as crianças do grupo, nem reduz por si só o valor do pacote. A regra geral não permite afirmar desconto ou cobrança igual à de adulto para quem está fora da cortesia; a recepção confirma a condição específica do pacote. Crianças continuam contando na ocupação do apartamento. Esta orientação é informativa e não confirma reserva nem disponibilidade.`;

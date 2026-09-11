@@ -1,4 +1,4 @@
-import { familyAccommodation, familyAgeQuestion, baseRoomCapacity, familyRoomExplanation } from './familyAccommodation.js';
+import { familyAccommodation, familyAgeQuestionFor, baseRoomCapacity, familyRoomExplanation } from './familyAccommodation.js';
 
 export type PackagePricingRecord = {
   id: string;
@@ -109,7 +109,7 @@ export function packageRecommendation(
 
   text.push(`👥 *Ocupação:* ${guests} hóspede${guests === 1 ? '' : 's'}, contando adultos e crianças.`);
   const family = familyAccommodation(state, Number(guests));
-  if (family.pending) return text.join('\n') + '\n\n' + familyAgeQuestion;
+  if (family.pending) return text.join('\n') + '\n\n' + familyAgeQuestionFor(state);
   const { prices, label } = packagePrices(pkg, rooms);
   const knownRooms = new Set(rooms.map(room => String(room.id)));
   const compatible = prices.filter(item =>
