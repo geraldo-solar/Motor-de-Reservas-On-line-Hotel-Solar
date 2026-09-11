@@ -64,6 +64,10 @@ const STOP_WORDS = new Set([
   // Function words and generic commercial terms cannot identify a holiday.
   'com', 'sem', 'pra', 'pro', 'pelo', 'pela', 'pelos', 'pelas', 'que', 'voces',
   'vcs', 'desconto', 'descontos',
+  // Party composition is not a holiday request (e.g. "três crianças").
+  // The complete holiday expressions are matched separately below.
+  'crianca', 'criancas', 'mae', 'maes', 'pai', 'pais', 'namorado', 'namorada',
+  'namorados', 'namoradas', 'adulto', 'adultos', 'bebe', 'bebes', 'casal',
 ]);
 
 const normalize = (value: string) => value
@@ -114,6 +118,9 @@ const scorePackage = (message: string, pkg: PackageRecord) => {
   if (!normalizedName) return 0;
 
   let score = normalizedMessage.includes(normalizedName) ? 120 : 0;
+  for (const holiday of ['dia das criancas', 'dia das maes', 'dia dos pais', 'dia dos namorados']) {
+    if (normalizedMessage.includes(holiday) && normalizedName.includes(holiday)) score += 40;
+  }
   const messageTokens = new Set(tokens(message));
   const nameTokens = tokens(pkg.name || '');
   for (const token of nameTokens) {

@@ -358,3 +358,51 @@ test('saudações e termos genéricos não selecionam o Dia das Crianças', asyn
   assert.match(result.quote_text, /OUTUBRO15/);
   assert.doesNotMatch(result.conversation_text, /OUTUBRO15|15 reservas/);
 });
+
+test('teste de 11/09: dois adultos e três crianças em setembro não selecionam feriado de outubro, por texto ou áudio', async () => {
+  const bundled=await build({entryPoints:['api/conversation-control.ts'],bundle:true,write:false,platform:'node',format:'esm'});
+  const {control,handleConversation}=await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
+  const childrenPackage={...packages[0],id:'criancas',name:'Dia das Crianças: 4 Dias de Feriado em Salinas',
+    start_iso_date:'2026-10-09',end_iso_date:'2026-10-12',image_url:'https://example.com/criancas.jpg'};
+  const handler=await loadHandler('api/resolve-package.ts',[...packages,childrenPackage]);
+  const spoken='Gostaria de fazer uma reserva do dia 12 de setembro a 14 de setembro para um apartamento dois adultos e três crianças.';
+  for(const user_message of [spoken,'https://media.example.com/reserva-setembro.ogg']) {
+    const prepared=await handleConversation({operation:'prepare',user_message},'Bearer test-only',async()=>spoken);
+    const routed=control({operation:'route',user_message,state:prepared.state,proposed:'NOQUOTE',ai_response:'Vou consultar o pacote Dia das Crianças.'});
+    assert.equal(routed.can_collect,'NAO');
+    assert.match(routed.answer,/idades das crianças/);
+    const result=await request(handler,{user_message,state:routed.state});
+    assert.equal(result.conversation_text,routed.answer);
+    assert.equal(result.quote_request,'ROOM_LIST');
+    assert.equal(result.package_id,undefined);
+    assert.equal(result.package_image_url,undefined);
+    assert.doesNotMatch(result.conversation_text,/outubro|Dia das Crianças|R\$|CPF/i);
+    const state=JSON.parse(result.state);
+    assert.equal(state.facts.check_in,'2026-09-12');
+    assert.equal(state.facts.check_out,'2026-09-14');
+    assert.equal(state.facts.guests,5);
+    assert.equal(state.facts.children_pending,true);
+    assert.equal(state.package_context,undefined);
+    assert.equal(state.turns.at(-1).text,result.conversation_text);
+  }
+});
+
+test('parentesco não identifica feriado, mas o nome completo do Dia das Crianças, Mães, Pais ou Namorados identifica', async()=>{
+  const catalog=[
+    ['criancas','Dia das Crianças: 4 Dias de Feriado em Salinas','2026-10-09','2026-10-12'],
+    ['maes','Dia das Mães no Solar','2026-05-08','2026-05-10'],
+    ['pais','Dia dos Pais no Solar','2026-08-07','2026-08-09'],
+    ['namorados','Dia dos Namorados no Solar','2026-06-12','2026-06-14'],
+  ].map(([id,name,start_iso_date,end_iso_date])=>({...packages[0],id,name,start_iso_date,end_iso_date}));
+  const handler=await loadHandler('api/resolve-package.ts',catalog);
+  for(const user_message of ['Somos dois adultos e três crianças','Quero viajar com meus pais','Somos duas mães com nossos filhos','Somos namorados, queremos hospedagem']) {
+    const result=await request(handler,{user_message});
+    assert.equal(result.package_id,undefined,user_message);
+    assert.equal(result.matched,false,user_message);
+  }
+  for(const [phrase,id] of [['Dia das Crianças','criancas'],['Dia das Mães','maes'],['Dia dos Pais','pais'],['Dia dos Namorados','namorados']]) {
+    const result=await request(handler,{user_message:'Você tem o pacote do '+phrase+'?'});
+    assert.equal(result.package_id,id,phrase);
+    assert.equal(result.match_type,'specific');
+  }
+});
