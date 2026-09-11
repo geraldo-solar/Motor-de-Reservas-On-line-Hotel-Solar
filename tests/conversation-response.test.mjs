@@ -170,7 +170,8 @@ test('áudio transcrito chega às fotos; falha não reutiliza pacote ou evento a
   }
 });
 
-test('programação Heraldo responde antes de pacotes/extras/lead privado sem acessar tabelas', async () => {
+test('programação Heraldo responde antes de pacotes/extras/lead privado sem acessar tabelas', async (t) => {
+  t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-09-05T10:00:00-03:00')});
   const handler=await loadHandler('api/resolve-package.ts',[],[]);
   for (const user_message of ['Heraldo Ramos dia 05/09/2026 e 06/09/2026', 'Quanto custa o couvert do Heraldo Ramos?']) {
     const r=await request(handler,{user_message,state:{version:2,history:[],facts:{guests:2,extras:[]},greeted:true,turns:[{role:'assistant',text:'Sugiro Mesa Posta'}]}});
@@ -495,4 +496,41 @@ test('cotação familiar mantém confirmação por botão e troca de idade inval
   assert.equal(blocked.quote_state,'');
   const wrongDates=await request(handler,{checkIn:'2026-09-21',checkOut:'2026-09-22',guests:3,state:p.state});
   assert.equal(wrongDates.quote_state,'');
+});
+
+test('Inbox 11/09: pacote antigo → programação hoje → fim de semana, inclusive áudio, preserva família e troca de assunto',async(t)=>{
+  const now=Date.parse('2026-09-11T16:01:00-03:00');
+  t.mock.timers.enable({apis:['Date'],now});
+  const bundled=await build({entryPoints:['api/conversation-control.ts'],bundle:true,write:false,platform:'node',format:'esm'});
+  const {control,handleConversation}=await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
+  const handler=await loadHandler('api/resolve-package.ts');
+  const facts={guests:5,check_in:'2026-09-12',check_out:'2026-09-14',children_pending:true,extras:[]};
+  const initial={version:2,history:[],facts,greeted:true,daily_greeting:{day:'2026-09-11',first:false},
+    topic:'package_info',topic_at:now,package_context:{id:'criancas',name:'Dia das Crianças',start_date:'2026-10-09',end_date:'2026-10-12',updated_at:now},
+    family_party:{adults:2,children:3,ages_months:[],updated_at:now,clarification:'child_ages'},family_clarification:'child_ages'};
+  for(const audio of [false,true]) {
+    let state=initial;
+    for(const [i,spoken] of ['Hj tem alguma programação?','Estou dizendo para esse final de semana agora. Tem música ao vivo?','E amanhã?'].entries()) {
+      const user_message=audio?`https://media.example.com/programacao-${i}.ogg`:spoken;
+      const p=await handleConversation({operation:'prepare',state,user_message},'Bearer test-only',async()=>spoken);
+      const r=control({operation:'route',state:p.state,user_message,proposed:'COLETAR',ai_response:'O pacote do Dia das Crianças é de 9 a 12 de outubro. Heraldo toca dias 5 e 6 de setembro.'});
+      assert.equal(r.quote_request,'NOQUOTE');
+      assert.equal(r.can_collect,'NAO');
+      const result=await request(handler,{user_message,state:r.state});
+      assert.equal(result.match_type,'public_programming');
+      assert.equal(result.quote_request,'ROOM_LIST');
+      assert.equal(result.package_image_url,undefined);
+      assert.match(result.conversation_text,/não tenho.*confirmada/i);
+      assert.doesNotMatch(result.conversation_text,/Dia das Crianças|outubro|05\/09|06\/09|CPF|R\$|Luiza|idades das crianças|Boa tarde/i);
+      if(i===0)assert.match(result.conversation_text,/11\/09\/2026/);
+      if(i===1)assert.match(result.conversation_text,/12\/09\/2026.*13\/09\/2026/s);
+      if(i===2)assert.match(result.conversation_text,/12\/09\/2026/);
+      state=JSON.parse(result.state);
+      assert.equal(state.package_context,undefined);
+      assert.equal(state.topic,'public_events');
+      assert.deepEqual(state.facts,facts);
+      assert.deepEqual(state.family_party,initial.family_party);
+      assert.equal(state.turns.at(-1).text,result.conversation_text);
+    }
+  }
 });

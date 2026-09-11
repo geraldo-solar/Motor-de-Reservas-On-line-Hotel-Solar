@@ -553,6 +553,7 @@ function controlTurn(body: any, now = Date.now()) {
       clearStayDuration(state);
       state.resolved_message = personal(raw) ? 'Programação musical de Heraldo Ramos no Reserva Solar' : publicFollowup && !publicEventInquiry(raw) ? `Programação musical de Heraldo Ramos no Reserva Solar: ${raw}` : raw;
       state.topic = 'public_events'; state.topic_at = now; state.changed = false;
+      delete state.package_context;
       delete state.awaiting; delete state.subject; delete state.extra_photo_subjects; delete state.guest_inquiry;
       // A public show is not an answer/consent to a private-event lead in progress.
     } else if (packageQuery || packageContinuation) {

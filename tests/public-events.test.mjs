@@ -91,8 +91,8 @@ test('datas desconhecidas e passadas não são anunciadas como próximas', () =>
   assert.match(answer,/Não tenho apresentação confirmada para 07\/09\/2026/);
   assert.doesNotMatch(answer,/Hoje,|Amanhã,|às 17h|às 12h/);
   const historical=publicEventAnswer('Quando é Heraldo?',after);
-  assert.match(historical,/05\/09\/2026/);
-  assert.match(historical,/horários já passados/);
+  assert.match(historical,/Ainda não tenho programação atual ou futura confirmada/);
+  assert.doesNotMatch(historical,/05\/09\/2026|06\/09\/2026/);
   assert.doesNotMatch(historical,/Hoje,|Amanhã,|se apresenta|vai acontecer/);
   assert.match(publicEventAnswer('E depois de amanhã?',at('2026-09-05T16:00:00-03:00')),/07\/09\/2026/);
   assert.match(publicEventAnswer('6 de setembro de 2027',after),/Não tenho apresentação confirmada para 06\/09\/2027/);
@@ -106,4 +106,51 @@ test('não inventa custos, término, reserva, repertório ou entrega de foto', (
     assert.ok(answer.length<=900,`${message}: ${answer.length} chars`);
     assert.doesNotMatch(answer,/R\$|Luiza|CPF|gratis|gratuito|enviei|reservei|reserva confirmada/i);
   }
+});
+
+test('programação de hoje ou fim de semana é assunto público, não continuação automática de pacote',()=>{
+  for(const message of ['Hj tem alguma programação?','Tem programação amanhã?','Qual a programação desse final de semana?','Tem algum evento neste fim de semana?']) {
+    assert.equal(publicEventInquiry(message),true,message);
+  }
+  for(const message of ['Qual a programação do passeio de barco hoje?','Programação do pacote de Réveillon','Quero organizar um evento neste fim de semana']) {
+    assert.equal(publicEventInquiry(message),false,message);
+  }
+  assert.equal(publicEventFollowup('E neste fim de semana?'),true);
+  assert.equal(publicEventFollowup('Neste fim de semana quero reservar o Loft'),false);
+});
+
+test('reprodução 11/09: fim de semana é 12 e 13, nunca a agenda passada de 5 e 6',()=>{
+  const now=at('2026-09-11T16:01:00-03:00');
+  for(const message of ['Estou dizendo para esse final de semana agora. Tem música ao vivo?','Qual a programação neste fim de semana?','E no próximo fim de semana?']) {
+    const answer=publicEventAnswer(message,now);
+    assert.match(answer,/12\/09\/2026.*13\/09\/2026/s,message);
+    assert.match(answer,/não tenho.*confirmada/i,message);
+    assert.doesNotMatch(answer,/05\/09|06\/09|às 17h|às 12h|não haverá|não tem música/i,message);
+  }
+  const unspecified=publicEventAnswer('Tem música ao vivo?',now);
+  assert.match(unspecified,/não tenho.*confirmada/i);
+  assert.doesNotMatch(unspecified,/05\/09|06\/09|17h|12h/);
+  const historical=publicEventAnswer('Qual era a programação de 05/09/2026?',now);
+  assert.match(historical,/05\/09\/2026, às 17h/);
+  assert.match(historical,/passad/i);
+});
+
+test('fim de semana respeita sábado, domingo, segunda e virada local do ano',()=>{
+  for(const [clock,first,last] of [
+    ['2026-09-12T12:00:00-03:00','12/09/2026','13/09/2026'],
+    ['2026-09-13T12:00:00-03:00','12/09/2026','13/09/2026'],
+    ['2026-09-14T12:00:00-03:00','19/09/2026','20/09/2026'],
+    ['2026-09-14T02:59:59Z','12/09/2026','13/09/2026'],
+    ['2026-09-14T03:00:00Z','19/09/2026','20/09/2026'],
+    ['2027-01-01T02:59:59Z','02/01/2027','03/01/2027'],
+  ]) {
+    const answer=publicEventAnswer('Este fim de semana tem música?',at(clock));
+    assert.ok(answer.includes(first)&&answer.includes(last),answer);
+    assert.doesNotMatch(answer,/05\/09|06\/09/);
+  }
+  const next=publicEventAnswer('Próximo fim de semana tem música?',at('2026-09-12T12:00:00-03:00'));
+  assert.match(next,/19\/09\/2026.*20\/09\/2026/s);
+  const sunday=publicEventAnswer('Tem música neste fim de semana?',at('2026-09-06T10:00:00-03:00'));
+  assert.match(sunday,/06\/09\/2026, às 12h/);
+  assert.doesNotMatch(sunday,/05\/09\/2026, às 17h/);
 });

@@ -362,7 +362,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const supabase = createClient(supabaseUrl, supabaseKey);
   if (!req.query?.operation && publicEventInquiry(userMessage)) {
     const answer=(conversationState?.first_turn === true ? 'Olá! Que bom receber seu contato no Hotel Solar. ☀️\n\n' : '')+publicEventAnswer(userMessage);
-    return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,match_type:'public_programming',availability_checked:false,...control({operation:'remember_response',state:req.body?.state,response_text:answer,clear_subject:true})});
+    return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,match_type:'public_programming',availability_checked:false,...control({operation:'remember_response',state:req.body?.state,response_text:answer,clear_subject:true,clear_package:true})});
   }
   const event=readEvent(conversationState?.event);
   if(!req.query?.operation && event) {
