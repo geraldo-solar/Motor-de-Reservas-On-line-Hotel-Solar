@@ -21,6 +21,7 @@ import { guestServiceRequest } from '../utils/guestService.js';
 import { hotelPhoneInquiry, hotelContactAnswer } from '../utils/hotelContact.js';
 import { locmilAnswer } from '../utils/hotelPolicy.js';
 import { paymentStatusInquiry } from '../utils/paymentStatus.js';
+import { existingReservationInquiry } from '../utils/existingReservation.js';
 import { familyAccommodation, familyAgeQuestionFor } from '../utils/familyAccommodation.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -278,18 +279,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       serviceMessage = audioMessage(incomingMessage, state) || '';
     } catch { serviceMessage = ''; }
   }
-  if (!req.query?.operation && hotelPhoneInquiry(serviceMessage)) {
-    const routed = control({operation:'route',user_message:incomingMessage,state:req.body?.state});
-    return res.status(200).json({...routed,quote_request:'ROOM_LIST',
-      quote_text:hotelContactAnswer,conversation_text:hotelContactAnswer,
-      matched:false,match_type:'hotel_contact',availability_checked:false});
-  }
   let previousPaymentMessage = '';
   let earlyState: any;
   try {const checked=control({operation:'remember_response',state:req.body?.state});
     earlyState = 'state' in checked ? JSON.parse(checked.state || '{}') : undefined;
     previousPaymentMessage = earlyState?.history?.at(-1) || '';
   } catch { /* Invalid state cannot establish payment context. */ }
+  if (!req.query?.operation && hotelPhoneInquiry(serviceMessage)
+    && !paymentStatusInquiry(serviceMessage, previousPaymentMessage)
+    && !existingReservationInquiry(serviceMessage, !!earlyState?.existing_reservation)) {
+    const routed = control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    return res.status(200).json({...routed,quote_request:'ROOM_LIST',
+      quote_text:hotelContactAnswer,conversation_text:hotelContactAnswer,
+      matched:false,match_type:'hotel_contact',availability_checked:false});
+  }
   if (!req.query?.operation && paymentStatusInquiry(serviceMessage, previousPaymentMessage)) {
     const routed = control({operation:'route',user_message:incomingMessage,state:req.body?.state});
     const answer = 'answer' in routed ? routed.answer : '';
@@ -305,6 +308,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const answer = 'answer' in routed ? routed.answer : '';
     return res.status(200).json({...routed,quote_text:answer,conversation_text:answer,
       matched:false,match_type:'guest_service',availability_checked:false});
+  }
+  if (!req.query?.operation && existingReservationInquiry(serviceMessage, !!earlyState?.existing_reservation)) {
+    // Return the actual human route, not a textual promise left on ROOM_LIST.
+    // This branch never fetches a booking, catalogue or payment link.
+    const routed = control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    const answer = 'answer' in routed ? routed.answer : '';
+    return res.status(200).json({...routed,quote_text:answer,conversation_text:answer,
+      matched:false,match_type:'existing_reservation',availability_checked:false});
   }
   const programmingMessage = earlyState?.history?.at(-1) === serviceMessage.slice(0,500)
     ? earlyState.resolved_message || serviceMessage : serviceMessage;

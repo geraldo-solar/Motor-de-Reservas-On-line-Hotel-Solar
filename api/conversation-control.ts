@@ -19,6 +19,7 @@ import { hotelPhoneInquiry, hotelContactAnswer } from '../utils/hotelContact.js'
 import { confirmedGuestFacilitiesPolicy, guestFacilityInquiry, guestFacilityAnswer } from '../utils/guestFacilities.js';
 import { confirmedHotelPolicy, locmilAnswer } from '../utils/hotelPolicy.js';
 import { paymentStatusInquiry, paymentStatusContext, paymentStatusAnswer } from '../utils/paymentStatus.js';
+import { existingReservationInquiry, existingReservationContext, existingReservationAnswer } from '../utils/existingReservation.js';
 import { readFamilyParty, updateFamilyParty, type FamilyParty, type FamilyPartyResult } from '../utils/familyParty.js';
 import { familyAccommodation, familyAccommodationPolicy, familyAgeQuestionFor, familyRoomRule } from '../utils/familyAccommodation.js';
 import { readStayDuration, readStayDatePending, stayDurationRequest, conflictingStayDuration, stayDateClarification, relativeStayDateMention, unparsedStayDateDeclaration, calendarDateMention, explicitStayEntry, explicitStayExit, type StayDuration, type StayDatePending } from '../utils/stayDuration.js';
@@ -30,7 +31,8 @@ type Facts = { check_in?: string; check_out?: string; guests?: number; extras: s
 type Quote = { version: number; id: string; created_at: number; check_in: string; check_out: string; guests: number; family_key?: string; extras: string[]; options: { name: string; capacity: number; total: number; child_allowance?: number }[] };
 type GuestInquiryState = { kind: GuestInquiry; at: number };
 type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPartyResult['clarification'] };
-type State = FamilyState & { programming_pending?: {question: string; at: number} } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
+type ExistingReservationState = { existing_reservation?: {at: number} };
+type State = ExistingReservationState & FamilyState & { programming_pending?: {question: string; at: number} } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
 const json = (v: unknown): any => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
 const months = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -118,6 +120,7 @@ function safeAudioText(value: string): string {
   if (paymentStatusInquiry(text)) return paymentStatusContext;
   const service = guestServiceRequest(text);
   if (service) return guestServiceContext(service);
+  if (existingReservationInquiry(text)) return existingReservationContext;
   if (human(norm(text))) return 'Quero falar com a recepção';
   const nameClause = /\b(?:meu nome(?: completo)?(?:\s+[ée])?|me chamo)\s*[:,-]?\s*/i;
   // A name may contain several words or commas. Keep only a recognizable
@@ -162,6 +165,9 @@ function loadState(value: unknown, now = Date.now()): State {
       ...(['party_composition','child_ages','age_reference'].includes(parsed.family_clarification) ? {family_clarification:parsed.family_clarification} : {})} : {}),
     ...(['room_photos', 'extra_photos', 'extra_info', 'photo_clarification', 'public_events', 'package_info'].includes(parsed.topic) ? {topic: parsed.topic, topic_at: Number(parsed.topic_at) || 0} : {}),
     ...(readPackageContext(parsed.package_context, now) ? {package_context:readPackageContext(parsed.package_context, now)} : {}),
+    ...(Number.isFinite(parsed.existing_reservation?.at) && parsed.existing_reservation.at > 0
+      && parsed.existing_reservation.at <= now && now - parsed.existing_reservation.at <= 30 * 60000
+      ? {existing_reservation:{at:parsed.existing_reservation.at}} : {}),
     ...(typeof parsed.programming_pending?.question === 'string' && parsed.programming_pending.question.length <= 500
       && !personal(parsed.programming_pending.question) && Number.isFinite(parsed.programming_pending.at)
       && parsed.programming_pending.at > 0 && parsed.programming_pending.at <= now && now - parsed.programming_pending.at <= 30 * 60000
@@ -395,6 +401,7 @@ function updateFacts(state: State, message: string, now: number) {
 }
 
 function validQuote(value: unknown, state: State, now: number): Quote | null {
+  if (state.existing_reservation) return null;
   if (state.stay_date_pending) return null;
   const q = json(value);
   const f = state.facts;
@@ -439,7 +446,7 @@ function controlTurn(body: any, now = Date.now()) {
     state.changed = false;
     clearStayDuration(state);
     delete state.pending; delete state.awaiting; delete state.topic; delete state.topic_at; delete state.package_context; delete state.guest_inquiry;
-    delete state.subject; delete state.extra_photo_subjects; delete state.event; delete state.audio; delete state.programming_pending;
+    delete state.subject; delete state.extra_photo_subjects; delete state.event; delete state.audio; delete state.programming_pending; delete state.existing_reservation;
     state.resolved_message = attachmentContextMessage(current.kind);
     if (body.operation === 'prepare') {
       state.first_turn = !state.greeted;
@@ -467,6 +474,11 @@ function controlTurn(body: any, now = Date.now()) {
   const audio = isAudioInput(input);
   const raw = (audio ? audioMessage(input, state, now) || AUDIO_UNAVAILABLE : input).slice(0, 2000);
   const s = norm(raw);
+  const existingRequest = existingReservationInquiry(raw, !!state.existing_reservation)
+    || body.operation === 'confirm' && !!state.existing_reservation;
+  // This is only short-lived conversational intent, never a verified booking.
+  // A new subject releases the handoff context without changing stay facts.
+  if (raw && !existingRequest && ['prepare','route','confirm'].includes(body.operation)) delete state.existing_reservation;
   if (paymentStatusInquiry(raw, state.history.at(-1)) && ['prepare', 'route', 'confirm'].includes(body.operation)) {
     // A customer report is not proof of receipt. Keep lodging facts, but
     // invalidate stale booking consent and never let a model affirm payment.
@@ -476,6 +488,7 @@ function controlTurn(body: any, now = Date.now()) {
     delete state.package_context; delete state.guest_inquiry; delete state.subject;
     delete state.extra_photo_subjects; delete state.event; delete state.programming_pending;
     state.resolved_message = paymentStatusContext;
+    delete state.existing_reservation;
     if (body.operation === 'prepare') {
       delete state.audio;
       state.first_turn = !state.greeted;
@@ -492,7 +505,7 @@ function controlTurn(body: any, now = Date.now()) {
     return {state:JSON.stringify(state), resolved_message:paymentStatusContext,
       quote_request:'HUMANO', can_collect:'NAO', confirmation_text:'', answer:paymentStatusAnswer};
   }
-  if (hotelPhoneInquiry(raw) && ['prepare', 'route', 'confirm'].includes(body.operation)) {
+  if (hotelPhoneInquiry(raw) && !existingRequest && ['prepare', 'route', 'confirm'].includes(body.operation)) {
     // A direct request for the public phone is not a booking, consent or
     // handoff. Ignore stale quote/package/media choices and model proposals.
     state.changed = false;
@@ -529,6 +542,7 @@ function controlTurn(body: any, now = Date.now()) {
     delete state.package_context; delete state.guest_inquiry; delete state.subject;
     delete state.extra_photo_subjects; delete state.event; delete state.programming_pending;
     state.resolved_message = safeMessage;
+    delete state.existing_reservation;
     if (body.operation === 'prepare') {
       delete state.audio;
       state.first_turn = !state.greeted;
@@ -547,6 +561,30 @@ function controlTurn(body: any, now = Date.now()) {
     }
     return {state: JSON.stringify(state), resolved_message: safeMessage,
       quote_request: 'HUMANO', can_collect: 'NAO', confirmation_text: '', answer: guestServiceAnswer};
+  }
+  if (existingRequest && ['prepare','route','confirm'].includes(body.operation)) {
+    state.changed = false;
+    clearStayDuration(state);
+    delete state.pending; delete state.awaiting; delete state.topic; delete state.topic_at;
+    delete state.package_context; delete state.guest_inquiry; delete state.subject;
+    delete state.extra_photo_subjects; delete state.extra_photo_requests; delete state.event; delete state.programming_pending;
+    state.existing_reservation = {at:body.operation === 'prepare' || !state.existing_reservation ? now : state.existing_reservation.at};
+    state.resolved_message = existingReservationContext;
+    if (body.operation === 'prepare') {
+      delete state.audio;
+      state.first_turn = !state.greeted;
+      state.greeted = true;
+      state.history = [...state.history,existingReservationContext].slice(-12);
+      remember(state,'user',existingReservationContext);
+      return {state:JSON.stringify(state),can_collect:'NAO',quote_request:'NOQUOTE',
+        context:JSON.stringify({primeira_resposta:state.first_turn,
+          ultima_mensagem:existingReservationContext,interpretacao_da_ultima_mensagem:existingReservationContext,
+          solicitacao_reserva_anterior:true,reserva_localizada:false,
+          cotacao_valida_para_estes_dados:null,assunto_ativo:'',
+          regra:'O cliente relata uma solicitação/reserva anterior ou pagamento esquecido. Isso não comprova cadastro, reserva ativa, disponibilidade, preço vigente, vencimento ou pagamento. Não iniciar nova cotação, pedir quantidade de hóspedes ou dados pessoais, reaproveitar link de pagamento, emitir cobrança, orientar pagamento ou confirmar/cancelar reserva. Chame a recepção pelo fluxo humano existente para localizar a solicitação e verificar situação, condições e validade de qualquer link. Não afirmar que consultou o sistema ou que o encaminhamento já aconteceu. Responda somente: '+existingReservationAnswer})};
+    }
+    return {state:JSON.stringify(state),resolved_message:existingReservationContext,
+      quote_request:'HUMANO',can_collect:'NAO',confirmation_text:'',answer:existingReservationAnswer};
   }
   let decision = 'NOQUOTE';
   let answer = String(body.ai_response || '').slice(0, 1800);
@@ -676,6 +714,13 @@ function controlTurn(body: any, now = Date.now()) {
     return { state: JSON.stringify(state), context, can_collect: 'NAO', quote_request: 'NOQUOTE' };
   }
   if (body.operation === 'remember_response') {
+    if (state.existing_reservation) {
+      // Model/catalogue output cannot turn an existing-request handoff into
+      // a fresh quote, nor serve as evidence of human action or booking status.
+      delete state.pending; delete state.awaiting; delete state.package_context; delete state.topic; delete state.topic_at;
+      delete state.subject; delete state.extra_photo_subjects; delete state.extra_photo_requests;
+      return {state:JSON.stringify(state)};
+    }
     remember(state, 'assistant', String(body.response_text || ''), true);
     if(Array.isArray(body.extra_photo_requests)) state.extra_photo_requests=[...new Set([...(state.extra_photo_requests||[]),...body.extra_photo_requests.filter(knownMediaCode)])];
     if (body.clear_subject === true) delete state.subject;
