@@ -1,5 +1,5 @@
-// Shared by text and transcribed-audio age continuations. No bare number is
-// treated as an age: the customer must supply years/months explicitly.
+// Shared by text and transcribed-audio age continuations. Bare numbers remain
+// ambiguous. Only a scoped, individually assigned list can omit years.
 const numbers: Record<string, number> = {
   zero:0, um:1, uma:1, dois:2, duas:2, tres:3, quatro:4, cinco:5, seis:6,
   sete:7, oito:8, nove:9, dez:10, onze:11, doze:12, treze:13, catorze:14,
@@ -15,6 +15,26 @@ export function normalizeAgeNumbers(value: string) {
     .replace(new RegExp(`\\b(${Object.keys(numbers).join('|')})\\b`, 'g'), word => String(numbers[word]));
 }
 const agesPattern = () => /\b(\d{1,3}(?:\s*(?:,|e)\s*\d{1,3})*)\s*(anos?|meses?)(?:\s+e\s+(\d{1,2})\s*meses?\b)?\b/g;
+
+/** A family declaration/pending-age answer may say "1 de 16, 1 de 10".
+ * Require at least two complete attributed entries and nothing else in the
+ * list. Dates, totals, room numbers and unassigned "16, 10" stay ambiguous.
+ * The caller must opt in only for a declared family or pending family ages. */
+export function withAssignedFamilyAgeUnits(value: string, enabled = false): string {
+  if (!enabled) return value;
+  const s = normalizeAgeNumbers(value);
+  const subjects = [...s.matchAll(/\b(?:criancas?|bebes?|filh[oa]s?)\b/g)];
+  const lastSubject = subjects.at(-1);
+  const start = lastSubject ? lastSubject.index! + lastSubject[0].length : 0;
+  const prefix = s.slice(0,start);
+  const tail = s.slice(start).replace(/^\s*(?:(?:na verdade|corrigindo|correcao|idades?(?: sao)?|sendo)\s*)?[:,]?\s*/, '');
+  const entries = /\b1\s+de\s+(\d{1,3})(?:\s*(anos?|meses?)(?:\s+e\s+\d{1,2}\s*meses?\b)?)?\b/g;
+  const matches = [...tail.matchAll(entries)];
+  if (matches.length < 2 || matches.length > 20 || matches.every(match=>!!match[2])) return value;
+  const remainder = tail.replace(entries,'@');
+  if (!/^@(?:\s*(?:[,;\n]|\be\b)\s*@)+[.!?]?\s*$/.test(remainder)) return value;
+  return prefix + ' ' + tail.replace(entries, (all, age, unit) => unit ? all : `1 de ${age} anos`);
+}
 
 /** Discard ages attached to adults/parents, never borrowing them for a child. */
 export function declaredFamilyAges(value: string, composition = false): number[] {
@@ -45,6 +65,6 @@ export function declaredFamilyAges(value: string, composition = false): number[]
 export function familyAgeFollowup(value: string): boolean {
   const s = normalizeAgeNumbers(value).trim();
   if (!s || s.length > 180 || !declaredFamilyAges(s).length) return false;
-  const remainder = s.replace(agesPattern(), '@').replace(/[.!?,:]/g, ' ').trim();
+  const remainder = s.replace(agesPattern(), '@').replace(/[.!?,:;]/g, ' ').trim();
   return /^(?:(?:na verdade|corrigindo|correcao|me enganei|quis dizer|e|ela|ele|elas|eles|a|o|as|os|outra|outro|minha|meu|minhas|meus|filhas?|filhos?|criancas?|bebes?|tem|temos|idades?|sao|de|com|mais|nova|novo|velha|velho|\d+|@)\s*)+$/.test(remainder);
 }

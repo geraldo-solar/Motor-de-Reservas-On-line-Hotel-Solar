@@ -11,9 +11,11 @@ import { isAttachmentInput, analyzeAttachment, type AttachmentKind } from '../ut
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
 import { packageInquiry, packageFollowup, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, type PackageContext } from '../utils/packageContext.js';
 import { guestInquiry, explicitLodgingRequest, type GuestInquiry } from '../utils/guestInquiry.js';
-import { confirmedDiningPolicy, diningPolicyAnswer } from '../utils/diningPolicy.js';
+import { confirmedDiningPolicy, diningPolicyAnswer, reservaHoursAnswer } from '../utils/diningPolicy.js';
+import { reservaRestaurantMessage } from '../utils/restaurantIntent.js';
 import { childPolicyQuestion, childAgeFollowup } from '../utils/packageChildInquiry.js';
 import { multiRoomRequest } from '../utils/lodgingScope.js';
+import {readMultiRoomHandoff,multiRoomKey,multiRoomReply,multiRoomOfferText,multiRoomAcceptedText,multiRoomDeclinedText,type MultiRoomHandoff} from '../utils/multiRoomHandoff.js';
 import { guestServiceRequest, guestServiceContext, guestServiceAnswer } from '../utils/guestService.js';
 import { hotelPhoneInquiry, hotelContactAnswer } from '../utils/hotelContact.js';
 import { confirmedGuestFacilitiesPolicy, guestFacilityInquiry, guestFacilityAnswer } from '../utils/guestFacilities.js';
@@ -21,8 +23,9 @@ import { confirmedHotelPolicy, locmilAnswer } from '../utils/hotelPolicy.js';
 import { paymentStatusInquiry, paymentStatusContext, paymentStatusAnswer } from '../utils/paymentStatus.js';
 import { existingReservationInquiry, existingReservationContext, existingReservationAnswer } from '../utils/existingReservation.js';
 import { readFamilyParty, updateFamilyParty, type FamilyParty, type FamilyPartyResult } from '../utils/familyParty.js';
+import {withAssignedFamilyAgeUnits} from '../utils/familyAges.js';
 import { familyAccommodation, familyAccommodationPolicy, familyAgeQuestionFor, familyRoomRule } from '../utils/familyAccommodation.js';
-import { readStayDuration, readStayDatePending, stayDurationRequest, conflictingStayDuration, stayDateClarification, relativeStayDateMention, unparsedStayDateDeclaration, calendarDateMention, explicitStayEntry, explicitStayExit, type StayDuration, type StayDatePending } from '../utils/stayDuration.js';
+import { readStayDuration, readStayDatePending, stayDurationRequest, conflictingStayDuration, stayDateClarification, relativeStayDateMention, unparsedStayDateDeclaration, calendarDateMention, explicitStayEntry, explicitStayExit, todayStayDatePending, confirmRelativeCheckout, type StayDuration, type StayDatePending } from '../utils/stayDuration.js';
 
 // No bookings, stock queries or outbound messages. The HTTP adapter interprets
 // audio/attachments; the conversation controller remains deterministic.
@@ -31,7 +34,7 @@ type Facts = { check_in?: string; check_out?: string; guests?: number; extras: s
 type Quote = { version: number; id: string; created_at: number; check_in: string; check_out: string; guests: number; family_key?: string; extras: string[]; options: { name: string; capacity: number; total: number; child_allowance?: number }[] };
 type GuestInquiryState = { kind: GuestInquiry; at: number };
 type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPartyResult['clarification'] };
-type ExistingReservationState = { existing_reservation?: {at: number} };
+type ExistingReservationState = { existing_reservation?: {at: number};multi_room?:MultiRoomHandoff;checkout_question?:{at:number;key:string} };
 type State = ExistingReservationState & FamilyState & { programming_pending?: {question: string; at: number} } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
 const json = (v: unknown): any => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
@@ -42,7 +45,7 @@ const numberPattern = '(\\d{1,2}|uma|um|duas|dois|tres|quatro|cinco|seis|sete|oi
 // "Reserva Solar" is the proper name of the beach restaurant. Its word
 // "reserva" must never start the lodging funnel, even if an upstream AI
 // classifier proposes a quote. Restaurant/table questions stay informational.
-const restaurantInquiry = (s: string) => !explicitLodgingRequest(s) && (/\breserva solar\b/.test(s) || /\b(cardapio|menu|restaurante|solar 73|avuado)\b/.test(s));
+const restaurantInquiry = (s: string) => !explicitLodgingRequest(s) && (/\breserva solar\b/i.test(reservaRestaurantMessage(s)) || /\b(cardapio|menu|restaurante|solar 73|avuado)\b/.test(s));
 const lodging = (s: string) => !restaurantInquiry(s) && /\b(vaga|vagas|disponibilidade|hospedagem|estadia|diaria|diarias|reservar|reserva|quarto|quartos|apto|apartamento|loft|suite|cotacao|orcamento|pessoas|hospedes|casal|adultos)\b/.test(s);
 const recommendation = (s: string) => /\b(indica|indicam|indicado|recomenda|recomendam|melhor|sugere|sugestao)\b/.test(s);
 const question = (s: string) => s.includes('?') || /\b(qual|quais|quanto|quantos|como|onde|quando|indica|recomenda|poderia|pode me|gostaria de saber|tem vaga|tem disponibilidade|inclui|incluido)\b/.test(s);
@@ -113,6 +116,8 @@ function currentGuestInquiry(state: State, raw: string): GuestInquiry | undefine
 // Audio must carry a safe version of the current request through later HTTP
 // steps, which receive the media URL again instead of the spoken words.
 function safeAudioText(value: string): string {
+  // Keep the explicit attribution before audio whitespace is flattened.
+  value=withAssignedFamilyAgeUnits(value,/\b(?:criancas?|filh[oa]s?|bebes?)\b/.test(norm(value)));
   let text = value
     .replace(/[^\s@,;!?<>]+@[^\s@,;!?<>]+/g, '[Dado pessoal omitido]')
     .replace(/\+?\b\d(?:[\s().-]*\d){10,}\b/g, '[Dado pessoal omitido]');
@@ -155,7 +160,7 @@ function loadState(value: unknown, now = Date.now()): State {
   // Expiry must not restore a checkout that was deliberately left unconfirmed.
   if (parsed.stay_date_pending) delete facts.check_out;
   if (['relative_dates', 'unparsed_dates'].includes(parsed.stay_date_pending?.reason)) delete facts.check_in;
-  return { version: 2, history: parsed.history.filter((s: unknown) => typeof s === 'string' && !personal(s as string)).slice(-12).map((s: string) => s.slice(0, 500)), facts, greeted: parsed.greeted === true, first_turn: parsed.first_turn === true, changed: parsed.changed === true, ...(typeof parsed.pending?.quote_id === 'string' && typeof parsed.pending?.option === 'string' ? { pending: parsed.pending } : {}),
+  const state:State = { version: 2, history: parsed.history.filter((s: unknown) => typeof s === 'string' && !personal(s as string)).slice(-12).map((s: string) => s.slice(0, 500)), facts, greeted: parsed.greeted === true, first_turn: parsed.first_turn === true, changed: parsed.changed === true, ...(typeof parsed.pending?.quote_id === 'string' && typeof parsed.pending?.option === 'string' ? { pending: parsed.pending } : {}),
     ...(readDailyGreeting(parsed.daily_greeting) ? {daily_greeting: readDailyGreeting(parsed.daily_greeting)} : {}),
     turns: Array.isArray(parsed.turns) ? parsed.turns.filter((t: any) => ['user', 'assistant'].includes(t?.role) && typeof t.text === 'string' && !personal(t.text)).slice(-16).map((t: any) => ({role:t.role, text:t.text.slice(0,900)})) : [],
     extra_photo_requests: Array.isArray(parsed.extra_photo_requests) ? [...new Set<string>(parsed.extra_photo_requests.filter(knownMediaCode))] : [],
@@ -182,6 +187,13 @@ function loadState(value: unknown, now = Date.now()): State {
     ...(readAudioTurn(parsed.audio, now) ? {audio: readAudioTurn(parsed.audio, now)} : {}),
     ...(readAttachmentTurn(parsed.attachment, now) ? {attachment: readAttachmentTurn(parsed.attachment, now)} : {}),
   };
+  const multi=readMultiRoomHandoff(parsed.multi_room,state,now);
+  if(multi)state.multi_room=multi;
+  const asked=parsed.checkout_question;
+  if(stayDatePending?.reason==='relative_checkout' && asked?.key===JSON.stringify(stayDatePending)
+    && Number.isFinite(asked.at)&&asked.at>=stayDatePending.at&&asked.at<=now&&now-asked.at<=30*60000)
+    state.checkout_question={at:asked.at,key:asked.key};
+  return state;
 }
 
 function remember(state: State, role: 'user' | 'assistant', text: string, replace = false) {
@@ -202,6 +214,7 @@ function awaitPhotoSubject(state: State, response: string, now: number) {
 // Resolve short follow-ups only within an explicit, recent photo conversation.
 // New topics and booking choices must not inherit the previous photo intent.
 function resolveFollowup(state: State, raw: string, now: number): string {
+  raw = reservaRestaurantMessage(raw);
   const s = norm(raw);
   const hadTopic = !!state.topic;
   const recentTopic = Number.isFinite(state.topic_at) && state.topic_at! > 0 && now >= state.topic_at! && now - state.topic_at! <= 30 * 60000;
@@ -297,6 +310,7 @@ function parseDates(s: string, now: number): string[] {
 function clearStayDuration(state: State) {
   delete state.duration_request;
   delete state.stay_date_pending;
+  delete state.checkout_question;
 }
 
 function updateStayDates(state: State, s: string, now: number) {
@@ -305,6 +319,16 @@ function updateStayDates(state: State, s: string, now: number) {
   const requested = packageScope ? undefined : stayDurationRequest(s, now);
   const previousPending = state.stay_date_pending;
   if (packageScope) clearStayDuration(state);
+  if(!packageScope){
+    const confirmed=confirmRelativeCheckout(previousPending,s,!!state.checkout_question,now);
+    if(confirmed){Object.assign(state.facts,confirmed);clearStayDuration(state);delete state.pending;return;}
+    if(previousPending?.reason==='relative_checkout' && state.checkout_question && multiRoomReply(s)==='declined'){
+      delete previousPending.suggested_check_out;delete state.checkout_question;return;
+    }
+    const today=todayStayDatePending(s,state.facts.check_out||previousPending?.suggested_check_out,now);
+    if(today){state.facts.check_in=today.check_in;delete state.facts.check_out;state.stay_date_pending=today;
+      delete state.checkout_question;delete state.pending;return;}
+  }
   const entryMention = explicitStayEntry(s) || /\b(?:entrar|a partir de|desde)\b/.test(s);
   const exitMention = explicitStayExit(s) || /\bsair\b/.test(s);
   const newEntry = entryMention || !exitMention && (explicitLodgingRequest(s)
@@ -401,6 +425,7 @@ function updateFacts(state: State, message: string, now: number) {
 }
 
 function validQuote(value: unknown, state: State, now: number): Quote | null {
+  if(state.multi_room)return null;
   if (state.existing_reservation) return null;
   if (state.stay_date_pending) return null;
   const q = json(value);
@@ -446,7 +471,7 @@ function controlTurn(body: any, now = Date.now()) {
     state.changed = false;
     clearStayDuration(state);
     delete state.pending; delete state.awaiting; delete state.topic; delete state.topic_at; delete state.package_context; delete state.guest_inquiry;
-    delete state.subject; delete state.extra_photo_subjects; delete state.event; delete state.audio; delete state.programming_pending; delete state.existing_reservation;
+    delete state.subject; delete state.extra_photo_subjects; delete state.event; delete state.audio; delete state.programming_pending; delete state.existing_reservation;delete state.multi_room;
     state.resolved_message = attachmentContextMessage(current.kind);
     if (body.operation === 'prepare') {
       state.first_turn = !state.greeted;
@@ -474,6 +499,7 @@ function controlTurn(body: any, now = Date.now()) {
   const audio = isAudioInput(input);
   const raw = (audio ? audioMessage(input, state, now) || AUDIO_UNAVAILABLE : input).slice(0, 2000);
   const s = norm(raw);
+  if(body.operation==='prepare' && !multiRoomReply(raw))delete state.multi_room;
   const existingRequest = existingReservationInquiry(raw, !!state.existing_reservation)
     || body.operation === 'confirm' && !!state.existing_reservation;
   // This is only short-lived conversational intent, never a verified booking.
@@ -489,6 +515,7 @@ function controlTurn(body: any, now = Date.now()) {
     delete state.extra_photo_subjects; delete state.event; delete state.programming_pending;
     state.resolved_message = paymentStatusContext;
     delete state.existing_reservation;
+    delete state.multi_room;
     if (body.operation === 'prepare') {
       delete state.audio;
       state.first_turn = !state.greeted;
@@ -506,6 +533,7 @@ function controlTurn(body: any, now = Date.now()) {
       quote_request:'HUMANO', can_collect:'NAO', confirmation_text:'', answer:paymentStatusAnswer};
   }
   if (hotelPhoneInquiry(raw) && !existingRequest && ['prepare', 'route', 'confirm'].includes(body.operation)) {
+    delete state.multi_room;
     // A direct request for the public phone is not a booking, consent or
     // handoff. Ignore stale quote/package/media choices and model proposals.
     state.changed = false;
@@ -543,6 +571,7 @@ function controlTurn(body: any, now = Date.now()) {
     delete state.extra_photo_subjects; delete state.event; delete state.programming_pending;
     state.resolved_message = safeMessage;
     delete state.existing_reservation;
+    delete state.multi_room;
     if (body.operation === 'prepare') {
       delete state.audio;
       state.first_turn = !state.greeted;
@@ -563,6 +592,7 @@ function controlTurn(body: any, now = Date.now()) {
       quote_request: 'HUMANO', can_collect: 'NAO', confirmation_text: '', answer: guestServiceAnswer};
   }
   if (existingRequest && ['prepare','route','confirm'].includes(body.operation)) {
+    delete state.multi_room;
     state.changed = false;
     clearStayDuration(state);
     delete state.pending; delete state.awaiting; delete state.topic; delete state.topic_at;
@@ -585,6 +615,32 @@ function controlTurn(body: any, now = Date.now()) {
     }
     return {state:JSON.stringify(state),resolved_message:existingReservationContext,
       quote_request:'HUMANO',can_collect:'NAO',confirmation_text:'',answer:existingReservationAnswer};
+  }
+  // A yes only accepts the deterministic, fresh multi-room handoff question.
+  // It is never a room selection, booking confirmation or permission to pay.
+  const multiReply=body.operation==='prepare' && state.multi_room?.status==='offered' ? multiRoomReply(raw) : undefined;
+  if(body.operation==='prepare'){
+    if(multiReply && state.multi_room){
+      state.multi_room.status=multiReply;
+      state.changed=false;delete state.pending;delete state.awaiting;delete state.audio;
+      state.first_turn=!state.greeted;state.greeted=true;state.resolved_message=raw;
+      state.history=[...state.history,raw.slice(0,500)].slice(-12);remember(state,'user',raw);
+      const answer=multiReply==='accepted'?multiRoomAcceptedText(state):multiRoomDeclinedText;
+      return {state:JSON.stringify(state),can_collect:'NAO',quote_request:'NOQUOTE',
+        context:JSON.stringify({primeira_resposta:state.first_turn,ultima_mensagem:raw,
+          fatos_informados_pelo_cliente:state.facts,composicao_familiar_informada:state.family_party,
+          encaminhamento_multiplos_apartamentos:multiReply,
+          regra:'A resposta é à pergunta de encaminhamento do orçamento de vários apartamentos. Não cotar um quarto, pedir dados pessoais, confirmar disponibilidade/reserva nem repetir a oferta. Responda somente: '+answer})};
+    }
+    delete state.multi_room;
+  } else if(state.multi_room && ['route','confirm'].includes(body.operation)){
+    if(state.multi_room.status!=='offered' || body.operation==='confirm'){
+      delete state.pending;delete state.awaiting;
+      const answer=state.multi_room.status==='accepted'?multiRoomAcceptedText(state):state.multi_room.status==='declined'?multiRoomDeclinedText:multiRoomOfferText(state);
+      remember(state,'assistant',answer);
+      return {state:JSON.stringify(state),resolved_message:state.resolved_message||raw,
+        quote_request:state.multi_room.status==='accepted'?'HUMANO':'NOQUOTE',can_collect:'NAO',confirmation_text:'',answer};
+    }
   }
   let decision = 'NOQUOTE';
   let answer = String(body.ai_response || '').slice(0, 1800);
@@ -656,7 +712,7 @@ function controlTurn(body: any, now = Date.now()) {
       if (inquiry || human(s) || mediaRequest(norm(state.resolved_message)) || eventInquiry(raw)
         || childPolicyQuestion(raw) || !extraSelection && !lodging(s) && !calendarDateMention(raw)
           && !guestInquiryFollowup(raw) && !stayDurationRequest(raw, now)
-          && !relativeStayDateMention(raw)) clearStayDuration(state);
+          && !relativeStayDateMention(raw) && !updateFamilyParty(raw,state.family_party,now,state.facts.guests).handled) clearStayDuration(state);
       if (inquiry) {
         // Only this client turn establishes/renews the focus. Neither an AI
         // question about people nor a catalog response can create lodging facts.
@@ -674,6 +730,9 @@ function controlTurn(body: any, now = Date.now()) {
       if (raw && !personal(raw)) state.history = [...state.history, raw.slice(0, 500)].slice(-12);
       remember(state, 'user', raw);
     }
+    // A different/intervening turn consumes the previous checkout question.
+    // Only routing the deterministic question below arms the next short reply.
+    delete state.checkout_question;
     const currentQuote = state.guest_inquiry || marketingOptOut(s) ? null : validQuote(body.quote_state, state, now);
     const context = JSON.stringify({
       primeira_resposta: state.first_turn, fatos_informados_pelo_cliente: state.facts,
@@ -693,7 +752,7 @@ function controlTurn(body: any, now = Date.now()) {
       atendimento_informativo_em_foco: state.guest_inquiry || null,
       duracao_informada_pelo_cliente: state.duration_request || null,
       datas_da_estadia_pendentes: state.stay_date_pending || null,
-      regra_duracao_estadia: 'Duração e datas são somente declarações do cliente. Quando há pendência, não cotar nem coletar dados pessoais: esclarecer as datas de entrada e saída. Datas candidatas da pendência não são fatos confirmados. Nunca adicionar um dia ao checkout por interpretação inclusiva. Um número isolado ou sim não escolhe a saída. Datas relativas ainda não convertidas não autorizam reaproveitar datas antigas. Respostas do assistente não resolvem a pendência.',
+      regra_duracao_estadia: 'Duração e datas são somente declarações do cliente. Quando há pendência, não cotar nem coletar dados pessoais: esclarecer as datas de entrada e saída. Datas candidatas da pendência não são fatos confirmados. Nunca adicionar um dia ao checkout por interpretação inclusiva. Um número isolado ou sim não escolhe a saída, exceto a resposta direta à pergunta determinística vigente de manter a saída candidata para entrada hoje. O controlador valida essa resposta; o modelo não confirma datas por conta própria. Respostas do assistente não resolvem a pendência.',
       regra_atendimento_informativo: 'O foco informativo vem somente do cliente. Dúvidas sobre café da manhã para visitantes, refeições e Day Use não são hospedagem. Mantenha respostas curtas de quantidade de pessoas, data, idade ou ocasião familiar no mesmo assunto, sem convertê-las em hóspedes, check-in, check-out ou evento privado. Uma menção ao aniversário do pai não solicita festa ou orçamento de evento. Perguntas sobre regras, inclusão de café, pets, pagamento ou horário do quarto devem receber a informação disponível, sem iniciar cotação nem pedir dados da estadia. Não invente preços, políticas, disponibilidade, agendamento, confirmação de mesa ou encaminhamento. Para cotar hospedagem, o cliente precisa pedir hospedagem; o foco informativo não é escolha nem consentimento de reserva.',
       politica_gastronomia_confirmada: confirmedDiningPolicy,
       politica_instalacoes_confirmada: confirmedGuestFacilitiesPolicy,
@@ -714,7 +773,7 @@ function controlTurn(body: any, now = Date.now()) {
     return { state: JSON.stringify(state), context, can_collect: 'NAO', quote_request: 'NOQUOTE' };
   }
   if (body.operation === 'remember_response') {
-    if (state.existing_reservation) {
+    if (state.existing_reservation || state.multi_room) {
       // Model/catalogue output cannot turn an existing-request handoff into
       // a fresh quote, nor serve as evidence of human action or booking status.
       delete state.pending; delete state.awaiting; delete state.package_context; delete state.topic; delete state.topic_at;
@@ -766,7 +825,7 @@ function controlTurn(body: any, now = Date.now()) {
   const proposed = String(body.proposed || '').trim();
   const publicMessage = state.history.at(-1) === raw ? state.resolved_message || raw : raw;
   const inquiry = currentGuestInquiry(state, publicMessage);
-  const diningAnswer = diningPolicyAnswer(publicMessage);
+  const diningAnswer = diningPolicyAnswer(publicMessage) || reservaHoursAnswer(publicMessage,now);
   const facilityAnswer = inquiry === 'lodging_faq' ? guestFacilityAnswer(publicMessage) || locmilAnswer(publicMessage) : undefined;
   const weekdayQuestion = packageWeekdayClarification(publicMessage, state.package_context, now);
   if (raw === AUDIO_UNAVAILABLE) {
@@ -839,6 +898,13 @@ function controlTurn(body: any, now = Date.now()) {
     answer = stayDateClarification(state.stay_date_pending);
     delete state.pending;
   }
+  else if (multiRoomKey(state,now) && (lodging(s) || state.changed || recommendation(s)
+    || /^QUOTE\|/.test(proposed) || state.multi_room?.status==='offered')) {
+    state.multi_room={at:state.multi_room?.at||now,key:multiRoomKey(state,now)!,status:'offered'};
+    answer=multiRoomOfferText(state);
+    delete state.pending;delete state.awaiting;delete state.package_context;
+    delete state.topic;delete state.topic_at;delete state.subject;delete state.extra_photo_subjects;delete state.extra_photo_requests;
+  }
   else {
     const selected = quote ? selection(s, quote) : undefined;
     const selecting = /\b(quero|prefiro|escolho|escolhi|aceito|pode ser|fico com|vou ficar|vou querer)\b/.test(s);
@@ -877,6 +943,8 @@ function controlTurn(body: any, now = Date.now()) {
   else if (decision === 'NOQUOTE' && photoDeliveryClaim(answer)) answer = mediaRequest(norm(publicMessage)) ? PHOTO_LOOKUP : PHOTO_CLARIFY;
   if (decision === 'NOQUOTE') awaitPhotoSubject(state, answer, now);
   if (decision !== 'COLETAR') confirmationText = '';
+  if(state.stay_date_pending?.reason==='relative_checkout' && answer===stayDateClarification(state.stay_date_pending))
+    state.checkout_question={at:now,key:JSON.stringify(state.stay_date_pending)};
   if (state.first_turn && decision === 'NOQUOTE' && answer && !/^(olá|oi|bom dia|boa tarde|boa noite)/i.test(answer)) answer = 'Olá! Que bom receber seu contato no Hotel Solar. ☀️\n\n' + answer;
   delete state.awaiting;
   if (decision === 'NOQUOTE' && (!mediaRequest(norm(state.resolved_message || raw)) || documentPhotoInquiry(state.resolved_message || raw))) {

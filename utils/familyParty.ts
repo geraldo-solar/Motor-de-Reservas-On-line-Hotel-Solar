@@ -1,6 +1,6 @@
 import { childPolicyQuestion } from './packageChildInquiry.js';
 import { createHash } from 'node:crypto';
-import { declaredFamilyAges, familyAgeFollowup } from './familyAges.js';
+import { declaredFamilyAges, familyAgeFollowup, withAssignedFamilyAgeUnits } from './familyAges.js';
 
 // Explicit composition only: occupancy is not the number of paying guests.
 // Ages have no identities, names, dates of birth or inferred tariff classes.
@@ -63,7 +63,7 @@ function contrastingComposition(message: string) {
   const adults=(s:string)=>/\badult[oa]s?\b|\bcasa(?:l|is)\b/.test(s);
   const children=(s:string)=>/\b(?:criancas?|bebes?|filh[oa]s?)\b/.test(s);
   const total=(s:string)=>/\b(?:pessoas|hospedes)\b/.test(s);
-  const declared=new RegExp(`^${number}\\s*(?:adult[oa]s?|criancas?|bebes?|filh[oa]s?|pessoas|hospedes|casais)\\b|^(?:um )?casal\\b`).test(after);
+  const declared=new RegExp(`^${number}\\s*(?:adult[oa]s?|criancas?|bebes?|filh[oa]s?|pessoas|hospedes|casais|casal)\\b|^(?:um )?casal\\b`).test(after);
   // Do not mix any rejected count/age into the affirmative replacement.
   // A rejected component without a clear replacement needs a fresh group.
   if(!declared||/[?]|\b(?:ou|talvez|acho|nao)\b/.test(after)
@@ -105,20 +105,25 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   const childMatches=[...s.matchAll(new RegExp(`\\b${number}\\s*(?:criancas?|bebes?|filh[oa]s?)\\b`,'g'))];
   const adultMatches=[...s.matchAll(new RegExp(`\\b${number}\\s*adult[oa]s?\\b`,'g'))];
   const totalMatches=[...s.matchAll(new RegExp(`\\b${number}\\s*(?:pessoas|hospedes)\\b`,'g'))];
+  const contextualTotal=(old||validCount(knownTotal)&&Number(knownTotal)>0)
+    ? new RegExp(`^nos(?:\\s+somos)?\\s+${number}[.!?]?$`).exec(s) : null;
+  const hasTotal=totalMatches.length>0||!!contextualTotal;
   const pluralCouple=[...s.matchAll(new RegExp(`\\b${number}\\s*casais\\b`,'g'))].find(match=>!roomLinkedCouple(s,match.index!));
   const oneCouple=/^(?:casal)(?:\s*(?:[.!?]|$)|\s+(?:e|com)\b)/.test(s)
     || [...s.matchAll(/(?:[:,;]\s*|\b(?:na verdade|corrigindo)\s+)casal(?=\s*(?:[.!?]|$)|\s+(?:e|com)\b)/g)].some(match=>!roomLinkedCouple(s,match.index!))
-    || [...s.matchAll(/\b(?:somos|para|vai|um) casal\b/g)].some(match=>match[0].startsWith('somos ')||!roomLinkedCouple(s,match.index!));
+    || [...s.matchAll(/\b(?:somos|para|vai|um|1)\s+casal\b/g)].some(match=>/^somos\s/.test(match[0])||!roomLinkedCouple(s,match.index!));
   const couple=pluralCouple?quantity(pluralCouple[1]):oneCouple?1:undefined;
   const offspringMention=/\bfilh[oa]s?\b/.test(s);
   const unspecifiedOffspring=offspringMention&&!childMatches.length
     && (adultMatches.length>0||couple!==undefined||/^(?:e |com )?(?:nossos? |nossas? |meus? |minhas? )?filh[oa]s\b/.test(s));
   const noChildren=/\b(?:sem criancas?|so adultos|apenas adultos|nao (?:temos|tenho) criancas?)\b/.test(s);
-  const countDeclaration=childMatches.length>0||adultMatches.length>0||totalMatches.length>0||couple!==undefined||noChildren||unspecifiedOffspring;
+  const countDeclaration=childMatches.length>0||adultMatches.length>0||hasTotal||couple!==undefined||noChildren||unspecifiedOffspring;
   // Negative statements and comparisons do not declare the mentioned count.
   if(/\b(?:como|igual a) (?:um|uma|\d+) adult/.test(s)) return {handled:false,...(old?{party:old}:{})};
-  const ageValues=declaredFamilyAges(s,countDeclaration);
-  const ageOnly=!countDeclaration&&familyAgeFollowup(s);
+  const ageText=withAssignedFamilyAgeUnits(s,childMatches.some(match=>quantity(match[1])>0)
+    || !!old?.children&&old.ages_months.length<old.children);
+  const ageValues=declaredFamilyAges(ageText,countDeclaration);
+  const ageOnly=!countDeclaration&&familyAgeFollowup(ageText);
   const barePendingAge=!!old?.children&&old.ages_months.length<old.children&&/^\d{1,3}[.!]?$/.test(s);
   if(!countDeclaration && !(ageOnly&&old?.children) && !barePendingAge) return {handled:false,...(old?{party:old}:{})};
   const party:FamilyParty=old?{...old,ages_months:[...old.ages_months],updated_at:now,last_message_hash:messageHash}:{ages_months:[],updated_at:now,last_message_hash:messageHash};
@@ -127,7 +132,7 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   // "Sem crianças" does not remove adult offspring from the party. Without
   // a replacement count, keep their slots (or clarify an explicit correction).
   if(old?.age_subject==='offspring'&&old.children&&!childMatches.length&&!unspecifiedOffspring) {
-    if(noChildren&&!adultMatches.length&&couple===undefined&&!totalMatches.length)
+    if(noChildren&&!adultMatches.length&&couple===undefined&&!hasTotal)
       return result(party,correction?'party_composition':old.clarification);
     // A new adult count may include the adult offspring already counted. Do
     // not add it to those same people unless the composition is disambiguated.
@@ -137,7 +142,7 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   // Leave that overlapping description for clarification rather than sum it.
   if(childMatches.length&&adultMatches.length&&/\b(?:incluindo|dentre|entre eles|dos quais|sendo)\b/.test(s)
     && offspringMention)return result(party,'party_composition');
-  if(totalMatches.length)party.total=quantity(totalMatches[0][1]);
+  if(hasTotal)party.total=quantity(totalMatches[0]?.[1]||contextualTotal![1]);
   if(adultMatches.length)party.adults=quantity(adultMatches[0][1]);
   else if(couple!==undefined)party.adults=2*couple;
   if(offspringMention&&(childMatches.length||unspecifiedOffspring))party.age_subject='offspring';
@@ -161,7 +166,7 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   // the parents. The remainder is age-tracked offspring, including adults.
   const explainsTotal=offspringMention&&!correction&&totalFromContext!==undefined;
   if(explainsTotal)party.total=totalFromContext;
-  if(correction&&unspecifiedOffspring&&!totalMatches.length) {
+  if(correction&&unspecifiedOffspring&&!hasTotal) {
     delete party.total;delete party.children;party.ages_months=[];
   }
   if(unspecifiedOffspring) {
@@ -174,7 +179,7 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   }
   // An explicit corrected component invalidates an old total, not another
   // separately known component. A new explicit total stays authoritative.
-  if(!totalMatches.length&&!explainsTotal&&(correction&&countDeclaration||adultMatches.length||couple!==undefined))delete party.total;
+  if(!hasTotal&&!explainsTotal&&(correction&&countDeclaration||adultMatches.length||couple!==undefined))delete party.total;
   if(ageValues.length) {
     if(ageValues.some(age=>!validCount(age,1440))||party.children===undefined||ageValues.length>party.children)return result(party,'child_ages');
     if(childMatches.length||ageValues.length===party.children||party.children===1)party.ages_months=ageValues;

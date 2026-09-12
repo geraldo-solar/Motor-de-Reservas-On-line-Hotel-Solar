@@ -23,6 +23,9 @@ import { locmilAnswer } from '../utils/hotelPolicy.js';
 import { paymentStatusInquiry } from '../utils/paymentStatus.js';
 import { existingReservationInquiry } from '../utils/existingReservation.js';
 import { familyAccommodation, familyAgeQuestionFor } from '../utils/familyAccommodation.js';
+import {readMultiRoomHandoff} from '../utils/multiRoomHandoff.js';
+import {multiRoomRequest} from '../utils/lodgingScope.js';
+import {reservaHoursAnswer} from '../utils/diningPolicy.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -316,6 +319,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const answer = 'answer' in routed ? routed.answer : '';
     return res.status(200).json({...routed,quote_text:answer,conversation_text:answer,
       matched:false,match_type:'existing_reservation',availability_checked:false});
+  }
+  const multi=readMultiRoomHandoff(earlyState?.multi_room,earlyState);
+  if(req.query?.operation==='offers' && multi)
+    return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',state:JSON.stringify(earlyState),availability_checked:false});
+  if(!req.query?.operation && (multiRoomRequest(serviceMessage)
+    || multi && earlyState.history?.at(-1)===serviceMessage.slice(0,500))){
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    const answer='answer' in routed?routed.answer:'';
+    return res.status(200).json({...routed,quote_request:'quote_request' in routed && routed.quote_request==='HUMANO'?'HUMANO':'ROOM_LIST',
+      quote_text:answer,conversation_text:answer,match_type:'multi_room_handoff',matched:false,availability_checked:false});
+  }
+  const restaurantHours=reservaHoursAnswer(serviceMessage);
+  if(!req.query?.operation && restaurantHours){
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    return res.status(200).json({...routed,quote_request:'ROOM_LIST',quote_text:restaurantHours,conversation_text:restaurantHours,
+      match_type:'restaurant_hours',matched:false,availability_checked:false});
   }
   const programmingMessage = earlyState?.history?.at(-1) === serviceMessage.slice(0,500)
     ? earlyState.resolved_message || serviceMessage : serviceMessage;

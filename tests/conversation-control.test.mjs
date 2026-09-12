@@ -119,7 +119,8 @@ test('Reserva Solar é restaurante e nunca inicia reserva de hospedagem', () => 
     const r = route(msg, p.state, 'QUOTE|2026-09-20|2026-09-25|2|NONE');
     assert.equal(r.quote_request, 'NOQUOTE', msg);
     assert.equal(r.can_collect, 'NAO', msg);
-    assert.equal(r.answer, 'Resposta de teste.', msg);
+    if(msg==='Que horas abre o Reserva Solar?') assert.match(r.answer,/Restaurante Reserva Solar.*10h.*18h/);
+    else assert.equal(r.answer, 'Resposta de teste.', msg);
     assert.equal(JSON.parse(r.state).pending, undefined, msg);
   }
 

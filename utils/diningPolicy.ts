@@ -1,4 +1,5 @@
 import { isPrivateEventRequest, publicEventInquiry } from './publicEvents.js';
+import { reservaRestaurantMessage } from './restaurantIntent.js';
 
 // Latest explicit owner confirmation supersedes older seasonal Day Use copy.
 // A calendar holiday or vacation period is NOT authorization to charge entry.
@@ -69,6 +70,7 @@ const normalize = (message: string) => String(message || '')
 
 /** Narrow admission FAQ; menus, meals, events and media retain their own routes. */
 export function diningPolicyAnswer(message: string): string | undefined {
+  message = reservaRestaurantMessage(message);
   const text = normalize(message);
   if (!/\breserva\s+solar\b/.test(text)) return;
   if (isPrivateEventRequest(message) || publicEventInquiry(message)) return;
@@ -86,4 +88,17 @@ export function diningPolicyAnswer(message: string): string | undefined {
   if (!(admissionSubject && admissionCharge) && !venueChargeQuestion) return;
 
   return 'A entrada no Reserva Solar é gratuita como regra. Cobrança só ocorre em datas de grande movimento previamente informadas pelo hotel; não é automática por ser feriado ou férias.';
+}
+
+/** General hours are not a real-time open/closed or table-availability check. */
+export function reservaHoursAnswer(message: string, now=Date.now()): string | undefined {
+  const s=normalize(reservaRestaurantMessage(message));
+  if (!/\breserva solar\b/.test(s) || !/\b(?:funciona\w*|aberto|abrir|abre|fech\w*|horarios?)\b/.test(s)
+    || isPrivateEventRequest(s) || publicEventInquiry(s)
+    || /\b(?:cardapio|menu|fotos?|imagens?|videos?|hospedagem|diarias?|quartos?|pagamento|paguei|atendente|humano)\b/.test(s)) return;
+  const h=confirmedDiningPolicy.hours.reserva_solar.low_season;
+  const general=`O Restaurante Reserva Solar funciona habitualmente de sexta a domingo, das ${h.opens.replace(':00','h')} às ${h.closes.replace(':00','h')}, na baixa temporada.`;
+  if (!/\b(?:hj|hoje)\b/.test(s)) return general+' Horários especiais e alterações de funcionamento precisam ser conferidos com a recepção.';
+  const weekday=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Belem',weekday:'long'}).format(new Date(now));
+  return general+` Hoje é ${weekday}${(h.weekdays as readonly string[]).includes(weekday) ? ', um dos dias habituais de funcionamento' : ', fora desses dias habituais'}. Não tenho confirmação de alterações para hoje; a recepção pode conferir.`;
 }
