@@ -39,6 +39,11 @@ const examples = [
   ['Será que vocês podem verificar o ar condicionado do meu quarto?','maintenance'],
   ['Vou querer 1 hambúrguer e uma coca zero, apartamento B105','room_service'],
   ['Vou querer 1 burger kids e uma coca zero','room_service'],
+  ['Pode cancelar meu pedido de hambúrguer para o quarto?','room_service_change'],
+  ['Pode trocar a coca por um suco no pedido do quarto?','room_service_change'],
+  ['Quero cancelar o hambúrguer que pedi','room_service_change'],
+  ['Por favor, cancele meu pedido de pizza','room_service_change'],
+  ['Poderia alterar meu pedido de lanche?','room_service_change'],
   ['Estou aguardando a nota fiscal e o voucher do grupo que entra hoje','booking_document'],
   ['Estou aguardando a nota fiscal e o voucher da reserva do grupo que entra hoje','booking_document'],
   ['Pode reenviar a nota fiscal da minha reserva?','booking_document'],
@@ -62,7 +67,7 @@ async function resolve(message,state,handler = withoutDatabase,operation) {
 
 test('pedidos atuais de reposição, manutenção, alimentação, documentos e objetos perdidos são separados de reservas',()=>{
   for (const [message,kind] of examples) assert.equal(guestServiceRequest(message),kind,message);
-  for (const kind of ['housekeeping','maintenance','room_service','booking_document','lost_item'])
+  for (const kind of ['housekeeping','maintenance','room_service','room_service_change','booking_document','lost_item'])
     assert.equal(guestServiceRequest(guestServiceContext(kind)),kind,kind);
 });
 
@@ -82,13 +87,71 @@ test('FAQ, política, fotos e procedimento não executam atendimento operacional
 test('negação e retirada de pedidos não geram HUMANO operacional injustificado',()=>{
   for (const message of [
     'Não preciso mais de toalhas no quarto', 'Não quero hambúrguer para o quarto',
-    'Pode cancelar meu pedido de hambúrguer para o quarto', 'Retire meu pedido de toalhas no quarto',
+    'Não quero cancelar meu pedido de hambúrguer para o quarto', 'Retire meu pedido de toalhas no quarto',
     'Não envie a nota fiscal da minha reserva', 'Não perdi minha blusa',
     'O ar condicionado do meu quarto não está com defeito',
   ]) {
     assert.equal(guestServiceRequest(message),undefined,message);
     assert.notEqual(turn(message).routed.quote_request,'HUMANO',message);
   }
+});
+
+test('alterar ou cancelar alimentação já pedida é operacional mesmo se a resposta anterior propõe humano',()=>{
+  for (const message of [
+    'Pode cancelar meu pedido de hambúrguer para o quarto?',
+    'Pode trocar a coca por um suco no pedido do quarto?',
+  ]) for (const prior of [initial,empty]) {
+    const prepared=control({operation:'prepare',user_message:message,state:prior},now);
+    const routed=control({operation:'route',user_message:message,state:prepared.state,
+      proposed:'HUMANO',ai_response:'Vou chamar a recepção para verificar seu pedido.'},now);
+    assert.equal(JSON.parse(prepared.context).solicitacao_operacional,'room_service_change',message);
+    assert.equal(routed.quote_request,'HUMANO',message);
+    assert.equal(routed.answer,guestServiceAnswer,message);
+    assert.equal(routed.can_collect,'NAO',message);
+    assert.deepEqual(JSON.parse(routed.state).facts,prior.facts,message);
+    assert.doesNotMatch(routed.answer,/cancelad|trocad|alterad|quantas pessoas|pedido realizado/i,message);
+    assert.equal(JSON.parse(routed.state).resolved_message,guestServiceContext('room_service_change'),message);
+    assert.doesNotMatch(routed.state,/quero fazer um pedido|hambúrguer|coca|suco|quarto/i,message);
+  }
+});
+
+test('recusas, mudança negada, hipótese e alvo diferente não viram alteração de pedido de alimentação',()=>{
+  for (const message of [
+    'Não quero hambúrguer para o quarto',
+    'Não cancele meu pedido de hambúrguer para o quarto',
+    'Não troque a coca por suco no meu pedido do quarto',
+    'Não gostaria de alterar meu pedido de lanche',
+    'Quero saber se posso cancelar meu pedido de hambúrguer',
+    'Como faço para trocar a coca no meu pedido?',
+    'Se eu pedir um hambúrguer, pode cancelar meu pedido depois?',
+    'Ainda não pedi hambúrguer, pode trocar a coca no pedido do quarto?',
+    'Já cancelei meu pedido de hambúrguer',
+    'Já troquei a coca por suco no meu pedido',
+    'Pode trocar o quarto e trazer o hambúrguer que pedi?',
+    'Pode cancelar minha reserva e anotar meu pedido de hambúrguer?',
+  ]) {
+    assert.notEqual(guestServiceRequest(message),'room_service_change',message);
+  }
+  for (const message of [
+    'Não cancele meu pedido de hambúrguer para o quarto',
+    'Não troque a coca por suco no meu pedido do quarto',
+    'Não gostaria de alterar meu pedido de lanche',
+    'Como faço para trocar a coca no meu pedido?',
+  ]) assert.notEqual(turn(message).routed.quote_request,'HUMANO',message);
+});
+
+test('áudio de cancelamento conserva só a intenção de conferir o pedido existente e passa ao humano',async()=>{
+  const source='https://media.example.test/order-change.ogg';
+  const prepared=await handleConversation({operation:'prepare',user_message:source,state:initial},'',
+    async()=> 'Pode cancelar meu pedido de hambúrguer para o quarto B105?',now);
+  assert.equal(JSON.parse(prepared.context).solicitacao_operacional,'room_service_change');
+  assert.doesNotMatch(prepared.state,/B105|hambúrguer|quero fazer um pedido/i);
+  const resolved=await resolve(source,prepared.state);
+  assert.equal(resolved.quote_request,'HUMANO');
+  assert.equal(resolved.match_type,'guest_service');
+  assert.equal(resolved.conversation_text,guestServiceAnswer);
+  assert.equal(resolved.can_collect,'NAO');
+  assert.deepEqual(JSON.parse(resolved.state).facts,initial.facts);
 });
 
 test('controller bloqueia cotação antiga e alegações de execução sem alterar fatos ou pedir dados',()=>{

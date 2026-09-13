@@ -1,4 +1,4 @@
-export type GuestService = 'housekeeping' | 'maintenance' | 'room_service' | 'booking_document' | 'lost_item';
+export type GuestService = 'housekeeping' | 'maintenance' | 'room_service' | 'room_service_change' | 'booking_document' | 'lost_item';
 
 const normalize = (value: string) => String(value || '').normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -6,6 +6,7 @@ const contextMessages: Record<GuestService, string> = {
   housekeeping: 'Solicito atendimento humano para limpeza ou reposição de itens.',
   maintenance: 'Solicito atendimento humano para verificar um problema de manutenção.',
   room_service: 'Quero fazer um pedido de alimentação.',
+  room_service_change: 'Solicito atendimento humano para verificar alteração ou cancelamento de um pedido de alimentação existente.',
   booking_document: 'Solicito atendimento humano para um documento pendente de reserva.',
   lost_item: 'Solicito atendimento humano para verificar um objeto esquecido.',
 };
@@ -13,6 +14,26 @@ const room = '(?:quarto|apartamento|apto|suite)';
 const supplies = /\b(?:toalhas?|travesseiros?|lencol|lencois|cobertor|cobertores|roupa de (?:cama|banho)|papel higienico|reposicao de itens)\b/;
 const food = /\b(?:hamburguer(?:es)?|burger(?:kids)?|burguer(?:kids)?|coca(?:[ -]cola)?|refrigerantes?|sucos?|sanduiches?|lanches?|pizza|cervejas?|agua|pedido de alimentacao)\b/;
 const request = /\b(?:preciso|precisamos|quero|queremos|vou querer|gostaria|solicito|solicitamos|mande|mandem|manda|envie|enviem|traga|tragam|trazer|mandar|enviar|providenciar)\b/;
+
+/** Changing an order already placed needs the team just as placing it does.
+ * A refusal to order, a policy question or a negated change is not that action.
+ * Keep the requested target local so food mentioned elsewhere cannot turn a
+ * request to change a room/reservation into a food-order change. */
+function existingFoodOrderChange(clause: string): boolean {
+  if (!food.test(clause)) return false;
+  if (/\b(?:como|posso|podemos|politica|regras?|hipoteticamente)\b|\b(?:quero|queria|preciso|gostaria de) saber\b|\b(?:se eu|caso eu|se a gente)\b/.test(clause)) return false;
+  if (/\bnao (?:quero|queremos|preciso|precisamos|desejo|gostaria|vou|vamos|cancele|cancela|cancelem|troque|troca|troquem|altere|alterem|mude|mudem|retire|retirem|remova|removam|substitua|substituam)\b/.test(clause)) return false;
+  if (/\bnao (?:pedi|pedimos|encomendei|encomendamos|fiz|fizemos)\b|\bainda (?:vou|vamos) (?:pedir|encomendar|fazer)\b/.test(clause)) return false;
+  const existing = /\b(?:meu|nosso|esse|este|aquele|o) pedido\b|\b(?:no|do) pedido\b|\bpedido (?:do quarto|do apartamento|que (?:eu |nos )?(?:fiz|fizemos))\b|\b(?:que|ja) (?:eu |nos )?(?:pedi|pedimos|encomendei|encomendamos)\b/.test(clause);
+  if (!existing) return false;
+  const mutation = '(?:cancelar|retirar|remover|alterar|mudar|trocar|substituir)';
+  const addressed = new RegExp(`\\b(?:pode|podem|poderia|poderiam|consegue|conseguem|quero|queremos|preciso|precisamos|gostaria|gostariamos) (?:me |nos |de )?${mutation}\\b`).exec(clause);
+  const imperative = /^(?:por favor[, ]+)?(?:cancele|cancela|cancelem|retire|retira|retirem|remova|removam|altere|alterem|mude|mudem|troque|troca|troquem|substitua|substituam)\b/.exec(clause);
+  const action = addressed || imperative;
+  if (!action) return false;
+  const target = clause.slice(action.index! + action[0].length).split(/[,;]|\be\b/)[0];
+  return food.test(target) || /\bpedido\b/.test(target);
+}
 
 /** Current, concrete service needs only. No fulfillment, room identifier,
  * contact data or booking change is inferred or returned. General policies,
@@ -33,6 +54,7 @@ export function guestServiceRequest(message: string): GuestService | undefined {
     if (!clause || /\b(?:fotos?|fotografias?|imagem|imagens|videos?|cardapio|menu)\b/.test(clause)) continue;
     // A question about how the service works is not an order to perform it.
     if (/\b(?:quero|queria|preciso|precisamos|gostaria de) saber\b|\bcomo (?:funciona|solicito|solicitar|peco|pedir|posso pedir|posso solicitar|faco para pedir|faco para solicitar)\b|\bo que fazer se\b|^(?:e )?(?:se|caso)\b|\bnao e verdade que\b/.test(clause)) continue;
+    if (existingFoodOrderChange(clause)) return 'room_service_change';
     if (/\bnao (?:quero|queremos|preciso|precisamos|desejo|vamos|vou|gostaria)\b|\b(?:dispenso|desisti|cancele|cancelar|cancela|remova|remover|retire|retirar|nao mande|nao envie|nao traga)\b/.test(clause)) continue;
     if (/\bnao (?:limpe|limpem|arrume|arrumem|higienize|higienizem)\b/.test(clause)) continue;
 

@@ -68,8 +68,8 @@ function contrastingComposition(message: string) {
   const before=message.slice(negative.index,replacement.index);
   const adults=(s:string)=>/\badult[oa]s?\b|\bcasa(?:l|is)\b/.test(s);
   const children=(s:string)=>/\b(?:criancas?|bebes?|filh[oa]s?)\b/.test(s);
-  const total=(s:string)=>/\b(?:pessoas|hospedes)\b/.test(s);
-  const declared=new RegExp(`^${number}\\s*(?:adult[oa]s?|criancas?|bebes?|filh[oa]s?|pessoas|hospedes|casais|casal)\\b|^(?:um )?casal\\b`).test(after);
+  const total=(s:string)=>/\b(?:pessoas?|hospedes?)\b/.test(s);
+  const declared=new RegExp(`^${number}\\s*(?:adult[oa]s?|criancas?|bebes?|filh[oa]s?|pessoas?|hospedes?|casais|casal)\\b|^(?:um )?casal\\b`).test(after);
   // Do not mix any rejected count/age into the affirmative replacement.
   // A rejected component without a clear replacement needs a fresh group.
   if(!declared||/[?]|\b(?:ou|talvez|acho|nao)\b/.test(after)
@@ -96,6 +96,27 @@ function rememberIncrement(party: FamilyParty, hash: string) {
   party.applied_increment_hashes=[...(party.applied_increment_hashes||[]),hash].slice(-40);
 }
 
+/** A sole traveler replaces the whole party, not just an adult component.
+ * Keep only the declared total: "uma pessoa" does not supply an age. */
+function singleTravelerDeclaration(s: string): 'single' | 'unasserted' | undefined {
+  const totals=[...s.matchAll(new RegExp(`\\b${number}\\s*(?:pessoas?|hospedes?)\\b`,'g'))];
+  const one=totals.length===1&&quantity(totals[0][1])===1?totals[0]:undefined;
+  const singleTotal=!!one&&(new RegExp(`^(?:e |so |apenas |somente )?${number}\\s*(?:pessoas?|hospedes?)[.!]*$`).test(s)
+    || /\b(?:para|somos|seremos|sao|sera|so|apenas|somente|total de|ao todo)\s*$/.test(s.slice(0,one.index!)));
+  const alone=/^sozinh[oa][.!]*$/.test(s)||/\b(?:vou|irei|viajarei|ficarei|estarei|vou viajar|vou ficar|vou me hospedar)\s+sozinh[oa]\b/.test(s)
+    || /\b(?:para\s+(?:(?:a )?minha mae|(?:o )?meu pai|mim|ela|ele)|(?:minha mae|meu pai|ela|ele)\s+(?:vai|ira|viajara))\s+sozinh[oa]\b/.test(s)
+    || /\b(?:so|apenas|somente)\s+(?:eu|para mim)(?=[,.;!?]|$|\s+(?:de|entre|no periodo|em)\b)/.test(s);
+  if(!singleTotal&&!alone)return;
+  // A hypothetical, negated, per-room or per-person amount is not a new group.
+  if(/[?]|\b(?:nao|talvez|se|caso|hipoteticamente|poderia|posso|pode|sera que|ou|acho|exemplo|cada|por pessoa|por hospede|capacidade|cabe|cabem)\b/.test(s))return 'unasserted';
+  if(/(?:\b(?:e|com)\s+|[,;]\s*)(?:(?:a|o|as|os)\s+)?(?:meu|minha|meus|minhas|outra|outro|esposa|esposo|marido|namorada|namorado|acompanhante)\b/.test(s))return 'unasserted';
+  if(/\b(?:criancas?|bebes?|filh[oa]s?|casal|casais|mais|inclu(?:a|ir|i)|adicion(?:a|ar|e)|acrescent(?:a|ar|e))\b/.test(s))return;
+  const adults=[...s.matchAll(new RegExp(`\\b${number}\\s*adult[oa]s?\\b`,'g'))];
+  if(totals.length>1||totals.some(match=>quantity(match[1])!==1)
+    ||adults.length>1||adults.some(match=>quantity(match[1])!==1))return;
+  return 'single';
+}
+
 /**
  * Call only in a lodging/family fact-collection context. It neither chooses
  * that context nor changes booking facts. The caller owns topic/TTL resets.
@@ -118,10 +139,13 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   const contrast=contrastingComposition(s);
   if(!contrast.message)return result({ages_months:[],updated_at:now,last_message_hash:messageHash},'party_composition');
   s=contrast.message;
+  const single=singleTravelerDeclaration(s);
+  if(single==='unasserted')return {handled:false,...(old?{party:old}:{})};
+  if(single==='single')return result({total:1,ages_months:[],updated_at:now,last_message_hash:messageHash});
   const correction=contrast.corrected||/\b(?:na verdade|corrigindo|correcao|me enganei|quis dizer)\b/.test(s);
   const childMatches=[...s.matchAll(new RegExp(`\\b${number}\\s*(?:criancas?|bebes?|filh[oa]s?)\\b`,'g'))];
   const adultMatches=[...s.matchAll(new RegExp(`\\b${number}\\s*adult[oa]s?\\b`,'g'))];
-  const totalMatches=[...s.matchAll(new RegExp(`\\b${number}\\s*(?:pessoas|hospedes)\\b`,'g'))];
+  const totalMatches=[...s.matchAll(new RegExp(`\\b${number}\\s*(?:pessoas?|hospedes?)\\b`,'g'))];
   const contextualTotal=(old||validCount(knownTotal)&&Number(knownTotal)>0)
     ? new RegExp(`^nos(?:\\s+somos)?\\s+${number}[.!?]?$`).exec(s) : null;
   const hasTotal=totalMatches.length>0||!!contextualTotal;
