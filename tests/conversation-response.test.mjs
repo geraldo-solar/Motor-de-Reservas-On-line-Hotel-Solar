@@ -360,7 +360,10 @@ test('saudações e termos genéricos não selecionam o Dia das Crianças', asyn
   assert.doesNotMatch(result.conversation_text, /OUTUBRO15|15 reservas/);
 });
 
-test('teste de 11/09: dois adultos e três crianças em setembro não selecionam feriado de outubro, por texto ou áudio', async () => {
+test('teste de 11/09: dois adultos e três crianças em setembro não selecionam feriado de outubro, por texto ou áudio', async (t) => {
+  // This reproduces the 11/09 conversation; do not let future test runs
+  // interpret its yearless arrival as the following year's September.
+  t.mock.method(Date, 'now', () => Date.parse('2026-09-11T10:00:00-03:00'));
   const bundled=await build({entryPoints:['api/conversation-control.ts'],bundle:true,write:false,platform:'node',format:'esm'});
   const {control,handleConversation}=await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
   const childrenPackage={...packages[0],id:'criancas',name:'Dia das Crianças: 4 Dias de Feriado em Salinas',

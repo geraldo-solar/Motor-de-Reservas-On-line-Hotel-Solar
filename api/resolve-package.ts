@@ -1,7 +1,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { resolveRoomMedia, nextRoomMedia } from '../utils/roomMedia.js';
-import { control } from './conversation-control.js';
+import { control, safeTypedMessage } from './conversation-control.js';
 import { withDailyGreeting } from '../utils/dailyGreeting.js';
 import { PHOTO_CLARIFY, documentPhotoInquiry, photoClarificationQuestion, photoRetryRequest } from '../utils/photoIntent.js';
 import { requestedExtraCodes, extraCodes, extraPhotoRequest, extraMediaResult, nextExtraMedia, normalizeExtra, explicitPackageBoatBenefit, safeBoatCopy, safeBoatPackageCopy } from '../utils/extraMedia.js';
@@ -26,6 +26,7 @@ import { familyAccommodation, familyAgeQuestionFor } from '../utils/familyAccomm
 import {readMultiRoomHandoff} from '../utils/multiRoomHandoff.js';
 import {multiRoomRequest} from '../utils/lodgingScope.js';
 import {reservaHoursAnswer} from '../utils/diningPolicy.js';
+import {explicitHumanRequest,stripNegatedHumanRequests} from '../utils/humanIntent.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -275,7 +276,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({...routed, answer:message, quote_text:message, conversation_text:message,
       matched:false, match_type:'attachment', availability_checked:false});
   }
-  let serviceMessage = incomingMessage;
+  let serviceMessage = safeTypedMessage(incomingMessage);
   if (isAudioInput(incomingMessage)) {
     try {
       const state = typeof req.body?.state === 'string' ? JSON.parse(req.body.state) : req.body?.state;
@@ -304,7 +305,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   let eventReply=false;
   try {const state=typeof req.body?.state==='string'?JSON.parse(req.body.state):req.body?.state;eventReply=eventFieldReply(state?.event,serviceMessage);} catch { /* Invalid state cannot establish event context. */ }
-  if (!req.query?.operation && !eventReply && guestServiceRequest(serviceMessage)) {
+  if (!req.query?.operation && !eventReply && guestServiceRequest(stripNegatedHumanRequests(serviceMessage))) {
     // Use the same existing handoff code even when invoked directly. No
     // catalog, private-event delivery, document issuance or service order runs.
     const routed = control({operation:'route',user_message:incomingMessage,state:req.body?.state});
@@ -351,7 +352,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'Missing Supabase configuration.' });
   }
 
-  let userMessage = incomingMessage;
+  let userMessage = isAudioInput(incomingMessage) ? incomingMessage : safeTypedMessage(incomingMessage);
   let conversationState: any;
   try {
     const state = typeof req.body?.state === 'string' ? JSON.parse(req.body.state) : req.body?.state;
@@ -371,7 +372,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const checked = control({operation:'remember_response',state:req.body?.state});
   const safeState = 'state' in checked && checked.state ? JSON.parse(checked.state) : null;
   const sourceMessage = isAudioInput(incomingMessage)
-    ? audioMessage(incomingMessage,safeState) || '' : incomingMessage;
+    ? audioMessage(incomingMessage,safeState) || '' : safeTypedMessage(incomingMessage);
   const currentInput = sourceMessage.slice(0,2000);
   const currentState = safeState?.history?.at(-1) === currentInput.slice(0,500)
     && safeState?.resolved_message === userMessage.slice(0,500);
@@ -405,6 +406,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? locmilAnswer(userMessage) || 'Pode detalhar qual informação do hotel você deseja esclarecer?'
         : 'Pode detalhar qual informação do hotel você deseja esclarecer?';
       return res.status(200).json(informationResult(fallback,'guest_information'));
+    }
+    // A refusal followed by an informational question must retain the current
+    // answer, not fall through to unsolicited leisure/extra media. Explicit
+    // human, operational and existing-reservation requests keep their earlier
+    // routes; photo requests do not establish a current assistant answer here.
+    if (currentAnswer && stripNegatedHumanRequests(currentInput) !== currentInput
+      && !explicitHumanRequest(currentInput)
+      && !eventInquiry(currentInput) && !publicEventInquiry(currentInput)
+      && !extraPhotoRequest(currentInput)) {
+      return res.status(200).json(informationResult(currentAnswer,'human_refusal_information'));
     }
   }
   if (req.query?.operation === 'offers' && safeState?.stay_date_pending

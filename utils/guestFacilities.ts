@@ -1,3 +1,5 @@
+import { stripNegatedHumanRequests } from './humanIntent.js';
+
 /** The owner confirmed the full 26/08 guidance on 08/09/2026. This is a
  * shared guest facility, not confirmation of room appliances or staff service. */
 export const confirmedGuestFacilitiesPolicy = {
@@ -56,7 +58,7 @@ export function guestFacilityServiceRequest(message: string): boolean {
 /** Narrow, current facility FAQ. Other equipment, photos, service requests,
  * visitor permission, maintenance and bookings retain their own handling. */
 export function guestFacilityInquiry(message: string): 'copa_baby' | undefined {
-  const s = normalize(message);
+  const s = normalize(stripNegatedHumanRequests(message));
   if (!s || guestFacilityServiceRequest(s) || media.test(s) || unrelatedHeating.test(s)) return;
   if (/\b(?:forno|fogao|geladeira|refrigerador|adaptad[oa]|acessibilidade|cadeirante|cozinhar|preparar refeicoes)\b/.test(s)) return;
   if (/\b(?:nao (?:estou|esta|estao|estamos|sou|e|somos) hospedad[oa]s?|nao hospedes?|visitantes?)\b/.test(s)) return;

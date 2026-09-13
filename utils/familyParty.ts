@@ -14,6 +14,9 @@ export type FamilyParty = {
   ages_months: number[];
   updated_at: number;
   last_message_hash?: string;
+  // Only hashes of accepted incremental changes/age continuations. A replay
+  // after another message must not add that same person or age twice.
+  applied_increment_hashes?: string[];
   clarification?: 'party_composition' | 'child_ages' | 'age_reference';
 };
 export type FamilyPartyResult = {
@@ -38,10 +41,13 @@ export function readFamilyParty(value: any, now=Date.now()): FamilyParty | undef
   for (const key of ['adults','children','total']) if(value[key]!==undefined&&!validCount(value[key],key==='children'?20:60))return;
   if (value.adults===undefined&&value.children===undefined&&value.total===undefined&&value.clarification!=='party_composition') return;
   if (value.children===undefined&&value.ages_months.length || value.children!==undefined&&value.ages_months.length>value.children) return;
+  if (value.applied_increment_hashes!==undefined && (!Array.isArray(value.applied_increment_hashes)
+    || value.applied_increment_hashes.length>40 || value.applied_increment_hashes.some((hash:unknown)=>typeof hash!=='string'||!/^[a-f0-9]{64}$/.test(hash)))) return;
   return { ...(value.adults===undefined?{}:{adults:value.adults}), ...(value.children===undefined?{}:{children:value.children}),
     ...(value.age_subject==='offspring'?{age_subject:'offspring' as const}:{}),
     ...(value.total===undefined?{}:{total:value.total}),ages_months:[...value.ages_months],updated_at:value.updated_at,
     ...(/^[a-f0-9]{64}$/.test(value.last_message_hash||'')?{last_message_hash:value.last_message_hash}:{}),
+    ...(value.applied_increment_hashes?.length?{applied_increment_hashes:[...value.applied_increment_hashes]}:{}),
     ...(['party_composition','child_ages','age_reference'].includes(value.clarification)?{clarification:value.clarification}:{}) };
 }
 
@@ -86,6 +92,10 @@ function result(party: FamilyParty, clarification?: FamilyPartyResult['clarifica
     ...(issue?{clarification:issue}:{} )};
 }
 
+function rememberIncrement(party: FamilyParty, hash: string) {
+  party.applied_increment_hashes=[...(party.applied_increment_hashes||[]),hash].slice(-40);
+}
+
 /**
  * Call only in a lodging/family fact-collection context. It neither chooses
  * that context nor changes booking facts. The caller owns topic/TTL resets.
@@ -97,6 +107,13 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   if(!s) return {handled:false,...(old?{party:old}:{})};
   const messageHash=createHash('sha256').update(s).digest('hex');
   if(old?.last_message_hash===messageHash)return result(old,old.clarification);
+  if(old?.applied_increment_hashes?.includes(messageHash)) {
+    // After an intervening change, identical wording may be either a replay
+    // or a genuine change of plans (add → remove → add). Neither applying it
+    // again nor silently treating the old group as complete is safe.
+    return result({...old,ages_months:[...old.ages_months],updated_at:now,last_message_hash:messageHash},
+      familyAgeFollowup(s)?'age_reference':'party_composition');
+  }
   if(childPolicyQuestion(s))return {handled:false,...(old?{party:old}:{})};
   const contrast=contrastingComposition(s);
   if(!contrast.message)return result({ages_months:[],updated_at:now,last_message_hash:messageHash},'party_composition');
@@ -129,6 +146,49 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   const party:FamilyParty=old?{...old,ages_months:[...old.ages_months],updated_at:now,last_message_hash:messageHash}:{ages_months:[],updated_at:now,last_message_hash:messageHash};
   if(barePendingAge)return result(party,'age_reference');
   if(adultMatches.length>1||totalMatches.length>1) return result(party,'party_composition');
+  const component=[...childMatches,...adultMatches].sort((a,b)=>a.index!-b.index!)[0];
+  const componentPrefix=component?s.slice(0,component.index!).trim():'';
+  const componentSuffix=component?s.slice(component.index!+component[0].length):'';
+  const subtract=!!component && (/\b(?:menos|retir(?:a|ar|e)|remov(?:a|er|e)|exclu(?:a|ir|i))\s*$/.test(componentPrefix)
+    || /^\s*(?:de\s+\d+\s*(?:anos?|meses?)\s*)?nao\s+(?:vai|vem|ira|vao|irao)(?:\s+mais)?\b/.test(componentSuffix));
+  const add=!!component && /\b(?:mais|adicion(?:a|ar|e)|acrescent(?:a|ar|e)|inclu(?:a|ir|i))\s*$/.test(componentPrefix);
+  if(add||subtract) {
+    // A delta is not a replacement family. Apply only an explicit operation
+    // against known counts; questions and alternatives need clarification.
+    if(!old||old.clarification==='party_composition'||childMatches.length>1||adultMatches.length>1
+      || /[?]|\b(?:talvez|acho|se|poderia|pode|posso|sera|ou)\b/.test(s)
+      || add&&!subtract&&/\bnao\b/.test(s)
+      || childMatches.length&&old.children===undefined||adultMatches.length&&old.adults===undefined)
+      return result(party,'party_composition');
+    const childDelta=childMatches.length?quantity(childMatches[0][1]):0;
+    const adultDelta=adultMatches.length?quantity(adultMatches[0][1]):0;
+    const nextChildren=(old.children||0)+(subtract?-childDelta:childDelta);
+    const nextAdults=(old.adults||0)+(subtract?-adultDelta:adultDelta);
+    if(childDelta+adultDelta<1||childDelta>20||adultDelta>60
+      || !validCount(nextChildren,20)||!validCount(nextAdults,60))return result(party,'party_composition');
+    if(childDelta&&(ageValues.some(age=>!validCount(age,1440))||ageValues.length>childDelta))return result(party,'child_ages');
+    if(childMatches.length)party.children=nextChildren;
+    if(adultMatches.length)party.adults=nextAdults;
+    if(hasTotal)party.total=quantity(totalMatches[0]?.[1]||contextualTotal![1]);
+    else if(old.total!==undefined)party.total=old.total+(subtract?-1:1)*(childDelta+adultDelta);
+    if(offspringMention)party.age_subject='offspring';
+    if(childDelta) {
+      if(subtract) {
+        // Without the removed children's ages, the remaining age list cannot
+        // safely be guessed. Keep the new count and ask for those ages.
+        const remaining=[...old.ages_months];
+        let identified=ageValues.length===childDelta;
+        for(const age of ageValues) {
+          const index=remaining.indexOf(age);
+          if(index<0){identified=false;break;}
+          remaining.splice(index,1);
+        }
+        party.ages_months=identified?remaining:[];
+      } else party.ages_months.push(...ageValues);
+    }
+    rememberIncrement(party,messageHash);
+    return result(party,party.children!==undefined&&party.ages_months.length<party.children?'child_ages':undefined);
+  }
   // "Sem crianças" does not remove adult offspring from the party. Without
   // a replacement count, keep their slots (or clarify an explicit correction).
   if(old?.age_subject==='offspring'&&old.children&&!childMatches.length&&!unspecifiedOffspring) {
@@ -143,6 +203,9 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   if(childMatches.length&&adultMatches.length&&/\b(?:incluindo|dentre|entre eles|dos quais|sendo)\b/.test(s)
     && offspringMention)return result(party,'party_composition');
   if(hasTotal)party.total=quantity(totalMatches[0]?.[1]||contextualTotal![1]);
+  if(correction&&countDeclaration||childMatches.length&&quantity(childMatches[0][1])!==old?.children
+    || adultMatches.length&&quantity(adultMatches[0][1])!==old?.adults||couple!==undefined&&2*couple!==old?.adults)
+    delete party.applied_increment_hashes;
   if(adultMatches.length)party.adults=quantity(adultMatches[0][1]);
   else if(couple!==undefined)party.adults=2*couple;
   if(offspringMention&&(childMatches.length||unspecifiedOffspring))party.age_subject='offspring';
@@ -184,8 +247,14 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
     if(ageValues.some(age=>!validCount(age,1440))||party.children===undefined||ageValues.length>party.children)return result(party,'child_ages');
     if(childMatches.length||ageValues.length===party.children||party.children===1)party.ages_months=ageValues;
     else if(correction) {party.ages_months=[];return result(party,'age_reference');}
-    else if(party.ages_months.length===0)party.ages_months=ageValues;
-    else if(party.children===2&&party.ages_months.length===1&&ageValues.length===1&&/\b(?:a outra|o outro|outra crianca|outro bebe)\b/.test(s))party.ages_months.push(ageValues[0]);
+    else if(party.ages_months.length===0) {
+      party.ages_months=ageValues;
+      rememberIncrement(party,messageHash);
+    }
+    else if(party.ages_months.length<party.children&&ageValues.length===1&&/\b(?:a outra|o outro|outra crianca|outro bebe)\b/.test(s)) {
+      party.ages_months.push(ageValues[0]);
+      rememberIncrement(party,messageHash);
+    }
     else return result(party,'age_reference');
   }
   if(old?.clarification==='party_composition'&&party.adults===undefined&&party.children===undefined)

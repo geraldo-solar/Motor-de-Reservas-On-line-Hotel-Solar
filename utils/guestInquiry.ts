@@ -6,6 +6,7 @@ import { guestFacilityInquiry } from './guestFacilities.js';
 import { diningPolicyAnswer } from './diningPolicy.js';
 import { hotelPolicyInquiry } from './hotelPolicy.js';
 import { reservaRestaurantMessage } from './restaurantIntent.js';
+import { stripNegatedHumanRequests } from './humanIntent.js';
 
 export type GuestInquiry = 'lodging_faq' | 'day_use' | 'dining';
 
@@ -127,7 +128,7 @@ function lodgingFaq(s: string): boolean {
  * Preserve existing package/human/event/media routes ahead of this helper.
  */
 export function guestInquiry(message: string): GuestInquiry | undefined {
-  message = reservaRestaurantMessage(message);
+  message = reservaRestaurantMessage(stripNegatedHumanRequests(message));
   const s = normalize(message);
   if (!s || mediaWords.test(s) || humanWords.test(s)
     || eventInquiry(message) || publicEventInquiry(message)) return;

@@ -13,6 +13,7 @@ import { packageInquiry, packageFollowup, packageBookingRequest, newTripRequest,
 import { guestInquiry, explicitLodgingRequest, type GuestInquiry } from '../utils/guestInquiry.js';
 import { confirmedDiningPolicy, diningPolicyAnswer, reservaHoursAnswer } from '../utils/diningPolicy.js';
 import { reservaRestaurantMessage } from '../utils/restaurantIntent.js';
+import { explicitHumanRequest, stripNegatedHumanRequests } from '../utils/humanIntent.js';
 import { childPolicyQuestion, childAgeFollowup } from '../utils/packageChildInquiry.js';
 import { multiRoomRequest } from '../utils/lodgingScope.js';
 import {readMultiRoomHandoff,multiRoomKey,multiRoomReply,multiRoomOfferText,multiRoomAcceptedText,multiRoomDeclinedText,type MultiRoomHandoff} from '../utils/multiRoomHandoff.js';
@@ -71,11 +72,14 @@ function marketingOptOut(s: string): boolean {
 const reservationChange = (s: string) => !/\bnao (?:vamos|vou|quero|preciso|desejo)\s+(?:mais )?(?:reagendar|remarcar|alterar|mudar|trocar)\b/.test(s)
   && (/\b(?:reagendar|remarcar)\b/.test(s) && /\b(?:quero|preciso|gostaria|podemos|posso|pode|conseguimos|consigo|minha|nossa)\b/.test(s)
     || /\b(?:alterar|mudar|trocar)\b.{0,65}\b(?:minha|nossa) reserva\b/.test(s));
-const human = (s: string) => marketingOptOut(s) || paymentDispute(s) || reservationChange(s) || multiRoomRequest(s) || /\b(atendente|falar com (uma pessoa|alguem|a recepcao|um humano)|(?:chama|chame|chamar|encaminhar)(?:r?\s+(?:para|a|o))?\s+(?:recepcao|atendente)|atendimento humano|reclamacao|quero reclamar|cancelar minha reserva|reembolso|nao quero informar|prefiro nao informar)\b/.test(s) || s === 'recepcao';
+const human = (s: string) => marketingOptOut(s) || paymentDispute(s) || reservationChange(s) || multiRoomRequest(s)
+  || /\b(reclamacao|quero reclamar|cancelar minha reserva|reembolso)\b/.test(s) || explicitHumanRequest(s);
 const greeting = (s: string) => /^(oi|ola|bom dia|boa tarde|boa noite|tudo bem)([ ,.!?]*(tudo bem|bom dia|boa tarde|boa noite))?[ ,.!?]*$/.test(s);
 // Asking to see something is informational, even with "quero" and a room name.
 const mediaRequest = (s: string) => /\b(fotos?|fotografias?|imagem|imagens|videos?|galeria|album)\b/.test(s);
-const personal = (s: string) => /@|\b(?:\d[.\s-]*){11,}\b|\b(cpf|meu nome|me chamo)\b/i.test(s);
+const labeledDocument = '\\b(?:cpf|rg|cnh|passaporte)\\s*(?:(?:[ée]|n[uú]mero|n[º°]|:)\\s*)*(?:[a-z]{0,3}\\d(?:[ ./-]*\\d){3,}[a-z]?)\\b';
+const personal = (s: string) => /@|\b(?:\d[.\s-]*){11,}\b|\b(cpf|meu nome|me chamo)\b/i.test(s)
+  || new RegExp(labeledDocument, 'i').test(s);
 const knownMediaCode = (code: unknown): code is string => typeof code === 'string' && EXTRA_MEDIA_CODES.some(known => known === code);
 const photoSubjectLabels: Record<string, string> = {BARCO: 'barco', MESA: 'mesa posta', LUA: 'kit lua de mel', BIKE: 'bicicletas', PARQUE: 'parque infantil', PISCINA: 'piscinas', HIDRO: 'piscinas de hidromassagem'};
 
@@ -120,10 +124,11 @@ function safeAudioText(value: string): string {
   value=withAssignedFamilyAgeUnits(value,/\b(?:criancas?|filh[oa]s?|bebes?)\b/.test(norm(value)));
   let text = value
     .replace(/[^\s@,;!?<>]+@[^\s@,;!?<>]+/g, '[Dado pessoal omitido]')
+    .replace(new RegExp(labeledDocument, 'gi'), 'Documento [Dado pessoal omitido]')
     .replace(/\+?\b\d(?:[\s().-]*\d){10,}\b/g, '[Dado pessoal omitido]');
   if (marketingOptOut(norm(text))) return 'Não quero receber mensagens promocionais';
   if (paymentStatusInquiry(text)) return paymentStatusContext;
-  const service = guestServiceRequest(text);
+  const service = guestServiceRequest(stripNegatedHumanRequests(text));
   if (service) return guestServiceContext(service);
   if (existingReservationInquiry(text)) return existingReservationContext;
   if (human(norm(text))) return 'Quero falar com a recepção';
@@ -134,12 +139,26 @@ function safeAudioText(value: string): string {
   for (let clause = nameClause.exec(text); clause; clause = nameClause.exec(text)) {
     const tail = text.slice(clause.index + clause[0].length);
     const nextRequest = requestStart.exec(tail);
-    text = text.slice(0, clause.index) + (nextRequest ? tail.slice(nextRequest.index) : '');
+    // Also recognize a new, clearly separated hotel request without a verb.
+    // Do not keep an arbitrary sentence: it could still be part of the name
+    // or another personal detail rather than a useful hotel question.
+    const separatedRequest = /[.!?;\n]\s*((?:(?:o|a|os|as)\s+)?(?:reserva solar|reserva|solar 73|hotel|piscinas?|fotos?|imagens|card[aá]pio|entrada|sa[ií]da|check[ -]?(?:in|out)|tenho|estamos|vamos|s[aã]o)\b)/i.exec(tail);
+    const candidates = [nextRequest?.index, separatedRequest ? separatedRequest.index + separatedRequest[0].indexOf(separatedRequest[1]) : undefined]
+      .filter((index): index is number => index !== undefined);
+    text = text.slice(0, clause.index) + (candidates.length ? tail.slice(Math.min(...candidates)) : '');
   }
   // Asking about this document is not itself personal data. Spell out its
   // name so the existing typed-message privacy filter does not erase the query.
   text = text.replace(/\bcpf\b/gi, 'Cadastro de Pessoas Físicas').replace(/\s+/g, ' ').trim();
   return text && !personal(text) ? text.slice(0, 2000) : '[Dado pessoal omitido]';
+}
+
+// A typed introduction must not erase the useful request after the name.
+// Apply the same conservative redaction used by audio before interpreting or
+// remembering the message. Plain text and media URLs retain their exact form.
+// The resolver uses this too so its current-turn checks match the safe history.
+export function safeTypedMessage(value: string): string {
+  return personal(value) ? safeAudioText(value) : value;
 }
 
 function loadState(value: unknown, now = Date.now()): State {
@@ -271,40 +290,70 @@ function iso(day: number, month: number, year: number): string | undefined {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date.toISOString().slice(0, 10) : undefined;
 }
 
-function parseDates(s: string, now: number): string[] {
+function parseDates(s: string, now: number): { dates: string[]; unclear?: boolean } {
   const today = new Date(now - 3 * 3600000).toISOString().slice(0, 10);
   const currentYear = Number(today.slice(0, 4));
-  const full = [...s.matchAll(/\b(20\d{2})-(\d{2})-(\d{2})\b/g)].map(m => iso(+m[3], +m[2], +m[1]));
-  if (full.length) return full.filter(Boolean) as string[];
-  const numeric = [...s.matchAll(/\b(\d{1,2})\/(\d{1,2})(?:\/(20\d{2}))?\b/g)].map(m => {
-    let result = iso(+m[1], +m[2], Number(m[3] || currentYear));
+  const yearNumber = (value?: string) => value ? Number(value.length === 2 ? `20${value}` : value) : currentYear;
+  const finish = (matches: {date: string | undefined; index: number; end: number}[]) => {
+    if (matches.some(m => !m.date) || matches.length > 2) return {dates:[],unclear:true};
+    const dates = matches.map(m => m.date!);
+    if (matches.length === 2) {
+      // Labels, when supplied beside each date, take precedence over mention order.
+      const labels = matches.map((m,i) => [...s.slice(i ? matches[i-1].end : 0,m.index)
+        .matchAll(/\b(entrada|check.?in|chego|entro|entrar|saida|check.?out|saio|sair)\b/g)].at(-1)?.[1]);
+      const isExit = (label: string | undefined) => !!label && /^(?:saida|check.?out|saio|sair)$/.test(label);
+      if (labels.every(Boolean)) {
+        if (isExit(labels[0]) === isExit(labels[1])) return {dates:[],unclear:true};
+        if (isExit(labels[0])) dates.reverse();
+      }
+    }
+    return {dates};
+  };
+  // A shared month belongs to BOTH days. Never take only "21/09" from
+  // "19 a 21/09", nor guess a previous month for an inverted abbreviated range.
+  const abbreviated = [...s.matchAll(/(?<![\d/])\b(\d{1,2})\s*(?:a|ate|ao|-)\s*(\d{1,2})\/(\d{1,2})(?:\/(20\d{2}|\d{2}))?\b(?![\d/])/g)];
+  if (abbreviated.length) {
+    const m = abbreviated[0];
+    const outside = s.slice(0,m.index) + s.slice(m.index!+m[0].length);
+    if (abbreviated.length !== 1 || calendarDateMention(outside) || +m[1] >= +m[2]) return {dates:[],unclear:true};
+    let year = yearNumber(m[4]);
+    if (!m[4] && (iso(+m[1],+m[3],year) || '') < today) year++;
+    return finish([{date:iso(+m[1],+m[3],year),index:m.index!,end:m.index!+m[0].length},
+      {date:iso(+m[2],+m[3],year),index:m.index!+m[0].length,end:m.index!+m[0].length}]);
+  }
+  if (/(?<![\d/])\b\d{1,2}\s*(?:a|ate|ao|-)\s*\d{1,2}\/\d/.test(s)) return {dates:[],unclear:true};
+  const full = [...s.matchAll(/\b(20\d{2})-(\d{2})-(\d{2})\b/g)].map(m => ({date:iso(+m[3],+m[2],+m[1]),index:m.index!,end:m.index!+m[0].length}));
+  if (full.length) return finish(full);
+  const numeric = [...s.matchAll(/\b(\d{1,2})\/(\d{1,2})(?:\/(20\d{2}|\d{2}))?\b(?![\d/])/g)].map(m => {
+    let result = iso(+m[1], +m[2], yearNumber(m[3]));
     if (!m[3] && result && result < today) result = iso(+m[1], +m[2], currentYear + 1);
-    return result;
+    return {date:result,index:m.index!,end:m.index!+m[0].length};
   });
-  if (numeric.length) return numeric.filter(Boolean) as string[];
+  if (numeric.length) return finish(numeric);
   const range = s.match(new RegExp(`\\b(\\d{1,2})(?:\\s+de)?\\s*(?:a|ate|ao|-)\\s*(\\d{1,2})\\s*(?:de\\s+)?(${months.join('|')})(?:\\s+(?:de\\s+)?(20\\d{2}))?\\b`));
   if (range) {
     const month = months.indexOf(range[3]) + 1;
     let year = Number(range[4] || currentYear);
     if (!range[4] && (iso(+range[1], month, year) || '') < today) year++;
-    return [iso(+range[1], month, year), iso(+range[2], month, year)].filter(Boolean) as string[];
+    return finish([{date:iso(+range[1],month,year),index:range.index!,end:range.index!+range[0].length},
+      {date:iso(+range[2],month,year),index:range.index!+range[0].length,end:range.index!+range[0].length}]);
   }
   const written = [...s.matchAll(new RegExp(`\\b(\\d{1,2})\\s+(?:de\\s+)?(${months.join('|')})(?:\\s+(?:de\\s+)?(20\\d{2}))?\\b`, 'g'))].map(m => {
     const month = months.indexOf(m[2]) + 1;
     let year = Number(m[3] || currentYear);
     if (!m[3] && (iso(+m[1], month, year) || '') < today) year++;
-    return iso(+m[1], month, year);
+    return {date:iso(+m[1],month,year),index:m.index!,end:m.index!+m[0].length};
   });
-  if (written.length) return written.filter(Boolean) as string[];
+  if (written.length) return finish(written);
   if (/\b(esse|este|proximo|neste|nesse)?\s*(final de semana|fim de semana)\b/.test(s)) {
     const friday = new Date(`${today}T12:00:00Z`);
     let days = (5 - friday.getUTCDay() + 7) % 7;
     if (/proximo/.test(s) && days === 0) days = 7;
     friday.setUTCDate(friday.getUTCDate() + days);
     const sunday = new Date(friday); sunday.setUTCDate(sunday.getUTCDate() + 2);
-    return [friday.toISOString().slice(0, 10), sunday.toISOString().slice(0, 10)];
+    return {dates:[friday.toISOString().slice(0, 10), sunday.toISOString().slice(0, 10)]};
   }
-  return [];
+  return {dates:[]};
 }
 
 function clearStayDuration(state: State) {
@@ -314,7 +363,8 @@ function clearStayDuration(state: State) {
 }
 
 function updateStayDates(state: State, s: string, now: number) {
-  const dates = parseDates(s, now);
+  const parsedDates = parseDates(s, now);
+  const dates = parsedDates.dates;
   const packageScope = state.topic === 'package_info';
   const requested = packageScope ? undefined : stayDurationRequest(s, now);
   const previousPending = state.stay_date_pending;
@@ -331,9 +381,25 @@ function updateStayDates(state: State, s: string, now: number) {
   }
   const entryMention = explicitStayEntry(s) || /\b(?:entrar|a partir de|desde)\b/.test(s);
   const exitMention = explicitStayExit(s) || /\bsair\b/.test(s);
+  const correction = /\b(?:mudar|mude|muda|alterar|altere|altera|trocar|troque|troca|corrigir|corrija|corrige|adiar|antecipar|prorrogar|estender|na verdade|correcao)\b/.test(s);
+  const negatedCorrection = /\bnao (?:quero |queremos |vou |vamos |precisa |preciso |e para )?(?:mudar|mude|muda|alterar|altere|altera|trocar|troque|troca|corrigir|corrija|corrige|adiar|antecipar|prorrogar|estender)\b/.test(s);
+  if (!packageScope && correction && negatedCorrection) return;
+  if (!packageScope && correction && exitMention && !entryMention && !dates.length && !parsedDates.unclear
+    && !/\b(?:se|caso|hipoteticamente)\b/.test(s)) {
+    // Keep the customer-declared arrival, but make the old checkout unusable
+    // while the customer sends the replacement in their next short message.
+    clearStayDuration(state);
+    delete state.facts.check_out; delete state.pending;
+    state.stay_date_pending = state.facts.check_in
+      ? {at:now,reason:'checkout_correction',check_in:state.facts.check_in}
+      : {at:now,reason:'unparsed_dates'};
+    return;
+  }
   const newEntry = entryMention || !exitMention && (explicitLodgingRequest(s)
     || /\b(?:nova|outra) (?:hospedagem|estadia|viagem|cotacao)\b/.test(s));
-  const unparsed = !dates.length && (unparsedStayDateDeclaration(s)
+  const ambiguousSingleCorrection = dates.length === 1 && !entryMention && !exitMention && !/\bate\b/.test(s) && !newEntry
+    && !!state.facts.check_in && !!state.facts.check_out;
+  const unparsed = parsedDates.unclear || ambiguousSingleCorrection || !dates.length && (unparsedStayDateDeclaration(s)
     || newEntry && /\b\d{1,2}[-/]\d{1,2}(?:[-/](?:20)?\d{2})?\b/.test(s))
     || dates.length === 1 && entryMention && exitMention;
   if (!packageScope && (unparsed || dates.length < 2 && relativeStayDateMention(s)
@@ -366,7 +432,7 @@ function updateStayDates(state: State, s: string, now: number) {
   }
   if (dates.length >= 2) { state.facts.check_in = dates[0]; state.facts.check_out = dates[1]; }
   else if (dates.length === 1) {
-    if (explicitStayExit(s) || /\bate\b/.test(s)) state.facts.check_out = dates[0];
+    if (exitMention || /\bate\b/.test(s)) state.facts.check_out = dates[0];
     else if (newEntry) {
       state.facts.check_in = dates[0];
       // A newly specified entry cannot inherit the checkout of an older
@@ -497,7 +563,7 @@ function controlTurn(body: any, now = Date.now()) {
   }
   if (input && !attachment) delete state.attachment;
   const audio = isAudioInput(input);
-  const raw = (audio ? audioMessage(input, state, now) || AUDIO_UNAVAILABLE : input).slice(0, 2000);
+  const raw = (audio ? audioMessage(input, state, now) || AUDIO_UNAVAILABLE : safeTypedMessage(input)).slice(0, 2000);
   const s = norm(raw);
   if(body.operation==='prepare' && !multiRoomReply(raw))delete state.multi_room;
   const existingRequest = existingReservationInquiry(raw, !!state.existing_reservation)
@@ -559,7 +625,7 @@ function controlTurn(body: any, now = Date.now()) {
       can_collect:'NAO',confirmation_text:'',answer:hotelContactAnswer};
   }
   const continuingEvent = eventFieldReply(state.event,raw,now);
-  const service = continuingEvent ? undefined : guestServiceRequest(raw);
+  const service = continuingEvent ? undefined : guestServiceRequest(stripNegatedHumanRequests(raw));
   if (service && ['prepare', 'route', 'confirm'].includes(body.operation)) {
     // An active guest request must not enter new-stay qualification or turn
     // a group's pending document into a new private-event lead.
@@ -684,7 +750,7 @@ function controlTurn(body: any, now = Date.now()) {
       delete state.subject;delete state.extra_photo_subjects;delete state.guest_inquiry;
     } else if (weekdayQuestion) {
       clearStayDuration(state);
-      const safeQuestion = personal(raw)
+      const safeQuestion = personal(raw) || personal(input)
         ? `Qual a programação de ${norm(topicMessage).match(/\b(domingo|segunda|terca|quarta|quinta|sexta|sabado)\b/)?.[1]}?`
         : topicMessage;
       state.resolved_message = safeQuestion;
@@ -744,6 +810,10 @@ function controlTurn(body: any, now = Date.now()) {
       politica_acomodacao_familiar: familyAccommodationPolicy,
       mensagens_do_cliente: state.history, conversa_recente: state.turns,
       marketing_recusa: marketingOptOut(s),
+      ...(stripNegatedHumanRequests(raw) !== raw && !human(s) ? {
+        recusa_atendimento_humano: true,
+        regra_recusa_atendimento_humano: 'O cliente recusou falar com atendente. Responda à dúvida factual e continue por aqui; não ofereça nem anuncie transferência, atendimento humano ou encaminhamento como se tivesse sido solicitado. A simples palavra atendente dentro de uma recusa não é pedido de humano. Serviços operacionais e solicitações afirmativas posteriores mantêm suas regras próprias.',
+      } : {}),
       solicitacao_varios_apartamentos: multiRoomRequest(s),
       ...(multiRoomRequest(s) ? { regra_varios_apartamentos: 'A simulação automática atual contempla uma acomodação por vez. Um pedido explícito de vários apartamentos deve chamar a recepção para conferir o conjunto, sem substituir pelo preço de um único quarto, somar valores inventados, confirmar disponibilidade ou alterar a reserva. Não afirmar encaminhamento concluído antes da ação nativa.' } : {}),
       ...(marketingOptOut(s) ? { regra_marketing_recusa: 'A mensagem atual solicita parar o recebimento de mensagens promocionais. Acolha o pedido e chame a equipe pelo fluxo humano existente, sem ofertar, cotar ou pedir dados de hospedagem. Não afirmar descadastro, bloqueio de campanhas, cancelamento de pesquisas ou encaminhamento concluído: nenhuma dessas ações foi comprovada por este controlador. Esta sinalização descreve somente o pedido atual; não é uma alteração das permissões de contato.' } : {}),

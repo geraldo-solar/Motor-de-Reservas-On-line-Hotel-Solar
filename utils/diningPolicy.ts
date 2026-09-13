@@ -1,4 +1,5 @@
 import { isPrivateEventRequest, publicEventInquiry } from './publicEvents.js';
+import { stripNegatedHumanRequests } from './humanIntent.js';
 import { reservaRestaurantMessage } from './restaurantIntent.js';
 
 // Latest explicit owner confirmation supersedes older seasonal Day Use copy.
@@ -70,7 +71,7 @@ const normalize = (message: string) => String(message || '')
 
 /** Narrow admission FAQ; menus, meals, events and media retain their own routes. */
 export function diningPolicyAnswer(message: string): string | undefined {
-  message = reservaRestaurantMessage(message);
+  message = reservaRestaurantMessage(stripNegatedHumanRequests(message));
   const text = normalize(message);
   if (!/\breserva\s+solar\b/.test(text)) return;
   if (isPrivateEventRequest(message) || publicEventInquiry(message)) return;
@@ -92,7 +93,7 @@ export function diningPolicyAnswer(message: string): string | undefined {
 
 /** General hours are not a real-time open/closed or table-availability check. */
 export function reservaHoursAnswer(message: string, now=Date.now()): string | undefined {
-  const s=normalize(reservaRestaurantMessage(message));
+  const s=normalize(reservaRestaurantMessage(stripNegatedHumanRequests(message)));
   if (!/\breserva solar\b/.test(s) || !/\b(?:funciona\w*|aberto|abrir|abre|fech\w*|horarios?)\b/.test(s)
     || isPrivateEventRequest(s) || publicEventInquiry(s)
     || /\b(?:cardapio|menu|fotos?|imagens?|videos?|hospedagem|diarias?|quartos?|pagamento|paguei|atendente|humano)\b/.test(s)) return;
