@@ -1,4 +1,5 @@
 import { familyAgeFollowup, normalizeAgeNumbers } from './familyAges.js';
+import {possibleCompanionInquiry} from './possibleCompanion.js';
 
 type ChildPolicyPackage = {
   name?: string;
@@ -16,6 +17,9 @@ const media = /\b(?:fotos?|imagens?|fotografias?|galeria|videos?)\b/;
 /** A tariff/policy question is not a statement that there is "one adult". */
 export function childPolicyQuestion(message: string): boolean {
   const s = normalize(message);
+  // A possible future companion must be discussed as an unconfirmed person;
+  // "filho" + "pagar" alone must not replace that request with child policy.
+  if(possibleCompanionInquiry(message))return false;
   const quoteWithParty=/\b(?:cotacao|orcamento|diarias?|hospedagem|estadia)\b/.test(s)
     && /\b(?:(?:\d+|um|uma|dois|duas|tres|quatro|cinco|seis)\s*adult[oa]s?|casal)\b/.test(s)
     && /\b(?:(?:\d+|um|uma|dois|duas|tres|quatro|cinco|seis)\s*(?:criancas?|bebes?|filh[oa]s?)|filh[oa]s)\b/.test(s);

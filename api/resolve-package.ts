@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { resolveRoomMedia, nextRoomMedia } from '../utils/roomMedia.js';
 import { control, safeTypedMessage } from './conversation-control.js';
 import { withDailyGreeting } from '../utils/dailyGreeting.js';
+import {stripAssistantDisclosure} from '../utils/assistantDisclosure.js';
 import { PHOTO_CLARIFY, documentPhotoInquiry, photoClarificationQuestion, photoRetryRequest } from '../utils/photoIntent.js';
 import { requestedExtraCodes, extraCodes, extraPhotoRequest, extraMediaResult, nextExtraMedia, normalizeExtra, explicitPackageBoatBenefit, safeBoatCopy, safeBoatPackageCopy } from '../utils/extraMedia.js';
 import { eventInquiry, eventContactText, reservaPhotoRequest, sitePhotoResult } from '../utils/hotelInfo.js';
@@ -13,18 +14,22 @@ import { isAudioInput } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage } from '../utils/audioInput.js';
 import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
 import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
-import { namedPackageInquiry, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification } from '../utils/packageContext.js';
+import { namedPackageInquiry, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference } from '../utils/packageContext.js';
+import {packageInclusionReply} from '../utils/packageInclusions.js';
+import {packageConsultationReply} from '../utils/packageDateException.js';
 import { packagePrices, packageRecommendation } from '../utils/packageReply.js';
 import { childPolicyQuestion, childAgeFollowup, packageChildReply } from '../utils/packageChildInquiry.js';
 import { stayDateClarification } from '../utils/stayDuration.js';
 import { guestServiceRequest } from '../utils/guestService.js';
 import { hotelPhoneInquiry, hotelContactAnswer } from '../utils/hotelContact.js';
-import { locmilAnswer } from '../utils/hotelPolicy.js';
+import { locmilAnswer, confirmedHotelAnswer } from '../utils/hotelPolicy.js';
 import { paymentStatusInquiry } from '../utils/paymentStatus.js';
+import { paymentSupportInquiry } from '../utils/paymentSupport.js';
+import {arrivalTimeQuestion,arrivalTimeHandoff} from '../utils/conversationalStayDates.js';
 import { existingReservationInquiry } from '../utils/existingReservation.js';
 import { familyAccommodation, familyAgeQuestionFor } from '../utils/familyAccommodation.js';
 import {readMultiRoomHandoff} from '../utils/multiRoomHandoff.js';
-import {multiRoomRequest} from '../utils/lodgingScope.js';
+import {multiRoomRequest,roomAlternativeComparison} from '../utils/lodgingScope.js';
 import {reservaHoursAnswer} from '../utils/diningPolicy.js';
 import {explicitHumanRequest,stripNegatedHumanRequests} from '../utils/humanIntent.js';
 
@@ -268,7 +273,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method Not Allowed. Use POST.' });
   }
   if(req.query?.operation==='event-receipt') {const r=await acceptEventReceipt(req.body);return res.status(r.code).json({status:r.status});}
-  const incomingMessage = String(req.body?.user_message || req.body?.message || '').trim();
+  const suppliedMessage = String(req.body?.user_message || req.body?.message || '').trim();
+  // The offers step receives our previous public answer, not a fresh customer
+  // message. Remove only the canonical presentation before privacy/intent checks.
+  const incomingMessage = req.query?.operation==='offers' ? stripAssistantDisclosure(suppliedMessage) : suppliedMessage;
   if (isAttachmentInput(incomingMessage)) {
     const routed = control({operation:'route', user_message:incomingMessage, state:req.body?.state});
     const kind = 'attachment_kind' in routed ? routed.attachment_kind! : 'unreadable';
@@ -303,6 +311,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({...routed,quote_text:answer,conversation_text:answer,
       matched:false,match_type:'payment_verification',availability_checked:false});
   }
+  if (!req.query?.operation && paymentSupportInquiry(serviceMessage, !!earlyState?.payment_support)) {
+    const routed = control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    const answer = 'answer' in routed ? routed.answer : '';
+    return res.status(200).json({...routed,quote_text:answer,conversation_text:answer,
+      matched:false,match_type:'payment_support',availability_checked:false});
+  }
   let eventReply=false;
   try {const state=typeof req.body?.state==='string'?JSON.parse(req.body.state):req.body?.state;eventReply=eventFieldReply(state?.event,serviceMessage);} catch { /* Invalid state cannot establish event context. */ }
   if (!req.query?.operation && !eventReply && guestServiceRequest(stripNegatedHumanRequests(serviceMessage))) {
@@ -321,10 +335,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({...routed,quote_text:answer,conversation_text:answer,
       matched:false,match_type:'existing_reservation',availability_checked:false});
   }
+  if (!req.query?.operation && explicitHumanRequest(serviceMessage)) {
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    const answer='answer' in routed?routed.answer:'';
+    return res.status(200).json({...routed,quote_text:answer,conversation_text:answer,
+      matched:false,match_type:'human_request',availability_checked:false});
+  }
+  const consultation=packageConsultationReply(serviceMessage,earlyState?.package_context);
+  if(!req.query?.operation&&consultation) {
+    // Owner-confirmed period rule and an unconfirmed companion are not a new
+    // quote. Existing booking/payment/service requests keep priority above.
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    const humanRoute=consultation.handoff||('quote_request' in routed&&routed.quote_request==='HUMANO');
+    return res.status(200).json({...routed,quote_request:humanRoute?'HUMANO':'ROOM_LIST',can_collect:'NAO',confirmation_text:'',
+      quote_text:consultation.answer,conversation_text:consultation.answer,matched:false,
+      match_type:consultation.handoff?'package_date_consultation':'possible_companion',availability_checked:false});
+  }
+  // A named reply to the current photo prompt ("da hidromassagem") is
+  // already expanded by prepare. Reuse only that live, current-turn photo
+  // interpretation; a stale focus or a new facility question is still a FAQ.
+  const photoFocusAt=earlyState?.topic_at;
+  const policyNow=Date.now();
+  const currentPhotoMessage=earlyState?.history?.at(-1)===serviceMessage.slice(0,500)
+    &&earlyState?.topic==='extra_photos'&&Number.isFinite(photoFocusAt)
+    &&photoFocusAt>0&&photoFocusAt<=policyNow&&policyNow-photoFocusAt<=30*60000
+    &&extraPhotoRequest(earlyState?.resolved_message||'')&&extraCodes(earlyState?.resolved_message||'').length
+    ?earlyState.resolved_message:serviceMessage;
+  const confirmedAnswer=confirmedHotelAnswer(currentPhotoMessage);
+  if(!req.query?.operation && confirmedAnswer) {
+    // A photo shoot is a policy question, not a request to browse pictures.
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    const handoff='quote_request' in routed && routed.quote_request==='HUMANO';
+    return res.status(200).json({...routed,quote_request:handoff?'HUMANO':'ROOM_LIST',
+      quote_text:confirmedAnswer,conversation_text:confirmedAnswer,can_collect:'NAO',confirmation_text:'',
+      matched:false,match_type:'confirmed_hotel_policy',availability_checked:false});
+  }
   const multi=readMultiRoomHandoff(earlyState?.multi_room,earlyState);
   if(req.query?.operation==='offers' && multi)
     return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',state:JSON.stringify(earlyState),availability_checked:false});
-  if(!req.query?.operation && (multiRoomRequest(serviceMessage)
+  if(!req.query?.operation && (multiRoomRequest(serviceMessage) || roomAlternativeComparison(serviceMessage)
     || multi && earlyState.history?.at(-1)===serviceMessage.slice(0,500))){
     const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
     const answer='answer' in routed?routed.answer:'';
@@ -391,6 +440,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ...control({operation:'remember_response',state:safeState,response_text:answer})};
   };
   if (!req.query?.operation) {
+    if (currentState && safeState?.arrival_time) {
+      const handoff=safeState.arrival_time.status==='human_review';
+      return res.status(200).json({...informationResult(handoff?arrivalTimeHandoff:arrivalTimeQuestion,'arrival_time_consultation'),
+        quote_request:handoff?'HUMANO':'ROOM_LIST',can_collect:'NAO',confirmation_text:''});
+    }
     if (currentState && safeState?.stay_date_pending) {
       // A paid-extra mention such as "lua de mel" must not replace the
       // unresolved date question with a kit photo or a price. Candidates are
@@ -418,8 +472,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(informationResult(currentAnswer,'human_refusal_information'));
     }
   }
-  if (req.query?.operation === 'offers' && safeState?.stay_date_pending
-    && latest?.role === 'assistant' && latest.text === currentInput
+  if (req.query?.operation === 'offers' && (safeState?.stay_date_pending || safeState?.arrival_time)
+    && latest?.role === 'assistant' && latest.text === stripAssistantDisclosure(currentInput)
     && previous?.role === 'user' && safeState.history?.at(-1) === previous.text.slice(0,500)) {
     return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',
       matched:false,match_type:'stay_date_clarification',availability_checked:false,state:JSON.stringify(safeState)});
@@ -476,7 +530,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const focusedPackage = conversationState?.topic === 'package_info' ? readPackageContext(conversationState.package_context) : undefined;
   // Inclusions such as the boat belong to the package, not to a new paid-extra
   // offer. Resolve these continuations before the proactive media/extra branch.
-  if (!offersOnly && focusedPackage && packageFollowup(userMessage) && !namedPackageInquiry(userMessage)) {
+  if (!offersOnly && focusedPackage && packageFollowup(userMessage)
+    && (!namedPackageInquiry(userMessage)||focusedPackageNameReference(userMessage,focusedPackage))) {
     const [{data: packages,error: packageError},{data: rooms,error: roomError}] = await Promise.all([
       supabase.from('packages').select('*').eq('active',true),
       supabase.from('room_types').select('*').eq('active',true),
@@ -491,7 +546,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const facts = conversationState?.facts || {};
     const family = familyAccommodation(conversationState, facts.guests || 0);
     const differentDates = (facts.check_in && facts.check_in !== pkg.start_iso_date) || (facts.check_out && facts.check_out !== pkg.end_iso_date);
-    const answer = differentDates
+    const answer = packageAcknowledgment(userMessage)
+      ? `Certo! Continuamos falando do pacote ${pkg.name}. Pode me dizer qual outra informação gostaria de esclarecer.`
+      : packageInclusionFollowup(userMessage,focusedPackage)
+      ? packageInclusionReply(pkg,userMessage,conversationState?.history||[])
+      : differentDates
       ? `O pacote ${pkg.name} tem período de ${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}. As datas que você informou são diferentes${pkg.full_period_required ? ', e esse pacote exige o período completo' : ''}. Você quer continuar consultando esse pacote ou deseja outra estadia? Não alterei suas datas nem confirmei uma reserva.`
       : family.pending && !childPolicyQuestion(userMessage)
       ? familyAgeQuestionFor(conversationState)

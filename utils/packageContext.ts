@@ -22,6 +22,32 @@ export function packageInquiry(message: string) {
 export function namedPackageInquiry(message: string) {
   return /\b(reveillon|natal|ano novo|virada|carnaval|pascoa|finados|corpus christi|dia das criancas|dia das maes|dia dos pais|dia dos namorados|ostrabeach|independencia)\b/.test(norm(message));
 }
+
+export function packageAcknowledgment(message:string):boolean {
+  return /^(?:entendi|entendido|otimo|perfeito|certo|obrigad[oa])(?:[, ]+(?:sim|obrigad[oa]))?[.!]*$/.test(norm(message));
+}
+
+/** Inclusion questions retain a fresh package, not a visitor-meal context.
+ * Explicit visits/restaurants, other packages and real-time shows stay out. */
+export function packageInclusionFollowup(message:string,value:unknown,now=Date.now()):boolean {
+  const focus=readPackageContext(value,now),s=norm(message);
+  if(!focus||newTripRequest(message))return false;
+  if(/\b(?:nao hospedes?|nao (?:estou |estamos |sou |somos )?hospedad[oa]s?|sem hospedagem|avuls[oa]s?|visitantes?|day[ -]?use|restaurante|reserva solar|solar 73|cardapio|fotos?|hoje|amanha)\b/.test(s))return false;
+  const named=/\b(?:reveillon|virada|ano novo|natal|carnaval|pascoa|dia das criancas)\b/.exec(s)?.[0];
+  if(named) {
+    const group=(v:string)=>/\b(?:reveillon|virada|ano novo)\b/.test(v)?'new-year':v;
+    if(group(named)==='new-year'?!/\b(?:reveillon|virada|ano novo)\b/.test(norm(focus.name)):!norm(focus.name).includes(named))return false;
+  }
+  return /\b(?:inclui|incluid[oa]s?|inclus[oa]s?|inclusoes|separad[oa]s?|a parte)\b/.test(s)
+    && /\b(?:pacote|cafe(?: da manha)?|ceia|festa|virada|open bar|almoco|jantar)\b/.test(s);
+}
+
+export function focusedPackageNameReference(message:string,value:unknown,now=Date.now()):boolean {
+  const focus=readPackageContext(value,now),s=norm(message);
+  return !!focus&&packageInclusionFollowup(message,focus,now)
+    && /\b(?:reveillon|virada|ano novo)\b/.test(s)
+    && /\b(?:reveillon|virada|ano novo)\b/.test(norm(focus.name));
+}
 export function newTripRequest(message: string) {
   const s = norm(message);
   return /\b(outro periodo|outras datas|outra estadia|outra viagem)\b/.test(s)
@@ -65,6 +91,7 @@ export function packageWeekdayReply(message: string, previousQuestion: string): 
 export function packageFollowup(message: string) {
   const s = norm(message);
   if (newTripRequest(message)) return false;
+  if(packageAcknowledgment(message))return true;
   // A present-calendar reference must not borrow the active package's dates.
   // Unqualified weekdays are handled by packageWeekdayClarification instead.
   const weekdayReference = publicEventWeekdayReference(message);
@@ -72,6 +99,8 @@ export function packageFollowup(message: string) {
   if (/\b(comprovante|paguei)\b|pagamento.{0,30}(confirmad|recebid)|(?:confirmad|recebid).{0,30}pagamento/.test(s)) return false;
   if (/\b(fotos?|imagens?|fotografias?|galeria|album|cardapio|menu|reserva solar|solar 73|academia|playground|parquinho|piscinas?|hidromassagem|bicicletas?|bikes?)\b/.test(s)) return false;
   if (/\b(outro assunto|esquece|esqueca|mudar de assunto|nao quero esse|nao quero o pacote)\b/.test(s)) return false;
+  if(/\b(?:incluid[oa]s?|separad[oa]s?|a parte)\b/.test(s)
+    && /\b(?:pacote|cafe|ceia|festa|virada|open bar|almoco|jantar)\b/.test(s))return true;
   if (weekdayReference === 'package') return true;
   if (childPolicyQuestion(message) || childAgeFollowup(message)) return true;
   if (/\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/.test(s)) return true;

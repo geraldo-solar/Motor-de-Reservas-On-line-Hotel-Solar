@@ -5,7 +5,10 @@ const bundled = await build({ entryPoints: ['api/conversation-control.ts'], bund
 const { control } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
 const now = Date.parse('2026-09-03T16:00:00Z');
 const quote = { version: 1, id: 'quote-fixture', created_at: now, check_in: '2026-09-20', check_out: '2026-09-25', guests: 2, extras: [], options: [{ name: 'LOFT', capacity: 4, total: 4550 }, { name: 'Suíte Casal', capacity: 2, total: 2050 }] };
-function prepare(message, state, quote_state = quote) { return control({ operation: 'prepare', state, user_message: message, quote_state }, now); }
+// These routing fixtures already received the assistant presentation; fresh
+// contact disclosure is exercised separately in assistant-disclosure-flow.
+const presented={version:2,history:[],facts:{extras:[]},greeted:false,assistant_disclosure:{version:1,show:false,rendered:true}};
+function prepare(message, state = presented, quote_state = quote) { return control({ operation: 'prepare', state, user_message: message, quote_state }, now); }
 function route(message, state, proposed = 'COLETAR', quote_state = quote) { return control({ operation: 'route', state, user_message: message, proposed, quote_state, ai_response: 'Resposta de teste.' }, now); }
 function knownState() { return prepare('De 20 a 25 de setembro para duas pessoas').state; }
 

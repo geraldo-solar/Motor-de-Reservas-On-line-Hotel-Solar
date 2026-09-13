@@ -1,3 +1,5 @@
+import { reservationModificationInquiry } from './reservationModification.js';
+
 const normalize = (value: string) => String(value || '').normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
@@ -13,6 +15,7 @@ export function existingReservationInquiry(message: string, contextual = false):
   const s = normalize(message);
   if (!s) return false;
   if (s === normalize(existingReservationContext)) return true;
+  if (reservationModificationInquiry(message, contextual)) return true;
   // Exclude other services and explicitly unrelated purchases. The restaurant
   // name alone must never become a lodging reservation.
   if (/\b(?:reserva solar|restaurantes?|mesas?|almoco|jantar|day[ -]?use|ingressos?|eventos?|casamento|aniversario|outro hotel|supermercado|taxi|uber)\b/.test(s)) return false;
@@ -33,19 +36,26 @@ export function existingReservationInquiry(message: string, contextual = false):
   // An actual request to locate/check the booking remains operational even
   // when the same message also asks for a photo or a hotel facility.
   const existingStatus = /\b(?:minha|nossa|essa|esta) (?:solicitacao de )?reserva\b.{0,60}\b(?:situacao|status|confirmada|ativa|valida|cancelada|vencida|localizar|conferir|verificar|pendente)\b/.test(s)
+    || /\b(?:minha|nossa) reserva esta no nome\b/.test(s)
     || /\b(?:localizar|conferir|verificar|consultar) (?:a )?(?:minha|nossa) (?:solicitacao de )?reserva\b/.test(s)
     || /\b(?:situacao|status|localizacao) (?:atual )?(?:da|de) (?:minha|nossa|essa|esta) reserva\b/.test(s);
   if (existingStatus) return true;
   // A known reservation may be mentioned in an ordinary FAQ. That remains
   // informational; merely mentioning it does not authorize a new handoff.
   const faq = /\b(?:horarios?|que horas|check[ -]?in|check[ -]?out|cafe|wifi|wi[ -]?fi|senha|piscinas?|pets?|estacionamento|precos?|valores?|tarifas?|quanto custa|quanto fica|quanto e|formas de pagamento|meios de pagamento|parcelas?|parcelamento|parcelar|aceita(?:m)? pix|posso pagar (?:com|por|via|no|em) (?:pix|cartao)|como (?:e|funciona) (?:o )?pagamento)\b/;
-  const hotelInformation = /\b(?:fotos?|fotografias?|imagens?|videos?|galeria|album|cachorr[oa]s?|gatos?|animais|bercos?|passeios?|barcos?|quadriciclos?)\b/
+  const hotelInformation = /\b(?:fotos?|fotografias?|imagens?|videos?|galeria|album|cardapio|menu|cachorr[oa]s?|gatos?|animais|bercos?|passeios?|barcos?|quadriciclos?)\b/
     .test(s) || /\b(?:endereco|localizacao) (?:do|de) (?:hotel|solar)\b|\bonde (?:fica|e) (?:o )?hotel\b/.test(s);
   if (faq.test(s) || hotelInformation) return false;
   const requestMade = /\b(?:solicitei|solicitamos|pedi|pedimos|fiz|fizemos|tinha feito|havia feito|ja tenho|ja temos|tenho|temos|estou com|estamos com) (?:uma |a |minha |nossa |essa |esta |solicitacao de )*reserva\b/;
   if (requestMade.test(s)) return true;
 
   if (!contextual || s.length > 160) return false;
+  // Pure date replies belong to the already-active operational request, not
+  // a new stay. This never extracts or confirms a date; callers keep the TTL.
+  const date = '(?:\\d{1,2}(?:[/-]\\d{1,2}(?:[/-]\\d{2,4})?)?)';
+  if ((/\d[/-]\d|\bdias?\b|\d\s+(?:a|ate)\s+\d/.test(s)
+      && new RegExp(`^(?:(?:e |seria |sera |para |no |do |de |dia |dias )*)${date}(?:(?:\\s*(?:a|ate|e|-)\\s*)${date})?[.!]?$`).test(s))
+    || /^(?:para |no |na |dia )?(?:hoje|amanha|segunda|terca|quarta|quinta|sexta|sabado|domingo)(?:-feira)?[.!]?$/.test(s)) return true;
   // Only short operational follow-ups to the fresh request. Never use a
   // remembered request to absorb a new FAQ or arbitrary customer content.
   return /^(?:(?:e|mas|agora|entao|eu)\s+)*(?:(?:ainda |ja )?nao (?:paguei|pagamos)|(?:o |meu |esse )*link (?:ja )?(?:expirou|venceu|esta vencido|esta expirado)|(?:o )?prazo (?:ja )?(?:passou|venceu)|perdi o prazo|(?:e )?agora|como (?:posso )?(?:prosseguir|continuar)|qual (?:e )?o proximo passo|posso (?:pagar agora|usar (?:o )?(?:mesmo|esse) link)|(?:ainda )?(?:posso|consigo) pagar)[?.!]*$/.test(s);

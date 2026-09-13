@@ -35,7 +35,7 @@ const {control,handleConversation} = await load('api/conversation-control.ts');
 const handler = (await load('api/resolve-package.ts')).default;
 const now = Date.now();
 const oldFacts = {guests:4,check_in:'2026-09-20',check_out:'2026-09-25',extras:['MESA'],children_pending:true};
-const initial = {version:2,history:[],facts:oldFacts,greeted:true,daily_greeting:{day:new Date(now-3*3600000).toISOString().slice(0,10),first:false}};
+const initial = {version:2,assistant_disclosure:{version:1,show:false,rendered:true},history:[],facts:oldFacts,greeted:true,daily_greeting:{day:new Date(now-3*3600000).toISOString().slice(0,10),first:false}};
 function turn(user_message,state=initial,answer='Continuamos com a informação solicitada.',proposed='QUOTE|2026-09-15|2026-09-16|3|MESA') {
   const prepared = control({operation:'prepare',user_message,state},now);
   const routed = control({operation:'route',user_message,state:prepared.state,ai_response:answer,proposed},now);
@@ -76,8 +76,10 @@ test('controller → resolver devolve a resposta informativa atual sem catálogo
 
 test('café para visitante → pessoas → data → aniversário mantém a resposta atual e não consulta catálogo',async()=>{
   let state=initial;
-  for (const [message,answer] of [
-    ['Quem não está hospedado pode tomar café da manhã no hotel?','Sua consulta é sobre o café da manhã para visitantes.'],
+  for (const [message,answer,expected=answer] of [
+    // Confirmed visitor policy now replaces a vague model reply deterministically.
+    ['Quem não está hospedado pode tomar café da manhã no hotel?','Sua consulta é sobre o café da manhã para visitantes.',
+      'Sim, quem não está hospedado pode tomar o café da manhã avulso, inclusive quando servido à la carte. Até 6 anos há cortesia; de 7 a 12 anos, R$35; a partir de 13 anos, R$75 por pessoa. Os mesmos valores valem no buffet e no à la carte. Durante a semana é necessário agendar previamente com a recepção; esta informação não confirma agendamento nem disponibilidade.'],
     ['Seria para 03 pessoas','Continuamos falando do café da manhã para as pessoas informadas.'],
     ['Dia 15/09/26','Continuamos com a consulta do café da manhã para o dia informado.'],
     ['Aniversário do meu pai','Entendi a ocasião familiar; continuamos com as informações sobre o café.'],
@@ -86,7 +88,7 @@ test('café para visitante → pessoas → data → aniversário mantém a respo
     const {routed}=turn(message,state,answer);
     const result=await resolve(message,routed.state);
     assert.equal(result.quote_request,'ROOM_LIST',message);
-    assert.equal(result.conversation_text,answer,message);
+    assert.equal(result.conversation_text,expected,message);
     assert.deepEqual(JSON.parse(result.state).facts,oldFacts,message);
     assert.deepEqual(queries,[],message);
     state=result.state;

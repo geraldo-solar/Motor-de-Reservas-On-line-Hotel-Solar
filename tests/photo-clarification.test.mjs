@@ -4,7 +4,7 @@ import {build} from 'esbuild';
 
 const now = Date.now();
 const facts = {guests:2,check_in:'2026-09-20',check_out:'2026-09-25',extras:['MESA'],children_pending:true};
-const initial = {version:2,history:[],facts,greeted:true,daily_greeting:{day:new Date(now-3*3600000).toISOString().slice(0,10),first:false}};
+const initial = {version:2,assistant_disclosure:{version:1,show:false,rendered:true},history:[],facts,greeted:true,daily_greeting:{day:new Date(now-3*3600000).toISOString().slice(0,10),first:false}};
 const clarifyText = 'De qual espaço do hotel você gostaria de ver fotos?';
 const fixtures = {extras:[],packages:[],room_types:[
   {id:'loft',name:'Loft',capacity:4,images:['https://fixture.invalid/loft.jpg'],active:true},
@@ -216,6 +216,7 @@ test('hidromassagem sem pergunta de foto pendente continua informação',() => {
     assert.equal(JSON.parse(r.state).topic,'extra_info');
     assert.deepEqual(JSON.parse(p.context).fotos_lazer_solicitadas,[]);
     assert.deepEqual(JSON.parse(r.state).facts,facts);
-    assert.equal(r.answer,'Temos duas piscinas de hidromassagem.');
+    // Owner confirmed both hydros are shared, not private apartment facilities.
+    assert.equal(r.answer,'Temos duas piscinas de hidromassagem, de uso compartilhado dos hóspedes. Elas não são privativas nem exclusivas de um apartamento.');
   }
 });

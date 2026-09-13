@@ -14,12 +14,13 @@ const packages = [
   { id: 'independencia', name: 'Independência Solar', start_iso_date: '2026-09-04', end_iso_date: '2026-09-07', description: 'Praia e descanso.', includes: ['Música ao vivo'], benefits: [], room_prices: [], no_checkin_dates: [], no_checkout_dates: [] },
   { id: 'reveillon', name: 'Réveillon Solar 2027', start_iso_date: '2026-12-31', end_iso_date: '2027-01-03', description: 'Celebração de Ano-Novo.', includes: [], benefits: [], room_prices: [], no_checkin_dates: [], no_checkout_dates: [] },
 ];
+const presented={version:2,history:[],facts:{extras:[]},greeted:false,assistant_disclosure:{version:1,show:false,rendered:true}};
 
 test('saudação diária chega ao texto final de preços, pacotes e fotos sem mudar valores ou mídia', async()=>{
   const {outputFiles}=await build({entryPoints:['api/conversation-control.ts'],bundle:true,write:false,platform:'node',format:'esm'});
   const {control}=await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString('base64')}`);
   const now=Date.now();
-  const p=control({operation:'prepare',user_message:'Quero me hospedar de 20 a 22 de outubro para duas pessoas'},now);
+  const p=control({operation:'prepare',state:presented,user_message:'Quero me hospedar de 20 a 22 de outubro para duas pessoas'},now);
   const state=p.state;
   const expected=JSON.parse(p.context).saudacao_do_horario+'!\n\n';
   const prices=await loadHandler('api/get-prices.ts',[]);
@@ -371,7 +372,7 @@ test('teste de 11/09: dois adultos e três crianças em setembro não selecionam
   const handler=await loadHandler('api/resolve-package.ts',[...packages,childrenPackage]);
   const spoken='Gostaria de fazer uma reserva do dia 12 de setembro a 14 de setembro para um apartamento dois adultos e três crianças.';
   for(const user_message of [spoken,'https://media.example.com/reserva-setembro.ogg']) {
-    const prepared=await handleConversation({operation:'prepare',user_message},'Bearer test-only',async()=>spoken);
+    const prepared=await handleConversation({operation:'prepare',user_message,state:presented},'Bearer test-only',async()=>spoken);
     const routed=control({operation:'route',user_message,state:prepared.state,proposed:'NOQUOTE',ai_response:'Vou consultar o pacote Dia das Crianças.'});
     assert.equal(routed.can_collect,'NAO');
     assert.match(routed.answer,/idades das crianças/);
@@ -508,7 +509,7 @@ test('Inbox 11/09: pacote antigo → programação hoje → fim de semana, inclu
   const {control,handleConversation}=await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
   const handler=await loadHandler('api/resolve-package.ts');
   const facts={guests:5,check_in:'2026-09-12',check_out:'2026-09-14',children_pending:true,extras:[]};
-  const initial={version:2,history:[],facts,greeted:true,daily_greeting:{day:'2026-09-11',first:false},
+  const initial={version:2,assistant_disclosure:{version:1,show:false,rendered:true},history:[],facts,greeted:true,daily_greeting:{day:'2026-09-11',first:false},
     topic:'package_info',topic_at:now,package_context:{id:'criancas',name:'Dia das Crianças',start_date:'2026-10-09',end_date:'2026-10-12',updated_at:now},
     family_party:{adults:2,children:3,ages_months:[],updated_at:now,clarification:'child_ages'},family_clarification:'child_ages'};
   for(const audio of [false,true]) {

@@ -18,7 +18,7 @@ const bundled=await build({stdin:{contents:"export {control,handleConversation} 
     `}));
   }}]});
 const {control,handleConversation,resolve}=await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);
-const initial={version:2,history:[],facts:{guests:2,check_in:'2026-10-20',check_out:'2026-10-22',extras:[]},greeted:true};
+const initial={version:2,assistant_disclosure:{version:1,show:false,rendered:true},history:[],facts:{guests:2,check_in:'2026-10-20',check_out:'2026-10-22',extras:[]},greeted:true};
 async function resolved(message,state,operation){let result;await resolve({method:'POST',query:operation?{operation}:{},body:{user_message:message,state}}, {status(code){assert.equal(code,200);return this},json(v){result=v}});return result}
 function turn(message,state=initial){const p=control({operation:'prepare',user_message:message,state});return control({operation:'route',user_message:message,state:p.state,proposed:'QUOTE|2026-10-20|2026-10-22|2|NONE',ai_response:'Infelizmente não posso fornecer o número.'})}
 

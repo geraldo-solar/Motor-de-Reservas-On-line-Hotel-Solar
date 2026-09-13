@@ -15,6 +15,7 @@ const auth = 'Bearer fixture-only';
 const facts = {guests:2, check_in:'2026-09-20', check_out:'2026-09-25', extras:['MESA']};
 const quote = {version:1,id:'fixture-quote',created_at:now, ...facts,options:[{name:'Loft',capacity:4,total:3000}]};
 const stateWithOldFlows = {
+  assistant_disclosure:{version:1,show:false,rendered:true}, // Contact already introduced to the assistant.
   version:2, history:['Quero o Loft'], facts, greeted:true,daily_greeting:{day:new Date(now-3*3600000).toISOString().slice(0,10),first:false}, changed:true,
   pending:{quote_id:quote.id,option:'Loft'}, awaiting:'dates', topic:'room_photos', topic_at:now,
   subject:'Loft', resolved_message:'Fotos do Loft', turns:[{role:'assistant',text:'Sugiro Mesa Posta'}],

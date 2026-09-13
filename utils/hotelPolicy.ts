@@ -1,3 +1,6 @@
+import { photoSessionInquiry, photoSessionAnswer } from './photoSession.js';
+import { explicitHumanRequest } from './humanIntent.js';
+
 /** Business facts explicitly confirmed by the hotel owner on 2026-09-11.
  * This informs the assistant; it does not change tariffs, stock or bookings.
  */
@@ -32,6 +35,19 @@ export const confirmedHotelPolicy = {
     common_areas: 'Acesso sem degraus às demais áreas do hotel, incluindo Solar 73, áreas das piscinas, playground e capela. Reserva Solar é a exceção: não possui acesso sem degraus.',
     limits: 'Necessidades específicas devem ser conferidas com a equipe antes da escolha. Não inferir dimensões de portas/box, barras, equipamento para entrar nas piscinas, assistência, solução alternativa no Reserva Solar ou compatibilidade com toda cadeira de rodas.',
   },
+  hydromassage: {
+    confirmed_at: '2026-09-13',
+    pools: 2,
+    use: 'As duas piscinas de hidromassagem são compartilhadas pelos hóspedes, não privativas nem exclusivas de um apartamento.',
+    heating_confirmed: false,
+    limits: 'Não afirmar aquecimento, temperatura, reserva exclusiva, horário ou disponibilidade não confirmados.',
+  },
+  photo_sessions: {
+    confirmed_at: '2026-09-13',
+    prior_reception_consultation_required: true,
+    applies_to: 'Ensaios e sessões de fotos de hóspedes, inclusive nas áreas comuns e com fotógrafo externo.',
+    limits: 'Hospedar-se não concede automaticamente autorização para o ensaio. Consultar previamente a recepção não confirma permissão, agendamento, áreas específicas, preço ou exclusividade.',
+  },
   guest_guide: 'https://www.hotelsolar.tur.br/guia',
   limits: 'Políticas confirmadas prevalecem sobre mensagens antigas. Não representam disponibilidade em tempo real, contratação, agendamento, reserva de item nem execução de serviço. Não ampliar benefícios a outros serviços.',
 } as const;
@@ -42,10 +58,28 @@ const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, 
 // Callers retain their existing human, photo, event and booking precedence.
 export function hotelPolicyInquiry(message: string): boolean {
   const s = normalize(message);
-  return /\b(?:quadriciclos?|loc\s?mil|room service|servico de quarto)\b/.test(s)
+  return photoSessionInquiry(message) || hydromassageInquiry(message)
+    || /\b(?:quadriciclos?|loc\s?mil|room service|servico de quarto)\b/.test(s)
     || /\bguia\b/.test(s) && /\b(?:hotel|hospede|hospedes|solar)\b/.test(s)
     || /\b(?:cadeira de rodas|rampas?|degraus?|banheiros? adaptados?)\b/.test(s)
     || /\b(?:camas? extras?|camas? separadas|duas camas de solteiro)\b/.test(s);
+}
+
+export function hydromassageInquiry(message: string): boolean {
+  const s = normalize(message);
+  return /\b(?:hidromassagem|hidromassagens|hidros?|jacuzzis?)\b/.test(s)
+    && !/\b(?:fotos?|fotografias?|imagem|imagens|videos?|galeria|album|quebrad[oa]|defeito|manutencao|nao funciona)\b/.test(s);
+}
+
+/** Only current owner-confirmed policies; callers still retain explicit
+ * human, operational, attachment and actual media-request priority. */
+export function confirmedHotelAnswer(message: string): string | undefined {
+  if (explicitHumanRequest(message)) return;
+  if (photoSessionInquiry(message)) return photoSessionAnswer;
+  if (!hydromassageInquiry(message)) return;
+  const answer = 'Temos duas piscinas de hidromassagem, de uso compartilhado dos hóspedes. Elas não são privativas nem exclusivas de um apartamento.';
+  return /\b(?:aquecid[oa]s?|aquecimento|quentes?|temperatura|esquenta)\b/.test(normalize(message))
+    ? answer + ' Sobre aquecimento e temperatura, consulte a recepção para confirmar.' : answer;
 }
 
 export function locmilAnswer(message: string): string | undefined {

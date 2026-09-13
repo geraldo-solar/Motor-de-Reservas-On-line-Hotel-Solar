@@ -19,6 +19,7 @@ const {control,handleConversation}=await load('api/conversation-control.ts');
 const resolver=(await load('api/resolve-package.ts')).default;
 const now=Date.now();
 const initial={version:2,history:[],greeted:true,
+  assistant_disclosure:{version:1,show:false,rendered:true},
   daily_greeting:{day:new Date(now-3*3600000).toISOString().slice(0,10),first:false},
   facts:{guests:4,check_in:'2026-10-11',check_out:'2026-10-13',extras:[],children_pending:true},
   family_party:{adults:2,children:2,total:4,ages_months:[],updated_at:now},

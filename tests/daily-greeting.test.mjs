@@ -9,7 +9,7 @@ const {control,handleConversation}=await load('api/conversation-control.ts');
 const {belemClock,dailyGreetingText,withDailyGreeting}=await load('utils/dailyGreeting.ts');
 const {photoClarificationQuestion}=await load('utils/photoIntent.ts');
 const stamp=s=>Date.parse(`2026-09-${s}-03:00`);
-const initial={version:2,history:['Quero informações da viagem'],facts:{guests:2,extras:[]},greeted:true};
+const initial={version:2,assistant_disclosure:{version:1,show:false,rendered:true},history:['Quero informações da viagem'],facts:{guests:2,extras:[]},greeted:true};
 function turn(time,state=initial,message='Tem estacionamento?',answer='O assunto continua aqui.') {
   const p=control({operation:'prepare',state,user_message:message},time);
   const r=control({operation:'route',state:p.state,user_message:message,ai_response:answer},time);

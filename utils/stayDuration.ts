@@ -1,8 +1,10 @@
+import {readSplitStayDates,splitStayQuestion,type SplitStayDatePending} from './conversationalStayDates.js';
 // A stated duration is conversational intent, not permission to extend a stay.
 export type StayDuration = { count: number; unit: 'days' | 'nights'; at: number };
 export type StayDatePending = {
   at: number;
-  reason: 'duration_conflict' | 'relative_dates' | 'unparsed_dates' | 'relative_checkout' | 'checkout_correction';
+  reason: 'duration_conflict' | 'relative_dates' | 'unparsed_dates' | 'relative_checkout' | 'checkout_correction' | 'split_dates';
+  days?: [number,number]; month?:number; year?:number; weekday_span?:[number,number];
   check_in?: string;
   check_out?: string;
   suggested_check_out?: string;
@@ -28,6 +30,7 @@ export function readStayDuration(value: any, now = Date.now()): StayDuration | u
 
 export function readStayDatePending(value: any, now = Date.now()): StayDatePending | undefined {
   if (!value || !recent(value.at, now)) return;
+  if(value.reason==='split_dates')return readSplitStayDates(value,now);
   if (value.reason === 'relative_dates' || value.reason === 'unparsed_dates') return { at: value.at, reason: value.reason };
   if (value.reason === 'checkout_correction') return validDate(value.check_in)
     ? {at:value.at,reason:'checkout_correction',check_in:value.check_in} : undefined;
@@ -117,6 +120,7 @@ export function conflictingStayDuration(request: StayDuration, start: string, en
 }
 
 export function stayDateClarification(pending: StayDatePending): string {
+  if(pending.reason==='split_dates')return splitStayQuestion(pending as SplitStayDatePending);
   if (pending.reason === 'checkout_correction' && pending.check_in)
     return `Mantendo a entrada em ${pending.check_in.split('-').reverse().join('/')}, qual será a nova data de saída? Informe no formato dia/mês. A saída anterior não será usada na cotação.`;
   if (pending.reason === 'relative_checkout' && pending.check_in) {
