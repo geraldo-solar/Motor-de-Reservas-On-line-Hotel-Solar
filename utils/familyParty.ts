@@ -1,6 +1,6 @@
 import { childPolicyQuestion } from './packageChildInquiry.js';
 import { createHash } from 'node:crypto';
-import { declaredFamilyAges, familyAgeFollowup, withAssignedFamilyAgeUnits } from './familyAges.js';
+import { declaredFamilyAges, familyAgeFollowup, normalizeAgeNumbers, withAssignedFamilyAgeUnits } from './familyAges.js';
 
 // Explicit composition only: occupancy is not the number of paying guests.
 // Ages have no identities, names, dates of birth or inferred tariff classes.
@@ -161,7 +161,17 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   const countDeclaration=childMatches.length>0||adultMatches.length>0||hasTotal||couple!==undefined||noChildren||unspecifiedOffspring;
   // Negative statements and comparisons do not declare the mentioned count.
   if(/\b(?:como|igual a) (?:um|uma|\d+) adult/.test(s)) return {handled:false,...(old?{party:old}:{})};
-  const ageText=withAssignedFamilyAgeUnits(s,childMatches.some(match=>quantity(match[1])>0)
+  // A complete list directly answering pending ages can omit "anos". Require
+  // a known group and exactly one entry per child: a lone number, partial
+  // list, date, hypothetical or unresolved composition must stay ambiguous.
+  const pendingList=normalizeAgeNumbers(s).replace(/[.!]$/,'').trim();
+  const knownPartyTotal=old?.total??(old?.adults===undefined?undefined:old.adults+(old.children||0));
+  const completePendingList=!countDeclaration&&!!old?.children&&old.ages_months.length<old.children
+    &&old.clarification!=='party_composition'&&knownPartyTotal!==undefined&&knownPartyTotal>=old.children
+    &&(old.adults===undefined||old.total===undefined||old.adults+old.children===old.total)
+    &&/^\d{1,3}(?:\s*(?:,|e)\s*\d{1,3}){1,19}$/.test(pendingList)
+    &&pendingList.split(/\s*(?:,|e)\s*/).length===old.children;
+  const ageText=withAssignedFamilyAgeUnits(completePendingList?`${pendingList} anos`:s,childMatches.some(match=>quantity(match[1])>0)
     || !!old?.children&&old.ages_months.length<old.children);
   const ageValues=declaredFamilyAges(ageText,countDeclaration);
   const ageOnly=!countDeclaration&&familyAgeFollowup(ageText);
@@ -175,7 +185,18 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   const componentSuffix=component?s.slice(component.index!+component[0].length):'';
   const subtract=!!component && (/\b(?:menos|retir(?:a|ar|e)|remov(?:a|er|e)|exclu(?:a|ir|i))\s*$/.test(componentPrefix)
     || /^\s*(?:de\s+\d+\s*(?:anos?|meses?)\s*)?nao\s+(?:vai|vem|ira|vao|irao)(?:\s+mais)?\b/.test(componentSuffix));
-  const add=!!component && /\b(?:mais|adicion(?:a|ar|e)|acrescent(?:a|ar|e)|inclu(?:a|ir|i))\s*$/.test(componentPrefix);
+  // A couple is counted separately from adultMatches. In "1 casal mais 3
+  // filhos", the first counted component is therefore "3 filhos", but
+  // "mais" joins a complete composition; it is not an incremental child.
+  // A capacity question after that declaration does not invalidate its ages.
+  const coupleComposition=couple!==undefined&&!adultMatches.length
+    && /\b(?:casal|casais)\s+(?:e\s+)?mais\s*$/.test(componentPrefix);
+  if(coupleComposition) {
+    const prefix=componentPrefix.replace(/\b(?:no meu caso|no nosso caso|nesse caso|neste caso)\b/g,'');
+    if(/\b(?:nao|se|caso|talvez|hipoteticamente|supondo|poderia|poderiamos|seria|seriam|acho)\b/.test(prefix)
+      ||/\b(?:talvez|hipoteticamente|supondo)\b/.test(componentSuffix))return result(party,'party_composition');
+  }
+  const add=!!component&&!coupleComposition && /\b(?:mais|adicion(?:a|ar|e)|acrescent(?:a|ar|e)|inclu(?:a|ir|i))\s*$/.test(componentPrefix);
   if(add||subtract) {
     // A delta is not a replacement family. Apply only an explicit operation
     // against known counts; questions and alternatives need clarification.

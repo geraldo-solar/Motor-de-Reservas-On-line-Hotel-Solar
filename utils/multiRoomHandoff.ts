@@ -1,7 +1,9 @@
 import {familyAccommodation} from './familyAccommodation.js';
+import {readPackageContext} from './packageContext.js';
+import {readPackageDateRequest} from './packageDateRequest.js';
 
 export type MultiRoomHandoff={at:number;key:string;status:'offered'|'accepted'|'declined'};
-const norm=(s:string)=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+const norm=(s:string)=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/,/g,' ').replace(/\s+/g,' ').trim();
 export const multiRoomReply=(message:string):'accepted'|'declined'|undefined=>
   /^(?:sim|sim,? por favor|pode|pode sim|pode chamar|pode encaminhar|pode prosseguir|quero sim|por favor)[.!]*$/.test(norm(message))?'accepted':
   /^(?:nao|nao obrigado|nao obrigada|agora nao|nao precisa|prefiro nao)[.!]*$/.test(norm(message))?'declined':undefined;
@@ -20,10 +22,17 @@ export function multiRoomKey(state:any,now=Date.now()):string|undefined {
   const date=(value:unknown)=>typeof value==='string'&&/^20\d{2}-\d{2}-\d{2}$/.test(value)
     && Number.isFinite(Date.parse(value+'T12:00:00Z'))
     && new Date(value+'T12:00:00Z').toISOString().slice(0,10)===value;
-  if (!date(f.check_in)||!date(f.check_out)) return;
-  const nights=(Date.parse(f.check_out+'T12:00:00Z')-Date.parse(f.check_in+'T12:00:00Z'))/86400000;
-  if(nights<1||nights>30)return;
-  return JSON.stringify([f.check_in,f.check_out,f.guests,family.key||null]);
+  const focus=readPackageContext(state.package_context,now);
+  const completeDates=date(f.check_in)&&date(f.check_out);
+  // Reception may advise on a package before the customer chooses its dates.
+  // This arms only a handoff; it must never create a quote or copy catalog dates.
+  if(!completeDates&&!focus)return;
+  if(completeDates){
+    const nights=(Date.parse(f.check_out+'T12:00:00Z')-Date.parse(f.check_in+'T12:00:00Z'))/86400000;
+    if(nights<1||nights>30)return;
+  }
+  const request=readPackageDateRequest(state.package_date_request,focus,now);
+  return JSON.stringify([f.check_in||null,f.check_out||null,f.guests,family.key||null,focus?.id||null,request?.text||null]);
 }
 export function readMultiRoomHandoff(value:any,state:any,now=Date.now()):MultiRoomHandoff|undefined {
   if (!value || !Number.isFinite(value.at)||value.at<=0||value.at>now||now-value.at>30*60000
@@ -35,7 +44,11 @@ export function multiRoomOfferText(state:any):string {
   const reason=guests===5
     ? 'Vocês precisarão de dois apartamentos: são 5 hóspedes e não há criança de até 6 anos para a ocupação adicional.'
     : `Para ${guests} hóspedes, precisamos dividir o grupo entre apartamentos.`;
-  return reason+' A recepção precisa conferir a distribuição, os valores e a disponibilidade do conjunto. Posso chamar a equipe para continuar nesta conversa?';
+  return reason+' A recepção precisa conferir a distribuição, os valores e a disponibilidade do conjunto.'
+    +(state.package_date_request?' Seu pedido de datas diferentes do pacote também precisa dessa avaliação.':'')
+    +' Posso chamar a equipe para continuar nesta conversa?';
 }
-export const multiRoomAcceptedText=(state:any)=>`Vou chamar a recepção para conferir a distribuição dos ${state.facts.guests} hóspedes entre apartamentos e preparar o orçamento do conjunto. A equipe confirmará os valores e a disponibilidade nesta conversa.`;
+export const multiRoomAcceptedText=(state:any)=>`Vou chamar a recepção para conferir a distribuição dos ${state.facts.guests} hóspedes entre apartamentos e preparar o orçamento do conjunto.`
+  +(state.package_date_request?' A equipe também avaliará o período diferente que você pediu; essa exceção ainda não está aprovada.':'')
+  +' A equipe confirmará os valores e a disponibilidade nesta conversa.';
 export const multiRoomDeclinedText='Tudo bem, não vou solicitar o encaminhamento agora. Se quiser retomar o orçamento dos apartamentos, é só me dizer.';

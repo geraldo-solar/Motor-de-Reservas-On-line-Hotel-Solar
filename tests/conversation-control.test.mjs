@@ -48,8 +48,12 @@ test('contexto de fotos resolve todos e Varanda térreo sem cotar; troca de assu
   assert.equal(JSON.parse(state).resolved_message,'Fotos de Varanda térreo');
   for (const message of ['Qual o valor do Loft?', 'Quero reservar o Loft', 'Qual o cardápio?', 'Tem sacada?', 'Quero falar com a recepção']) {
     const p = prepare(message,state);
-    assert.equal(JSON.parse(p.state).topic,undefined);
-    assert.equal(JSON.parse(p.state).resolved_message,message);
+    const next=JSON.parse(p.state);
+    // A new room question/choice ends photo intent while retaining the named
+    // category as informational focus for a later explicit request for photos.
+    assert.equal(next.topic,message.includes('Loft')?'room_info':undefined);
+    if(message.includes('Loft'))assert.equal(next.subject,'LOFT');
+    assert.equal(next.resolved_message,message);
   }
 });
 

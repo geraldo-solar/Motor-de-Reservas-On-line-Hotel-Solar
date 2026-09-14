@@ -48,6 +48,32 @@ export function focusedPackageNameReference(message:string,value:unknown,now=Dat
     && /\b(?:reveillon|virada|ano novo)\b/.test(s)
     && /\b(?:reveillon|virada|ano novo)\b/.test(norm(focus.name));
 }
+
+/** A declared party or an apartment-capacity question is a focused package
+ * continuation even when the customer repeats its name. This does not parse
+ * ages, choose dates or authorize booking; the family controller owns facts. */
+export function packageOccupancyFollowup(message:string,value:unknown,now=Date.now()):boolean {
+  const focus=readPackageContext(value,now),s=norm(message);
+  if(!focus||newTripRequest(message)||!s||s.length>1000)return false;
+  if(/\b(?:outro assunto|esquece|esqueca|mudar de assunto|nao quero esse|nao quero o pacote|fotos?|fotografias?|imagem|imagens|videos?|galeria|album|cardapio|menu|reserva solar|solar 73|restaurante|day[ -]?use|avuls[oa]s?|visitantes?|cafe|almoco|jantar|ceia|festa|playground|piscinas?|hidromassagem|bicicletas?|bikes?|comprovante|paguei|pagamento|reembolso|cancelar minha reserva|manutencao)\b/.test(s))return false;
+  const names=s.match(/\b(?:reveillon|ano novo|virada|natal|carnaval|pascoa|finados|corpus christi|dia das criancas|dia das maes|dia dos pais|dia dos namorados|ostrabeach|independencia)\b/g)||[];
+  const focusName=norm(focus.name);
+  const years=s.match(/\b20\d{2}\b/g)||[];
+  if(years.some(year=>!focusName.includes(year)&&focus.start_date.slice(0,4)!==year&&focus.end_date.slice(0,4)!==year))return false;
+  if(names.some(name=>/^(?:reveillon|ano novo|virada)$/.test(name)
+    ?!/\b(?:reveillon|ano novo|virada)\b/.test(focusName):!focusName.includes(name)))return false;
+  if(childAgeFollowup(message))return true;
+  // An unlabelled list can preserve a package, but only the pending-family
+  // parser may decide that these numbers are ages rather than other data.
+  if(/^(?:(?:as idades sao|idades|eles tem|elas tem|tem|sao)[: ]+)?\d{1,2}(?:\s*(?:,|e)\s*\d{1,2}){1,5}(?:\s*anos)?[.!?]*$/.test(s))return true;
+  const count='(?:\\d{1,2}|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)';
+  const composition=new RegExp(`\\b${count}\\s*(?:pessoas|hospedes|adult[oa]s?|criancas?|filh[oa]s?|bebes?)\\b`).test(s)
+    || /\b(?:somos|seremos|vamos em)\s+(?:um )?casal\b|\b(?:casal|minha esposa|meu marido)\b.{0,35}\b(?:filh[oa]s?|criancas?|bebe)\b/.test(s);
+  const capacity=/\b(?:apartamentos?|aptos?|quartos?|suites?|loft|acomodacoes|acomodacao)\b/.test(s)
+    && /\b(?:cabem|cabe|caber|comporta|comportam|acomoda|acomodam|dividir|divididos?|separad[oa]s?|juntos|todos|capacidade|quantas pessoas|quantos hospedes|formato)\b/.test(s);
+  const commercial=/\b(?:valor|valores|preco|precos|custa|custaria|orcamento|cotacao|quanto fica|quanto sai|indica|indicam|indicado|recomenda|recomendam|melhor|sugere|sugestao)\b/.test(s);
+  return capacity||composition&&!commercial;
+}
 export function newTripRequest(message: string) {
   const s = norm(message);
   return /\b(outro periodo|outras datas|outra estadia|outra viagem)\b/.test(s)

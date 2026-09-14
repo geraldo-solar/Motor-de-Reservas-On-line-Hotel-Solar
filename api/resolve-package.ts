@@ -15,9 +15,10 @@ import { isAudioInput } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage } from '../utils/audioInput.js';
 import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
 import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
-import { namedPackageInquiry, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference } from '../utils/packageContext.js';
+import { namedPackageInquiry, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup } from '../utils/packageContext.js';
 import {packageInclusionReply} from '../utils/packageInclusions.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
+import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer} from '../utils/packageDateRequest.js';
 import { packagePrices, packageRecommendation } from '../utils/packageReply.js';
 import { childPolicyQuestion, childAgeFollowup, packageChildReply } from '../utils/packageChildInquiry.js';
 import { stayDateClarification } from '../utils/stayDuration.js';
@@ -28,7 +29,7 @@ import { paymentStatusInquiry } from '../utils/paymentStatus.js';
 import { paymentSupportInquiry } from '../utils/paymentSupport.js';
 import {arrivalTimeQuestion,arrivalTimeHandoff} from '../utils/conversationalStayDates.js';
 import { existingReservationInquiry } from '../utils/existingReservation.js';
-import { familyAccommodation, familyAgeQuestionFor } from '../utils/familyAccommodation.js';
+import { familyAccommodation, familyAgeQuestionFor, familyRoomRule, familyRoomExplanation } from '../utils/familyAccommodation.js';
 import {readMultiRoomHandoff} from '../utils/multiRoomHandoff.js';
 import {multiRoomRequest,roomAlternativeComparison} from '../utils/lodgingScope.js';
 import {reservaHoursAnswer} from '../utils/diningPolicy.js';
@@ -345,6 +346,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({...routed,quote_text:answer,conversation_text:answer,
       matched:false,match_type:'human_request',availability_checked:false});
   }
+  const exceptionalPeriod=packageDateRequest(serviceMessage,earlyState?.package_context);
+  if(!req.query?.operation&&exceptionalPeriod){
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    return res.status(200).json({...routed,quote_request:'ROOM_LIST',can_collect:'NAO',confirmation_text:'',
+      quote_text:packageDateRequestAnswer,conversation_text:packageDateRequestAnswer,
+      matched:false,match_type:'package_date_request',availability_checked:false});
+  }
+  if(req.query?.operation==='offers'
+    &&readPackageDateRequest(earlyState?.package_date_request,earlyState?.package_context)
+    &&incomingMessage===packageDateRequestAnswer)
+    return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',
+      state:JSON.stringify(earlyState),availability_checked:false});
   const consultation=packageConsultationReply(serviceMessage,earlyState?.package_context);
   if(!req.query?.operation&&consultation) {
     // Owner-confirmed period rule and an unconfirmed companion are not a new
@@ -384,6 +397,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({...routed,quote_request:'quote_request' in routed && routed.quote_request==='HUMANO'?'HUMANO':'ROOM_LIST',
       quote_text:answer,conversation_text:answer,match_type:'multi_room_handoff',matched:false,availability_checked:false});
   }
+  const capacityQuestion=/\b(?:apartamentos?|aptos?|quartos?|suites?|loft|acomodacoes|acomodacao)\b/.test(normalize(serviceMessage))
+    &&/\b(?:cabem|cabe|caber|comporta|comportam|acomoda|acomodam|dividir|divididos?|separad[oa]s?|juntos|todos|capacidade|quantas pessoas|quantos hospedes|formato)\b/.test(normalize(serviceMessage));
+  const pendingPackageFamily=familyAccommodation(earlyState,earlyState?.facts?.guests||0).pending;
+  if(!req.query?.operation&&!childPolicyQuestion(serviceMessage)
+    &&packageOccupancyFollowup(serviceMessage,earlyState?.package_context)
+    &&(capacityQuestion||pendingPackageFamily)){
+    // Capacity/composition is the current question, not a request to resend
+    // package advertising or prices. Keep the controller as the sole author
+    // of the multi-apartment offer/acceptance and never consult the catalog.
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    const state='state' in routed?JSON.parse(routed.state||'{}'):earlyState;
+    const multiRoom=readMultiRoomHandoff(state?.multi_room,state);
+    if(multiRoom||'quote_request' in routed&&routed.quote_request==='HUMANO'){
+      const answer='answer' in routed?routed.answer:'';
+      return res.status(200).json({...routed,quote_request:'quote_request' in routed&&routed.quote_request==='HUMANO'?'HUMANO':'ROOM_LIST',
+        quote_text:answer,conversation_text:answer,can_collect:'NAO',confirmation_text:'',
+        package_id:earlyState.package_context.id,package_name:earlyState.package_context.name,
+        matched:false,match_type:'package_followup',availability_checked:false});
+    }
+    const guests=state?.facts?.guests||0,family=familyAccommodation(state,guests);
+    const answer=family.pending?familyAgeQuestionFor(state)
+      :guests===5&&!family.key?'Para conferir se as 5 pessoas cabem em um apartamento, quantos são adultos e quantos são crianças? Informe a idade de cada criança; só podemos considerar a ocupação adicional com uma criança de até 6 anos.'
+      :family.key&&guests<=5?familyRoomExplanation(guests,family.eligible)+' A categoria compatível e a disponibilidade ainda precisam ser conferidas; não há preço, período ou reserva confirmados por esta orientação.'
+      :familyRoomRule+' A categoria compatível e a disponibilidade ainda precisam ser conferidas; esta orientação não confirma preço, período ou reserva.';
+    return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
+      can_collect:'NAO',confirmation_text:'',matched:false,match_type:'package_followup',availability_checked:false,
+      package_id:earlyState.package_context.id,package_name:earlyState.package_context.name,
+      ...control({operation:'remember_response',state:routed.state,response_text:answer})});
+  }
+  if(req.query?.operation==='offers'&&earlyState?.turns?.at(-1)?.role==='assistant'
+    &&earlyState.turns.at(-1).text===incomingMessage
+    &&packageOccupancyFollowup(earlyState.history?.at(-1)||'',earlyState.package_context))
+    return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',
+      state:JSON.stringify(earlyState),availability_checked:false});
   const restaurantHours=reservaHoursAnswer(serviceMessage);
   if(!req.query?.operation && restaurantHours){
     const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
@@ -535,7 +582,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Inclusions such as the boat belong to the package, not to a new paid-extra
   // offer. Resolve these continuations before the proactive media/extra branch.
   if (!offersOnly && focusedPackage && packageFollowup(userMessage)
-    && (!namedPackageInquiry(userMessage)||focusedPackageNameReference(userMessage,focusedPackage))) {
+    && (!namedPackageInquiry(userMessage)||focusedPackageNameReference(userMessage,focusedPackage)
+      ||packageOccupancyFollowup(userMessage,focusedPackage))) {
     const [{data: packages,error: packageError},{data: rooms,error: roomError}] = await Promise.all([
       supabase.from('packages').select('*').eq('active',true),
       supabase.from('room_types').select('*').eq('active',true),
