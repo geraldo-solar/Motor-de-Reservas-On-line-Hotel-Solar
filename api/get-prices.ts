@@ -258,6 +258,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const coupleWithChild = guestCount === 3 && family.children === 1 && family.eligible === 1;
     roomQuotes.sort((a, b) => (coupleWithChild ? Number(b.base_capacity === 2) - Number(a.base_capacity === 2) : 0) || b.finalPrice - a.finalPrice);
     const quoteOptions: Array<{ name: string; capacity: number; total: number; child_allowance?: number }> = [];
+    // ManyChat's plain-text block has a 2,000-character budget. Keep the
+    // complete policy/extra/next-step paragraphs, but describe shared columns
+    // and category groups once instead of repeating them beside every price.
+    // Legacy summary/WhatsApp fields and all calculated quote data stay intact.
+    let compactRoomText = '*Hospedagem no período:*\n';
 
     if (roomQuotes.length === 0) {
       const maxCapacity = Math.max(...allRoomQuotes.map(room => room.base_capacity));
@@ -298,6 +303,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .slice(0, 3);
 
       whatsappText += `Para acomodar bem ${guestCount} hóspedes, estas são as combinações com melhor aproveitamento dos apartamentos:\n\n`;
+      compactRoomText += `Combinações para ${guestCount} hóspedes:\n`;
       recommendedCombinations.forEach((combination, index) => {
         const roomCounts = combination.rooms.reduce<Record<string, number>>((counts, room) => {
           counts[room.name] = (counts[room.name] || 0) + 1;
@@ -309,6 +315,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const combinedTotal = combination.finalPrice + extrasTotal;
         quoteOptions.push({ name: description, capacity: combination.capacity, total: combinedTotal,
           ...(family.eligible ? {child_allowance:Math.min(combination.rooms.length,family.eligible)} : {}) });
+        compactRoomText += `${index === 0 ? '⭐ Recomendação premium\n' : ''}• ${description}: *R$ ${money(combination.finalPrice)}*${extrasTotal > 0 ? `; com extras: *R$ ${money(combinedTotal)}*` : ''}\n`;
 
         summaryText += `- ${index === 0 ? '⭐ Recomendação premium — ' : ''}${description}: R$ ${money(combination.finalPrice)} em hospedagem`;
         whatsappText += `${index === 0 ? '⭐ *Recomendação premium*\n' : ''}• ${description}: *R$ ${money(combination.finalPrice)}* em hospedagem`;
@@ -325,6 +332,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ...(family.eligible ? {child_allowance:1} : {}) });
         const label = coupleWithChild ? (room.base_capacity === 2 ? 'Categoria Casal, com a criança em cortesia' : 'Categoria maior opcional') : index === 0 ? '⭐ Recomendação premium' : '';
         const capacityLabel = family.eligible ? `até ${room.base_capacity} pessoas mais 1 criança de até 6 anos em cortesia` : `até ${room.capacity} pessoas`;
+        if (coupleWithChild && (index === 0 || (room.base_capacity === 2) !== (roomQuotes[index - 1].base_capacity === 2)))
+          compactRoomText += `*${room.base_capacity === 2 ? 'Categoria Casal, com a criança em cortesia' : 'Categoria maior opcional'}*\n`;
+        else if (!coupleWithChild && index === 0) compactRoomText += '⭐ Recomendação premium\n';
+        const compactCapacity = family.eligible ? `até ${room.base_capacity} pessoas + 1 criança` : `até ${room.capacity} pessoas`;
+        compactRoomText += `• ${room.name} (${compactCapacity}): *R$ ${money(room.finalPrice)}*${extrasTotal > 0 ? `; com extras: *R$ ${money(room.finalPrice + extrasTotal)}*` : ''}\n`;
         summaryText += `- ${label ? label+' — ' : ''}${room.name} (${capacityLabel}): R$ ${money(room.finalPrice)} em hospedagem`;
         whatsappText += `${label ? '*'+label+'*\n' : ''}• ${room.name} (${capacityLabel}): *R$ ${money(room.finalPrice)}* em hospedagem`;
         if (extrasTotal > 0) {
@@ -335,12 +347,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         whatsappText += '.\n\n';
       });
     }
+    compactRoomText += '\n';
 
+    let compactFamilyText = '';
     if (family.children) {
       const explanation = familyRoomExplanation(guestCount, family.eligible, roomQuotes.length === 0);
       summaryText += explanation + '\n';
       whatsappText += explanation + '\n\n';
+      compactFamilyText = family.eligible && roomQuotes.length > 0
+        ? 'A capacidade indicada soma no máximo 1 criança de até 6 anos em cortesia por apartamento; as demais pessoas contam na ocupação normal. Casal + 1 criança nessa faixa pode usar a categoria Casal pelo valor de casal; categoria maior é opcional.\n'
+          + 'O berço é gratuito; para a criança de até 6 anos em cortesia há cama extra gratuita, sem obrigatoriedade de dividir cama. Solicite à recepção, que confere a disponibilidade dos itens e a compatibilidade com o apartamento. Nenhum item está reservado ou instalado.\n\n'
+        : explanation + '\n\n';
     }
+    const familyTextEnd = whatsappText.length;
 
     if (quoteOptions.some(option => /\bcasal\b/.test(normalize(option.name)))) {
       summaryText += coupleRoomConfigurationText + '\n';
@@ -384,9 +403,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // The new conversational flow stays in the same WhatsApp conversation.
     // Preserve legacy response fields for integrations that still use them.
-    const conversationText = whatsappText
-      + 'Esta é uma simulação de valores, sem confirmação de disponibilidade.\n\n'
-      + 'Qual acomodação você prefere? Se quiser prosseguir, diga qual opção escolheu. Primeiro confirmaremos sua escolha; só depois pediremos os dados para a recepção continuar por aqui.';
+    const conversationText = `☀️ Simulação: ${formatDate(checkIn)} a ${formatDate(checkOut)} · ${nights} ${nights === 1 ? 'diária' : 'diárias'} · ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}.\n\n`
+      + (activePackage ? `🎉 Pacote especial: ${activePackage.name}\n\n` : '')
+      + compactRoomText + compactFamilyText + whatsappText.slice(familyTextEnd)
+      + 'Simulação sem confirmação de disponibilidade.\n\n'
+      + 'Qual acomodação você prefere? Primeiro confirmaremos sua escolha; só depois pediremos os dados para a recepção continuar por aqui.';
 
     const handoffText = 'Esta é uma simulação de valores e não confirma disponibilidade. Para consultar vagas e finalizar a reserva, fale com a recepção pelo WhatsApp: (91) 98100-0800.';
     summaryText += `\n${handoffText}`;

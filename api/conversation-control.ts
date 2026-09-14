@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { MANYCHAT_TEXT_TRANSPORT, withManyChatTextEnvelope, extractManyChatText } from '../utils/manychatText.js';
 import { belemClock, readDailyGreeting, parseGreetingState, withDailyGreeting } from '../utils/dailyGreeting.js';
 import {readAssistantDisclosure,prepareDisclosure,stripAssistantDisclosure,type AssistantDisclosure} from '../utils/assistantDisclosure.js';
 import { EXTRA_MEDIA_CODES, extraCodes, extraPhotoRequest } from '../utils/extraMedia.js';
@@ -1239,7 +1240,15 @@ export async function handleConversation(body: any, authorization = '', transcri
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Display extraction only: do not prepare/route/confirm a turn, call providers
+  // or consume pending state. can_send is never authority for data collection.
+  if (req.query?.operation === 'extract-text') {
+    res.setHeader?.('Cache-Control', 'no-store');
+    return res.status(req.method === 'POST' ? 200 : 405).json(req.method === 'POST'
+      ? extractManyChatText(req.body?.payload, req.body?.key) : { can_send: 'NAO' });
+  }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST' });
   const result = await handleConversation(req.body || {}, req.headers?.authorization || '');
-  return res.status('error' in result ? 400 : 200).json(result);
+  return res.status('error' in result ? 400 : 200).json(req.query?.transport === MANYCHAT_TEXT_TRANSPORT
+    ? withManyChatTextEnvelope(result) : result);
 }
