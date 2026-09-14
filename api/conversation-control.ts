@@ -13,7 +13,7 @@ import { isAudioInput, transcribeAudio } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage, audioSourceHash, readAudioTurn, type AudioTurn } from '../utils/audioInput.js';
 import { isAttachmentInput, analyzeAttachment, type AttachmentKind } from '../utils/attachmentAnalysis.js';
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
-import { packageInquiry, packageFollowup, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, type PackageContext } from '../utils/packageContext.js';
+import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer,packageDateRequestRefused,type PackageDateRequest} from '../utils/packageDateRequest.js';
 import { guestInquiry, explicitLodgingRequest, type GuestInquiry } from '../utils/guestInquiry.js';
@@ -22,7 +22,7 @@ import { reservaRestaurantMessage } from '../utils/restaurantIntent.js';
 import { explicitHumanRequest, stripNegatedHumanRequests } from '../utils/humanIntent.js';
 import { childPolicyQuestion, childAgeFollowup } from '../utils/packageChildInquiry.js';
 import { multiRoomRequest,roomAlternativeComparison } from '../utils/lodgingScope.js';
-import {readMultiRoomHandoff,multiRoomKey,multiRoomReply,multiRoomOfferText,multiRoomAcceptedText,multiRoomDeclinedText,type MultiRoomHandoff} from '../utils/multiRoomHandoff.js';
+import {readMultiRoomHandoff,multiRoomKey,multiRoomReply,multiRoomOfferText,multiRoomAcceptedText,multiRoomDeclinedText,multiRoomGuidanceRequest,multiRoomGuidanceText,type MultiRoomHandoff} from '../utils/multiRoomHandoff.js';
 import { guestServiceRequest, guestServiceContext, guestServiceAnswer } from '../utils/guestService.js';
 import { hotelPhoneInquiry, hotelContactAnswer } from '../utils/hotelContact.js';
 import { confirmedGuestFacilitiesPolicy, guestFacilityInquiry, guestFacilityAnswer } from '../utils/guestFacilities.js';
@@ -57,7 +57,7 @@ const numberPattern = '(\\d{1,2}|uma|um|duas|dois|tres|quatro|cinco|seis|sete|oi
 // classifier proposes a quote. Restaurant/table questions stay informational.
 const restaurantInquiry = (s: string) => !explicitLodgingRequest(s) && (/\breserva solar\b/i.test(reservaRestaurantMessage(s)) || /\b(cardapio|menu|restaurante|solar 73|avuado)\b/.test(s));
 const lodging = (s: string) => !restaurantInquiry(s) && /\b(vaga|vagas|disponibilidade|hospedagem|estadia|diaria|diarias|reservar|reserva|quarto|quartos|apto|apartamento|loft|suite|cotacao|orcamento|pessoas|hospedes|casal|adultos)\b/.test(s);
-const recommendation = (s: string) => /\b(indica|indicam|indicado|recomenda|recomendam|melhor|sugere|sugestao)\b/.test(s);
+const recommendation = (s: string) => /\b(indica|indicam|indicaria|indicariam|indicado|recomenda|recomendam|recomendaria|recomendariam|melhor|sugere|sugestao)\b/.test(s);
 const question = (s: string) => s.includes('?') || /\b(qual|quais|quanto|quantos|como|onde|quando|indica|recomenda|poderia|pode me|gostaria de saber|tem vaga|tem disponibilidade|inclui|incluido)\b/.test(s);
 // Explicit billing disputes require a person. General payment policies and
 // ordinary comparisons between simulated room prices remain informational.
@@ -657,6 +657,30 @@ function controlTurn(body: any, now = Date.now()) {
   const audio = isAudioInput(input);
   const raw = (audio ? audioMessage(input, state, now) || AUDIO_UNAVAILABLE : safeTypedMessage(input)).slice(0, 2000);
   const s = norm(raw);
+  const packageDiscovery=packageDiscoveryRequest(raw,state.package_context,now);
+  const roomGuidanceRequest=multiRoomGuidanceRequest(raw);
+  if(['prepare','route','confirm'].includes(body.operation)&&(packageDiscovery||roomGuidanceRequest)){
+    // An informational question consumes an old yes/no offer. A later "Sim"
+    // cannot accept a handoff the customer was no longer being asked about.
+    delete state.multi_room;delete state.pending;delete state.awaiting;
+  }
+  if(['prepare','route','confirm'].includes(body.operation)&&packageDiscovery){
+    // A new catalogue search is not the old weekend's quote. Re-extract only
+    // dates/extras explicitly present in THIS message; keep the known family.
+    delete state.facts.check_in;delete state.facts.check_out;state.facts.extras=[];
+    clearStayDuration(state);
+    delete state.package_context;delete state.package_date_request;
+    delete state.subject;delete state.extra_photo_subjects;
+    delete state.programming_pending;delete state.event;delete state.guest_inquiry;
+    state.topic='package_info';state.topic_at=now;state.resolved_message=raw;
+    if(body.operation!=='prepare'){
+      updateFacts(state,raw,now);
+      if(state.history.at(-1)!==raw.slice(0,500)&&!personal(raw)){
+        state.history=[...state.history,raw.slice(0,500)].slice(-12);
+        remember(state,'user',raw);
+      }
+    }
+  }
   if(body.operation==='prepare' && !multiRoomReply(raw))delete state.multi_room;
   // Evaluate the incoming customer's short request against the previous topic
   // before renewing it. Assistant messages never establish this marker.
@@ -1082,6 +1106,10 @@ function controlTurn(body: any, now = Date.now()) {
   }
   const quote = validQuote(body.quote_state, state, now);
   if (body.operation === 'confirm') {
+    if(packageDiscovery||roomGuidanceRequest){
+      return {state:JSON.stringify(state),quote_request:'NOQUOTE',can_collect:'NAO',confirmation_text:'',
+        answer:multiRoomGuidanceText(state,raw,now)||'Vamos esclarecer sua pergunta antes de escolher uma acomodação.'};
+    }
     if (!state.attachment && !state.guest_inquiry && quote && state.pending?.quote_id === quote.id && quote.options.some(o => o.name === state.pending?.option)) {
       ready = 'SIM';
       confirmationText = confirmation(quote, state.pending.option);
@@ -1097,6 +1125,7 @@ function controlTurn(body: any, now = Date.now()) {
   const diningAnswer = diningPolicyAnswer(publicMessage) || reservaHoursAnswer(publicMessage,now) || visitorBreakfastAnswer(publicMessage);
   const facilityAnswer = confirmedHotelAnswer(publicMessage) || (inquiry === 'lodging_faq' ? guestFacilityAnswer(publicMessage) || locmilAnswer(publicMessage) : undefined);
   const weekdayQuestion = packageWeekdayClarification(publicMessage, state.package_context, now);
+  const roomGuidance=multiRoomGuidanceText(state,publicMessage,now);
   if (raw === AUDIO_UNAVAILABLE) {
     answer = AUDIO_RETRY;
     state.resolved_message = AUDIO_UNAVAILABLE;
@@ -1125,7 +1154,17 @@ function controlTurn(body: any, now = Date.now()) {
     answer = facilityAnswer;
     delete state.pending;
   }
+  else if(packageDiscovery){
+    answer='Vou consultar os pacotes cadastrados para responder sobre o período que você perguntou.';
+    delete state.multi_room;delete state.pending;delete state.awaiting;
+  }
+  else if(roomGuidance&&!inquiry&&!mediaRequest(s)){
+    answer=roomGuidance;
+    delete state.multi_room;delete state.pending;delete state.awaiting;
+    delete state.subject;delete state.extra_photo_subjects;
+  }
   else if (multiRoomKey(state,now) && !inquiry && !mediaRequest(s) && !restaurantInquiry(s)
+    && !(packageInquiry(publicMessage)&&!occupancyFollowup)
     && (lodging(s)||state.changed||recommendation(s)||childAgeFollowup(publicMessage)
       || !!state.family_party?.children&&/^\d{1,2}(?:\s*[,e]\s*\d{1,2})+[.!]?$/.test(s))) {
     state.multi_room={at:now,key:multiRoomKey(state,now)!,status:'offered'};
@@ -1183,7 +1222,7 @@ function controlTurn(body: any, now = Date.now()) {
     if(state.arrival_time.status==='human_review')decision='HUMANO';
     delete state.pending;delete state.awaiting;
   }
-  else if (multiRoomKey(state,now) && (lodging(s) || state.changed || recommendation(s)
+  else if (multiRoomKey(state,now) && !roomGuidanceRequest && !packageDiscovery && (lodging(s) || state.changed || recommendation(s)
     || /^QUOTE\|/.test(proposed) || state.multi_room?.status==='offered')) {
     state.multi_room={at:state.multi_room?.at||now,key:multiRoomKey(state,now)!,status:'offered'};
     answer=multiRoomOfferText(state);

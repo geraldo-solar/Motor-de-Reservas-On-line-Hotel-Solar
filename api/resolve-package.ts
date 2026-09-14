@@ -3,7 +3,7 @@ import { MANYCHAT_TEXT_TRANSPORT, withManyChatTextEnvelope } from '../utils/many
 import { createClient } from '@supabase/supabase-js';
 import { resolveRoomMedia, nextRoomMedia } from '../utils/roomMedia.js';
 import { control, safeTypedMessage } from './conversation-control.js';
-import { withDailyGreeting } from '../utils/dailyGreeting.js';
+import { withDailyGreeting, belemClock } from '../utils/dailyGreeting.js';
 import {stripAssistantDisclosure} from '../utils/assistantDisclosure.js';
 import { PHOTO_CLARIFY, documentPhotoInquiry, photoClarificationQuestion, photoRetryRequest } from '../utils/photoIntent.js';
 import { requestedExtraCodes, extraCodes, extraPhotoRequest, extraMediaResult, nextExtraMedia, normalizeExtra, explicitPackageBoatBenefit, safeBoatCopy, safeBoatPackageCopy } from '../utils/extraMedia.js';
@@ -15,7 +15,7 @@ import { isAudioInput } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage } from '../utils/audioInput.js';
 import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
 import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
-import { namedPackageInquiry, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup } from '../utils/packageContext.js';
+import { namedPackageInquiry, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup,packageDiscoveryRequest } from '../utils/packageContext.js';
 import {packageInclusionReply} from '../utils/packageInclusions.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer} from '../utils/packageDateRequest.js';
@@ -30,7 +30,7 @@ import { paymentSupportInquiry } from '../utils/paymentSupport.js';
 import {arrivalTimeQuestion,arrivalTimeHandoff} from '../utils/conversationalStayDates.js';
 import { existingReservationInquiry } from '../utils/existingReservation.js';
 import { familyAccommodation, familyAgeQuestionFor, familyRoomRule, familyRoomExplanation } from '../utils/familyAccommodation.js';
-import {readMultiRoomHandoff} from '../utils/multiRoomHandoff.js';
+import {readMultiRoomHandoff,multiRoomGuidanceText} from '../utils/multiRoomHandoff.js';
 import {multiRoomRequest,roomAlternativeComparison} from '../utils/lodgingScope.js';
 import {reservaHoursAnswer} from '../utils/diningPolicy.js';
 import {explicitHumanRequest,stripNegatedHumanRequests} from '../utils/humanIntent.js';
@@ -191,6 +191,12 @@ const formatPackageList = (packages: PackageRecord[], conversational = false) =>
   ].join('\n'), conversational);
 };
 
+function validPackagePeriod(pkg:PackageRecord):boolean {
+  const valid=(date:unknown):date is string=>typeof date==='string'&&/^20\d{2}-\d{2}-\d{2}$/.test(date)
+    &&Number.isFinite(Date.parse(date+'T12:00:00Z'))&&new Date(date+'T12:00:00Z').toISOString().slice(0,10)===date;
+  return valid(pkg.start_iso_date)&&valid(pkg.end_iso_date)&&pkg.end_iso_date>pkg.start_iso_date;
+}
+
 async function catalogBoatBenefit(supabase: any, focus: ReturnType<typeof readPackageContext>) {
   if (!focus) return false;
   const { data: packages, error } = await supabase.from('packages').select('*').eq('active', true);
@@ -302,6 +308,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     earlyState = 'state' in checked ? JSON.parse(checked.state || '{}') : undefined;
     previousPaymentMessage = earlyState?.history?.at(-1) || '';
   } catch { /* Invalid state cannot establish payment context. */ }
+  const discovery=!req.query?.operation&&packageDiscoveryRequest(serviceMessage,earlyState?.package_context);
   if (!req.query?.operation && hotelPhoneInquiry(serviceMessage)
     && !paymentStatusInquiry(serviceMessage, previousPaymentMessage)
     && !existingReservationInquiry(serviceMessage, !!earlyState?.existing_reservation)) {
@@ -387,10 +394,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       quote_text:confirmedAnswer,conversation_text:confirmedAnswer,can_collect:'NAO',confirmation_text:'',
       matched:false,match_type:'confirmed_hotel_policy',availability_checked:false});
   }
-  const multi=readMultiRoomHandoff(earlyState?.multi_room,earlyState);
+  if(discovery){
+    // The controller owns topic reset, including direct calls without prepare.
+    // Use its safe state throughout this resolver so stale dates/consent cannot
+    // be reintroduced when the catalog response is remembered below.
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    if('quote_request' in routed&&routed.quote_request==='HUMANO'){
+      const answer='answer' in routed?routed.answer:'';
+      return res.status(200).json({...routed,quote_text:answer,conversation_text:answer,
+        can_collect:'NAO',confirmation_text:'',matched:false,match_type:'human_handoff',availability_checked:false});
+    }
+    if('state' in routed&&routed.state){
+      req.body={...req.body,state:routed.state};
+      earlyState=JSON.parse(routed.state);
+    }
+  }
+  const guidance=!req.query?.operation&&!discovery?multiRoomGuidanceText(earlyState,serviceMessage):undefined;
+  if(guidance){
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    const answer='answer' in routed?routed.answer:guidance;
+    // A distribution question can also contain an explicit request for multiple
+    // rooms. Keep the controller's handoff paired with its handoff wording.
+    const human='quote_request' in routed&&routed.quote_request==='HUMANO';
+    return res.status(200).json({...routed,quote_request:human?'HUMANO':'ROOM_LIST',quote_text:answer,conversation_text:answer,
+      can_collect:'NAO',confirmation_text:'',matched:false,match_type:human?'multi_room_handoff':'multi_room_guidance',availability_checked:false});
+  }
+  const multi=discovery?undefined:readMultiRoomHandoff(earlyState?.multi_room,earlyState);
   if(req.query?.operation==='offers' && multi)
     return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',state:JSON.stringify(earlyState),availability_checked:false});
-  if(!req.query?.operation && (multiRoomRequest(serviceMessage) || roomAlternativeComparison(serviceMessage)
+  if(!req.query?.operation && !discovery && (multiRoomRequest(serviceMessage) || roomAlternativeComparison(serviceMessage)
     || multi && earlyState.history?.at(-1)===serviceMessage.slice(0,500))){
     const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
     const answer='answer' in routed?routed.answer:'';
@@ -578,7 +610,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json(nextRoomMedia(userMessage, rooms || []));
   }
   const offersOnly=req.query?.operation==='offers';
-  const focusedPackage = conversationState?.topic === 'package_info' ? readPackageContext(conversationState.package_context) : undefined;
+  const focusedPackage = !discovery&&conversationState?.topic === 'package_info' ? readPackageContext(conversationState.package_context) : undefined;
   // Inclusions such as the boat belong to the package, not to a new paid-extra
   // offer. Resolve these continuations before the proactive media/extra branch.
   if (!offersOnly && focusedPackage && packageFollowup(userMessage)
@@ -659,7 +691,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!isPackageIntent(userMessage, bestPackageScore)) {
     return res.status(200).json(informationResult('Pode detalhar como podemos ajudar com sua dúvida sobre o hotel?','general_information'));
   }
-  if (!packages?.length) {
+  const today=belemClock(Date.now()).day;
+  const asksNext=discovery&&/\bproxim[oa]s?\b/.test(normalize(userMessage));
+  const currentPackages=discovery&&!namedPackageInquiry(userMessage)
+    ?(packages||[]).filter((pkg:PackageRecord)=>validPackagePeriod(pkg)&&pkg.end_iso_date!>=today)
+    :packages||[];
+  let nextPackage:PackageRecord|undefined;
+  if(asksNext){
+    const candidates=(packages||[]).filter((pkg:PackageRecord)=>validPackagePeriod(pkg)&&pkg.start_iso_date!>=today
+      &&(!namedPackageInquiry(userMessage)||scorePackage(userMessage,pkg)>=20))
+      .sort((a:PackageRecord,b:PackageRecord)=>a.start_iso_date!.localeCompare(b.start_iso_date!));
+    if(!candidates.length){
+      const answer='Não encontrei um próximo pacote com período futuro válido entre os cadastros ativos consultados. Isso não significa que não haverá programação: a recepção pode verificar novidades. Não consultei disponibilidade de apartamentos.';
+      return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
+        can_collect:'NAO',confirmation_text:'',matched:false,match_type:'next_package_unavailable',availability_checked:false,
+        ...control({operation:'remember_response',state:req.body?.state,response_text:answer,clear_package:true})});
+    }
+    const first=candidates.filter((pkg:PackageRecord)=>pkg.start_iso_date===candidates[0].start_iso_date);
+    if(first.length>1){
+      const answer=fitWhatsApp('Os próximos pacotes cadastrados começam em '+formatDate(first[0].start_iso_date)+'. Estes são os cadastros ativos para essa data; a lista não confirma disponibilidade de apartamentos.\n\n'+formatPackageList(first,true),true);
+      return res.status(200).json({quote_request:'PACKAGE_LIST',quote_text:answer,conversation_text:answer,
+        can_collect:'NAO',confirmation_text:'',matched:true,match_type:'next_package_list',availability_checked:false,
+        ...control({operation:'remember_response',state:req.body?.state,response_text:answer,clear_package:true})});
+    }
+    nextPackage=first[0];
+  }
+  if (!currentPackages.length) {
     return res.status(200).json({
       quote_request: 'NO_PACKAGE',
       quote_text: 'No momento não há pacotes ativos cadastrados no motor de reservas.',
@@ -669,19 +726,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const ranked = (packages as PackageRecord[])
+  const ranked = (currentPackages as PackageRecord[])
     .map(pkg => ({ pkg, score: scorePackage(userMessage, pkg) }))
     .sort((a, b) => b.score - a.score);
-  const best = ranked[0];
+  const best = nextPackage?{pkg:nextPackage,score:scorePackage(userMessage,nextPackage)}:ranked[0];
 
-  if (best.score < 20) {
+  if (best.score < 20&&!nextPackage) {
     return res.status(200).json({
       quote_request: 'PACKAGE_LIST',
-      quote_text: formatPackageList(packages as PackageRecord[]),
-      conversation_text: formatPackageList(packages as PackageRecord[], true),
+      quote_text: formatPackageList(currentPackages as PackageRecord[]),
+      conversation_text: formatPackageList(currentPackages as PackageRecord[], true),
       matched: true,
       match_type: 'list',
-      ...control({operation:'remember_response',state:req.body?.state,response_text:formatPackageList(packages as PackageRecord[], true),clear_package:true}),
+      availability_checked:false,
+      ...control({operation:'remember_response',state:req.body?.state,response_text:formatPackageList(currentPackages as PackageRecord[], true),clear_package:true}),
     });
   }
 
@@ -694,19 +752,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         package_context:{id:pkg.id,name:pkg.name,start_date:pkg.start_iso_date,end_date:pkg.end_iso_date}})});
   }
   const reference = `PACKAGE_ID|${pkg.id}`;
+  const nextNotice=nextPackage?'Entre os pacotes ativos consultados, este é o próximo pacote cadastrado a começar. As datas abaixo são do pacote, não uma escolha de estadia ou confirmação de disponibilidade.\n\n':'';
+  const conversationalDetails=fitWhatsApp(nextNotice+formatPackageDetails(pkg,(rooms||[]) as RoomRecord[],true),true);
   return res.status(200).json({
     quote_request: reference,
-    quote_text: formatPackageDetails(pkg, (rooms || []) as RoomRecord[]),
-    conversation_text: formatPackageDetails(pkg, (rooms || []) as RoomRecord[], true),
+    quote_text: fitWhatsApp(nextNotice+formatPackageDetails(pkg, (rooms || []) as RoomRecord[])),
+    conversation_text: conversationalDetails,
     package_image_url: pkg.image_url
       ? `https://reservas.hotelsolar.tur.br/api/package-image?code=${encodeURIComponent(reference)}`
       : '',
     package_id: pkg.id,
     package_name: pkg.name || '',
     matched: true,
-    match_type: 'specific',
+    match_type: nextPackage?'next_package':'specific',
+    availability_checked:false,
     score: best.score,
-    ...control({operation:'remember_response',state:req.body?.state,response_text:formatPackageDetails(pkg, (rooms || []) as RoomRecord[], true),
+    ...control({operation:'remember_response',state:req.body?.state,response_text:conversationalDetails,
       package_context:{id:pkg.id,name:pkg.name,start_date:pkg.start_iso_date,end_date:pkg.end_iso_date}}),
   });
 }

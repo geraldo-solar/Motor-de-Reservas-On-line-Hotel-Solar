@@ -6,7 +6,41 @@ export type MultiRoomHandoff={at:number;key:string;status:'offered'|'accepted'|'
 const norm=(s:string)=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/,/g,' ').replace(/\s+/g,' ').trim();
 export const multiRoomReply=(message:string):'accepted'|'declined'|undefined=>
   /^(?:sim|sim,? por favor|pode|pode sim|pode chamar|pode encaminhar|pode prosseguir|quero sim|por favor)[.!]*$/.test(norm(message))?'accepted':
-  /^(?:nao|nao obrigado|nao obrigada|agora nao|nao precisa|prefiro nao)[.!]*$/.test(norm(message))?'declined':undefined;
+  /^(?:nao|nao obrigado|nao obrigada|agora nao|nao precisa(?: (?:chamar|encaminhar)(?: a (?:recepcao|equipe))?)?|prefiro nao)[.!]*$/.test(norm(message))?'declined':undefined;
+
+/** Asking how to fit a family is information, not an order for two rooms or
+ * consent to hand off. Keep it separate from the yes/no handoff question. */
+export function multiRoomGuidanceRequest(message:string):boolean {
+  const s=norm(message);
+  if(!s||s.length>600||/\b(?:fotos?|fotografias?|imagens?|videos?|galeria|telefone|ligar|cardapio|restaurante|reserva solar|solar 73|passeios?|barco|piscinas?|hidromassagem|eventos?|pagamento|comprovante|cancelar|reembolso)\b/.test(s))return false;
+  if(/\b(?:precos?|valores?|orcamento|cotacao|quanto (?:custa|fica|sai)|quero reservar|preciso reservar|pode reservar|pode cotar)\b/.test(s))return false;
+  const combination=/\b(?:casal|duplo)\b/.test(s)&&/\btriplo\b/.test(s);
+  const distribution=/\b(?:distribuir|distribuicao|dividir|divisao|organizar)\b/.test(s);
+  const suggestion=/\b(?:indica|indicam|indicaria|indicariam|recomenda|recomendam|recomendaria|recomendariam|sugere|sugerem|sugestao)\b/.test(s);
+  const group=/\b(?:apartamentos?|aptos?|quartos?|acomodacoes|acomodacao|familia|grupo|todos|nos|comportar|acomodar|como)\b/.test(s);
+  // A general package query may contain "hospedagem" or "família". It is
+  // not a distribution question just because a five-person party is known.
+  if(/\b(?:pacotes?|feriados?|reveillon|natal|carnaval|pascoa)\b/.test(s)&&!combination&&!distribution&&!/\b(?:apartamentos?|aptos?|quartos?|comportar|acomodar)\b/.test(s))return false;
+  return combination&&(s.includes('?')||/\b(?:pode ser|poderia ser|da para|que tal|e se|comporta|comportam|cabe|cabem)\b/.test(s))
+    || distribution&&(s.includes('?')||/\b(?:como|indica|indicaria|recomenda|recomendaria|sugere|pode|gostaria|quero saber)\b/.test(s))
+    || suggestion&&group;
+}
+
+export function multiRoomGuidanceText(state:any,message:string,now=Date.now()):string|undefined {
+  if(!multiRoomGuidanceRequest(message)||state?.facts?.guests!==5)return;
+  const family=familyAccommodation(state,5,now);
+  const adultsOnly=state.family_party?.adults===5&&state.family_party?.children===0;
+  if(family.pending||state.facts.children_pending||state.family_clarification||!family.key&&!adultsOnly)return;
+  const s=norm(message),combination=/\b(?:casal|duplo)\b/.test(s)&&/\btriplo\b/.test(s);
+  if(family.eligible&&!combination)return;
+  const explanation=combination
+    ? 'Sim, em termos de capacidade, um apartamento da categoria Casal (2 pessoas) e um Triplo (3 pessoas) comportam os 5 hóspedes.'
+    : 'Para vocês cinco, uma possibilidade é combinar dois apartamentos: um da categoria Casal para 2 pessoas e um Triplo para 3 pessoas.';
+  return explanation+(family.eligible
+    ? ' Dividir é opcional: pelas idades informadas, vocês também podem avaliar um apartamento compatível para 4 pessoas mais 1 criança de até 6 anos.'
+    : ' Como não há criança de até 6 anos, não podemos usar a ocupação adicional para reunir os cinco em um apartamento.')
+    +' A distribuição das pessoas depende da preferência da família. A recepção precisa confirmar a configuração das camas, a disponibilidade e os valores dos dois apartamentos; esta orientação não confirma reserva nem inicia uma consulta com a equipe.';
+}
 
 /** Facts must already be explicit and complete; this never learns from AI text. */
 export function multiRoomKey(state:any,now=Date.now()):string|undefined {

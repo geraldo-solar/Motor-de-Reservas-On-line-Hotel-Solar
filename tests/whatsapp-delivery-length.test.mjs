@@ -8,7 +8,7 @@ import {build} from 'esbuild';
 const PLAIN_TEXT_LIMIT=4096;
 const MANYCHAT_TEXT_LIMIT=2000;
 const BUTTON_FOOTER_LIMIT=640;
-const proposedFooter='Se preferir atendimento humano, fale com a nossa recepção.';
+const proposedFooter='Se preferir atendimento humano, toque abaixo ou ligue para (91) 98100-0800.';
 const rooms=[
   ['casal','Suíte Casal',2,500],
   ['triplo','Suíte Triplo',3,650],
@@ -183,7 +183,7 @@ test('orçamento de texto simples inclui cumprimento sem ultrapassar 2000/4096',
 
 test('rodapé proposto separado contém apenas orientação curta e cabe em 640',t=>{
   assert.ok(proposedFooter.length>0&&proposedFooter.length<=BUTTON_FOOTER_LIMIT);
-  assert.match(proposedFooter,/atendimento humano.*recepção/);
+  assert.match(proposedFooter,/atendimento humano.*toque abaixo.*ligue para \(91\) 98100-0800/);
   assert.doesNotMatch(proposedFooter,/\{\{|\{chatgpt_|R\$|QUOTE\|/);
   t.diagnostic(`Rodapé proposto (fixture, não leitura da UI): ${proposedFooter.length}/${BUTTON_FOOTER_LIMIT} UTF-16 units`);
 });

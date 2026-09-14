@@ -16,6 +16,19 @@ export function normalizeAgeNumbers(value: string) {
 }
 const agesPattern = () => /\b(\d{1,3}(?:\s*(?:,|e)\s*\d{1,3})*)\s*(anos?|meses?)(?:\s+e\s+(\d{1,2})\s*meses?\b)?\b/g;
 
+/** In a scoped age answer, "um tem 16 anos, o outro 10" shares its explicit
+ * unit. Require individually attributed entries and one unambiguous unit for
+ * the whole list; never borrow years across months or a compound age. */
+function withSpokenAgeUnits(value: string): string | undefined {
+  if (!/\b(?:tem|outr[oa])\b/.test(value)) return;
+  const entry = /\b(?:1\s+(?:tem|de)|(?:(?:a|o)\s+)?outr[oa](?:\s+(?:tem|de))?)\s+(\d{1,3})(?:\s*(anos?|meses?))?\b/g;
+  const matches = [...value.matchAll(entry)];
+  if (matches.length < 2 || matches.length > 20 || matches.every(match=>!!match[2])) return;
+  const units = [...new Set(matches.filter(match=>!!match[2]).map(match=>match[2].startsWith('ano')?'anos':'meses'))];
+  if (units.length !== 1 || !/^@(?:\s*(?:[,;\n]\s*(?:e\s+)?|\be\b)\s*@)+[.!]?\s*$/.test(value.replace(entry,'@'))) return;
+  return value.replace(entry,(all,_age,unit)=>unit?all:`${all} ${units[0]}`);
+}
+
 /** A family declaration/pending-age answer may say "1 de 16, 1 de 10".
  * Require at least two complete attributed entries and nothing else in the
  * list. Dates, totals, room numbers and unassigned "16, 10" stay ambiguous.
@@ -28,6 +41,10 @@ export function withAssignedFamilyAgeUnits(value: string, enabled = false): stri
   const start = lastSubject ? lastSubject.index! + lastSubject[0].length : 0;
   const prefix = s.slice(0,start);
   const tail = s.slice(start).replace(/^\s*(?:(?:na verdade|corrigindo|correcao|idades?(?: sao)?|sendo)\s*)?[:,]?\s*/, '');
+  if (!/[?]|\b(?:nao|se|talvez|hipoteticamente|supondo|poderia|seria|seriam|acho)\b/.test(s)) {
+    const spoken = withSpokenAgeUnits(tail);
+    if (spoken) return prefix + ' ' + spoken;
+  }
   const entries = /\b1\s+de\s+(\d{1,3})(?:\s*(anos?|meses?)(?:\s+e\s+\d{1,2}\s*meses?\b)?)?\b/g;
   const matches = [...tail.matchAll(entries)];
   if (matches.length < 2 || matches.length > 20 || matches.every(match=>!!match[2])) return value;

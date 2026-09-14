@@ -1,5 +1,12 @@
 import { childPolicyQuestion, childAgeFollowup } from './packageChildInquiry.js';
 import { publicEventInquiry, publicEventWeekdayReference } from './publicEvents.js';
+import { hotelPhoneInquiry } from './hotelContact.js';
+import { explicitHumanRequest } from './humanIntent.js';
+import { existingReservationInquiry } from './existingReservation.js';
+import { guestServiceRequest } from './guestService.js';
+import { paymentStatusInquiry } from './paymentStatus.js';
+import { paymentSupportInquiry } from './paymentSupport.js';
+import { multiRoomRequest,roomAlternativeComparison } from './lodgingScope.js';
 
 // A catalog reference is conversational context, never a quote or consent.
 export type PackageContext = {id: string; name: string; start_date: string; end_date: string; updated_at: number};
@@ -21,6 +28,42 @@ export function packageInquiry(message: string) {
 }
 export function namedPackageInquiry(message: string) {
   return /\b(reveillon|natal|ano novo|virada|carnaval|pascoa|finados|corpus christi|dia das criancas|dia das maes|dia dos pais|dia dos namorados|ostrabeach|independencia)\b/.test(norm(message));
+}
+
+/** A fresh catalog question replaces the old stay/topic, not the family.
+ * Current package inclusions, occupancy, dates and commercial follow-ups are
+ * not new discovery simply because they repeat the package's name. */
+export function packageDiscoveryRequest(message:string,value?:unknown,now=Date.now()):boolean {
+  const s=norm(message),focus=readPackageContext(value,now);
+  if(!packageInquiry(message)&&!namedPackageInquiry(message))return false;
+  if(hotelPhoneInquiry(message)||explicitHumanRequest(message)||existingReservationInquiry(message)
+    ||guestServiceRequest(message)||paymentStatusInquiry(message)||paymentSupportInquiry(message)
+    ||multiRoomRequest(message)||roomAlternativeComparison(message))return false;
+  if(/\b(?:telefone|fone|ligacao|ligar|telefonar)\b/.test(s))return false;
+  if(/\b(?:fotos?|fotografias?|imagem|imagens|videos?|galeria|album|cardapio|menu|reserva solar|solar 73|restaurante|day[ -]?use|comprovante|paguei|reembolso|cancelar minha reserva)\b/.test(s)
+    ||/\bnao (?:quero|queremos|preciso|precisamos|gostaria|desejo)\b/.test(s))return false;
+  if(packageOccupancyFollowup(message,focus,now)||packageInclusionFollowup(message,focus,now)
+    ||childPolicyQuestion(message))return false;
+  // A holiday mentioned in a hotel FAQ is only when the visit happens.
+  // Do not erase a stay for "Wi-Fi no Réveillon?" or breakfast/check-in hours.
+  if(/\b(?:wifi|wi-fi|internet|senha|estacionamento|garagem|pets?|cachorros?|animais|bercos?|acessibilidade|cadeirantes?|banheiro adaptado)\b/.test(s)
+    ||/\b(?:horarios?|que horas|como funciona)\b/.test(s)
+      &&/\b(?:cafe|almoco|jantar|piscinas?|check[ -]?in|check[ -]?out|entrada|saida)\b/.test(s))return false;
+  if(/\bproxim[oa]s?\b/.test(s))return /\bpacotes?\b/.test(s)
+    ||/\b(?:qual|quais|que|quando)\b.{0,25}\bproxim[oa]s? feriados?\b/.test(s);
+  const named=s.match(/\b(?:reveillon|ano novo|virada|natal|carnaval|pascoa|finados|corpus christi|dia das criancas|dia das maes|dia dos pais|dia dos namorados|ostrabeach|independencia)\b/g)||[];
+  if(named.length){
+    if(!focus)return true;
+    const current=norm(focus.name);
+    if(named.some(name=>/^(?:reveillon|ano novo|virada)$/.test(name)
+      ?!/\b(?:reveillon|ano novo|virada)\b/.test(current):!current.includes(name)))return true;
+    const years=s.match(/\b20\d{2}\b/g)||[];
+    return years.some(year=>!current.includes(year)&&focus.start_date.slice(0,4)!==year&&focus.end_date.slice(0,4)!==year);
+  }
+  // "Esse pacote" still means the current subject, not a request to list all.
+  if(/\b(?:esse|este|desse|deste|nesse|neste|aquele|daquele) pacote\b/.test(s))return false;
+  return /\b(?:quais|que|outros?|novos?|alguns?) pacotes\b|\b(?:algum|outro|novo) pacote\b|\bpacotes (?:disponiveis|ativos|especiais|de feriado)\b|\b(?:quais|que) feriados\b/.test(s)
+    || /\b(?:pacotes|feriados)\b/.test(s)&&/\b(?:mostrar|mostre|ver|conhecer|consultar|lista|listar|oferecem|tem|temos|ha|disponiveis)\b/.test(s);
 }
 
 export function packageAcknowledgment(message:string):boolean {
