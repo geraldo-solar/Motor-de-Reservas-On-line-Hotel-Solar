@@ -2,6 +2,16 @@
 // 2026-09-09. Supplying a requested number is not a handoff or an outbound call.
 export const hotelContactAnswer = 'Você pode ligar para o Hotel Solar pelo telefone (91) 98100-0800. Se preferir, podemos continuar o atendimento por aqui.';
 
+export const hotelCallDifficultyAnswer='Entendi que você não conseguiu falar por telefone. O número da recepção é (91) 98100-0800. Podemos continuar por aqui; se quiser atendimento humano, escolha “Falar com a recepção”.';
+
+export function hotelCallDifficulty(message:string):boolean {
+  const s=message.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  if(/\b(?:quarto|apartamento|frigobar|televisao|tv|ar condicionado|chuveiro|wifi|wi-fi|meu celular|outro hotel|restaurante|locmil|taxi|uber|banco|minha (?:mae|amiga)|meu (?:pai|amigo))\b/.test(s))return false;
+  if(/\b(?:se|caso|quando|hipoteticamente)\b|\bnao (?:tentei|tentamos)\b/.test(s))return false;
+  return /\bnao (?:(?:to|tou|estou|estamos) )?(?:consigo|conseguimos|consegui|conseguimos|conseguindo) (?:ligar|telefonar|falar (?:por|ao|no) telefone)\b/.test(s)
+    || /\b(?:tentei|tentamos|estou tentando|to tentando) (?:ligar|telefonar)\b/.test(s)&&/\b(?:nao atende|nao atendem|ninguem atende|nao consegui|sem sucesso|nao completa)\b/.test(s);
+}
+
 export function hotelPhoneInquiry(message: string): boolean {
   const s = message.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   if (/\b(?:nao quero informar|prefiro nao informar|nao autorizo|reclamacao|reembolso|cancelar minha reserva|luiza)\b/.test(s)) return false;

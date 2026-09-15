@@ -13,7 +13,7 @@ import { isAudioInput, transcribeAudio } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage, audioSourceHash, readAudioTurn, type AudioTurn } from '../utils/audioInput.js';
 import { isAttachmentInput, analyzeAttachment, type AttachmentKind } from '../utils/attachmentAnalysis.js';
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
-import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, type PackageContext } from '../utils/packageContext.js';
+import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer,packageDateRequestRefused,type PackageDateRequest} from '../utils/packageDateRequest.js';
 import { guestInquiry, explicitLodgingRequest, type GuestInquiry } from '../utils/guestInquiry.js';
@@ -24,7 +24,8 @@ import { childPolicyQuestion, childAgeFollowup } from '../utils/packageChildInqu
 import { multiRoomRequest,roomAlternativeComparison } from '../utils/lodgingScope.js';
 import {readMultiRoomHandoff,multiRoomKey,multiRoomReply,multiRoomOfferText,multiRoomAcceptedText,multiRoomDeclinedText,multiRoomGuidanceRequest,multiRoomGuidanceText,type MultiRoomHandoff} from '../utils/multiRoomHandoff.js';
 import { guestServiceRequest, guestServiceContext, guestServiceAnswer } from '../utils/guestService.js';
-import { hotelPhoneInquiry, hotelContactAnswer } from '../utils/hotelContact.js';
+import { hotelPhoneInquiry, hotelContactAnswer, hotelCallDifficulty, hotelCallDifficultyAnswer } from '../utils/hotelContact.js';
+import {bookingDeferral,bookingDeferralAnswer} from '../utils/conversationContinuation.js';
 import { confirmedGuestFacilitiesPolicy, guestFacilityInquiry, guestFacilityAnswer } from '../utils/guestFacilities.js';
 import { confirmedHotelPolicy, confirmedHotelAnswer, locmilAnswer } from '../utils/hotelPolicy.js';
 import {photoSessionInquiry} from '../utils/photoSession.js';
@@ -124,7 +125,7 @@ function guestInquiryFollowup(message: string, kind?:GuestInquiry): boolean {
 
 function currentGuestInquiry(state: State, raw: string,now=Date.now()): GuestInquiry | undefined {
   const s = norm(raw);
-  if(state.topic==='package_info'&&packageInclusionFollowup(raw,state.package_context,now))return;
+  if(state.topic==='package_info'&&(packageInclusionFollowup(raw,state.package_context,now)||packageRoomDetailFollowup(raw,state.package_context,now)))return;
   const direct = photoSessionInquiry(raw)?'lodging_faq':guestInquiry(raw);
   if (human(s) || mediaRequest(s) || explicitLodgingRequest(raw) || eventInquiry(raw)
     || publicEventInquiry(raw) || packageInquiry(raw) && !direct || extraCodes(raw).length) return;
@@ -762,7 +763,28 @@ function controlTurn(body: any, now = Date.now()) {
     return {state:JSON.stringify(state),resolved_message:paymentSupportContext,quote_request:'HUMANO',
       can_collect:'NAO',confirmation_text:'',answer:paymentAnswer};
   }
-  if (hotelPhoneInquiry(raw) && !existingRequest && ['prepare', 'route', 'confirm'].includes(body.operation)) {
+  const continuationAnswer=bookingDeferral(raw)?bookingDeferralAnswer:hotelCallDifficulty(raw)?hotelCallDifficultyAnswer:undefined;
+  if(continuationAnswer&&!existingRequest&&!human(s)&&['prepare','route','confirm'].includes(body.operation)){
+    // A pause/difficulty is not acceptance. Preserve the customer-established
+    // stay/package context, but revoke every outstanding collection choice.
+    state.changed=false;delete state.pending;delete state.awaiting;delete state.multi_room;
+    delete state.extra_photo_requests;delete state.extra_photo_subjects;
+    const safeMessage=personal(raw)?(bookingDeferral(raw)?'Depois do almoço a gente faz isso':'Não consigo ligar'):raw;
+    state.resolved_message=safeMessage;
+    if(body.operation==='prepare'){
+      delete state.audio;state.first_turn=!state.greeted;state.greeted=true;
+      state.history=[...state.history,safeMessage.slice(0,500)].slice(-12);remember(state,'user',safeMessage);
+      return {state:JSON.stringify(state),can_collect:'NAO',quote_request:'NOQUOTE',
+        context:JSON.stringify({primeira_resposta:state.first_turn,ultima_mensagem:safeMessage,
+          fatos_informados_pelo_cliente:state.facts,pacote_em_foco:state.package_context||null,
+          cotacao_valida_para_estes_dados:null,conversa_adiada:bookingDeferral(raw),
+          regra:'Não cotar, confirmar opção, coletar dados, agendar lembrete, prometer ligação ou retorno automático. Nenhum encaminhamento foi executado. Responda somente: '+continuationAnswer})};
+    }
+    remember(state,'assistant',continuationAnswer);
+    return {state:JSON.stringify(state),resolved_message:safeMessage,quote_request:'NOQUOTE',
+      can_collect:'NAO',confirmation_text:'',answer:continuationAnswer};
+  }
+  if (hotelPhoneInquiry(raw) && !existingRequest && !hotelCallDifficulty(raw) && ['prepare', 'route', 'confirm'].includes(body.operation)) {
     delete state.multi_room;
     // A direct request for the public phone is not a booking, consent or
     // handoff. Ignore stale quote/package/media choices and model proposals.
@@ -940,9 +962,10 @@ function controlTurn(body: any, now = Date.now()) {
     const wasPublic = state.topic === 'public_events';
     const publicFollowup = wasPublic && Number.isFinite(state.topic_at) && now >= state.topic_at! && now - state.topic_at! <= 30 * 60000 && publicEventFollowup(raw);
     const occupancyFollowup=packageOccupancyFollowup(topicMessage,state.package_context,now);
-    const directInquiry = occupancyFollowup||state.topic==='package_info'&&packageInclusionFollowup(raw,state.package_context,now)?undefined:guestInquiry(raw);
+    const roomDetailFollowup=packageRoomDetailFollowup(topicMessage,state.package_context,now);
+    const directInquiry = occupancyFollowup||roomDetailFollowup||state.topic==='package_info'&&packageInclusionFollowup(raw,state.package_context,now)?undefined:guestInquiry(raw);
     const packageQuery = !human(s) && !restaurantInquiry(s) && !eventInquiry(topicMessage) && !publicEventInquiry(topicMessage) && directInquiry !== 'lodging_faq' && packageInquiry(topicMessage);
-    const packageContinuation = !human(s) && !eventInquiry(topicMessage) && !publicEventInquiry(topicMessage) && !guestFacilityInquiry(raw) && directInquiry !== 'dining' && directInquiry !== 'day_use' && state.topic === 'package_info' && !!state.package_context && (packageFollowup(topicMessage)||occupancyFollowup);
+    const packageContinuation = !human(s) && !eventInquiry(topicMessage) && !publicEventInquiry(topicMessage) && (!guestFacilityInquiry(raw)||roomDetailFollowup) && directInquiry !== 'dining' && directInquiry !== 'day_use' && state.topic === 'package_info' && !!state.package_context && (packageFollowup(topicMessage)||occupancyFollowup||roomDetailFollowup);
     if (newTripRequest(raw)) {
       delete state.facts.check_in; delete state.facts.check_out; state.facts.extras = [];
       clearStayDuration(state);
@@ -1069,6 +1092,10 @@ function controlTurn(body: any, now = Date.now()) {
     return { state: JSON.stringify(state), context, can_collect: 'NAO', quote_request: 'NOQUOTE' };
   }
   if (body.operation === 'remember_response') {
+    if(bookingDeferral(state.history.at(-1)||'')||hotelCallDifficulty(state.history.at(-1)||'')){
+      delete state.pending;delete state.awaiting;delete state.multi_room;
+      return {state:JSON.stringify(state)};
+    }
     if(packageDateRequest(state.history.at(-1)||'',state.package_context,now)){
       delete state.pending;delete state.awaiting;
       return {state:JSON.stringify(state)};

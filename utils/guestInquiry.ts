@@ -43,6 +43,22 @@ function roomRequirementQuestion(s: string): boolean {
     && /\b(?:adaptad[oa]s?|acessivel|acessiveis|acessibilidade|cadeirantes?|interligad[oa]s?|conjugad[oa]s?|comporta|comportam|cabe|cabem|capacidade|banheira|varanda|sacada|frigobar|ar condicionado|camas?|bercos?)\b/.test(s);
 }
 
+// A generic "reserva" can mean a table, so do not add it to lodgingTarget.
+// A price request for a dated stay can, however, include a breakfast question
+// without turning the whole request into a restaurant/visitor-breakfast FAQ.
+function datedReservationRateRequest(s: string): boolean {
+  if (dayUseWords.test(s)
+    || /\b(?:reserva solar|solar 73|restaurantes?|mesas?|almoco|jantar|avuado|avuls[oa]s?|visitantes?|nao hospedes?|sem hospedagem|outro hotel)\b/.test(s)) return false;
+  if (/\b(?:se|caso|quando) (?:eu |nos )?(?:quiser|quisermos|fizer|fizermos|reservar|reservarmos)\b/.test(s)) return false;
+  const rate = /\bquanto(?: e que)? (?:ta|esta|custa|fica|sai|e) (?:a |uma )?reserva\b/
+    .test(s) || /\b(?:valor(?:es)?|precos?|tarifas?|custo) (?:da |de uma |para uma )reserva\b/.test(s);
+  if (!rate) return false;
+  const dates = s.match(/\b(?:20\d{2}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}(?:\/(?:20)?\d{2})?|\d{1,2}\s*(?:de\s+)?(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:co)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)(?:\s+(?:de\s+)?20\d{2})?)\b/g);
+  if (dates?.length !== 2 || !/\b(?:a|ate|entrada|saida)\b/.test(s)) return false;
+  if (/\bcafe\b/.test(s) && !/\b(?:inclui|incluid[oa]|inclus[oa]|com) (?:o )?cafe\b|\bcafe(?: da manha)? (?:esta |e )?(?:incluid[oa]|inclus[oa])\b/.test(s)) return false;
+  return true;
+}
+
 /**
  * A request to price/book lodging, not consent to confirm a reservation.
  * Deliberately requires a lodging object: reserving a table or day use is not
@@ -58,6 +74,7 @@ export function explicitLodgingRequest(message: string): boolean {
     if (quotedAmountQuestion(clause)) return false;
     if (/\bnao (?:quero|pretendo|vou|vamos|preciso|desejo|gostaria)\b/.test(clause)) return false;
     if (procedureWords.test(clause)) return false;
+    if (datedReservationRateRequest(clause)) return true;
     // A rate/availability inquiry may legitimately start a lodging quote,
     // even when the customer also asks about breakfast or other amenities.
     const directRate = new RegExp(`\\b(?:valor(?:es)?|precos?|tarifas?|custo) (?:d[ao]s? |de |para |por |uma? |as? |os? )*${lodgingTarget}\\b`);

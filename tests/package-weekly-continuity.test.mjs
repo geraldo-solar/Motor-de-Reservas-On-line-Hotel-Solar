@@ -106,7 +106,7 @@ test('exceção valida datas e pacote, respeita período regular, negativa e out
     'Não quero reservar Réveillon de 30/12 a 02/01','O pacote de Natal de 24/12 a 26/12',
     'Qual a programação de 30/12 a 02/01 no Réveillon?','Quero reservar Réveillon de 31/02 a 02/03'])
     assert.equal(newYearDateException(message,focus,now),false,message);
-  assert.equal(newYearDateException('Quero hospedagem de 30/12 a 02/01',undefined,now),false);
+  assert.equal(newYearDateException('Quero hospedagem de 30/12 a 02/01',undefined,now),true);
   assert.equal(possibleCompanionInquiry('Meu filho vai viajar conosco'),false);
   assert.equal(childPolicyQuestion('Meu filho de 5 anos paga?'),true);
   assert.equal(packageConsultationReply('Caso meu filho consiga ir ao restaurante',focus,now),undefined);

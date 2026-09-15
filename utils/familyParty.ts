@@ -128,6 +128,14 @@ function replacementFamily(s: string, old: FamilyParty | undefined, now: number,
   const onlyPair=new RegExp(`^(?:(?:ira|irao|vai|vao|vou|vamos|iremos|somos|seremos|sera|serao|e|ficaremos)\\s+)?(?:(?:so|apenas|somente)\\s+${partner}|${partner}\\s+(?:apenas|somente))$`).test(direct);
   if(onlyPair)return result({...fresh,adults:2,children:0,total:2});
 
+  // A complete "eu e uma amiga" declaration names two occupants, not a
+  // romantic couple or an age bracket. Retire the previous children/ages only
+  // for this entire affirmative statement; never consume "e mais uma amiga",
+  // a hypothetical, a question, a third-party report or another destination.
+  const friend='eu\\s+e\\s+(?:uma\\s+amiga|um\\s+amigo|(?:a\\s+)?minha\\s+amiga|(?:o\\s+)?meu\\s+amigo)';
+  const friendPair=new RegExp(`^(?:(?:ira|irao|irei|vai|vao|vou|vamos|iremos|somos|seremos|sera|serao|e|ficaremos)\\s+)?(?:(?:so|apenas|somente)\\s+)?${friend}(?:\\s+(?:apenas|somente))?$`).test(direct);
+  if(friendPair)return result({...fresh,total:2});
+
   const withoutChildren=/^(?:as (?:nossas )?criancas|os (?:nossos )?filhos|as (?:nossas )?filhas) nao (?:vao|irao|vem|virao|viajam|viajarao)(?: (?:mais|conosco|nessa viagem|nesta viagem|desta vez|dessa vez))?$/.exec(direct);
   if(withoutChildren){
     // "Crianças" cannot silently remove adult offspring. If the antecedent

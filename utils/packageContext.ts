@@ -7,6 +7,7 @@ import { guestServiceRequest } from './guestService.js';
 import { paymentStatusInquiry } from './paymentStatus.js';
 import { paymentSupportInquiry } from './paymentSupport.js';
 import { multiRoomRequest,roomAlternativeComparison } from './lodgingScope.js';
+import {roomDetailInquiry} from './roomMedia.js';
 
 // A catalog reference is conversational context, never a quote or consent.
 export type PackageContext = {id: string; name: string; start_date: string; end_date: string; updated_at: number};
@@ -42,7 +43,7 @@ export function packageDiscoveryRequest(message:string,value?:unknown,now=Date.n
   if(/\b(?:telefone|fone|ligacao|ligar|telefonar)\b/.test(s))return false;
   if(/\b(?:fotos?|fotografias?|imagem|imagens|videos?|galeria|album|cardapio|menu|reserva solar|solar 73|restaurante|day[ -]?use|comprovante|paguei|reembolso|cancelar minha reserva)\b/.test(s)
     ||/\bnao (?:quero|queremos|preciso|precisamos|gostaria|desejo)\b/.test(s))return false;
-  if(packageOccupancyFollowup(message,focus,now)||packageInclusionFollowup(message,focus,now)
+  if(packageOccupancyFollowup(message,focus,now)||packageInclusionFollowup(message,focus,now)||packageRoomDetailFollowup(message,focus,now)
     ||childPolicyQuestion(message))return false;
   // A holiday mentioned in a hotel FAQ is only when the visit happens.
   // Do not erase a stay for "Wi-Fi no Réveillon?" or breakfast/check-in hours.
@@ -92,6 +93,17 @@ export function focusedPackageNameReference(message:string,value:unknown,now=Dat
     && /\b(?:reveillon|virada|ano novo)\b/.test(norm(focus.name));
 }
 
+/** Keep the active package while answering a specific room characteristic,
+ * without treating beds/view as a recommendation, new quote or chosen room. */
+export function packageRoomDetailFollowup(message:string,value:unknown,now=Date.now()):boolean {
+  const focus=readPackageContext(value,now),s=norm(message);
+  if(!focus||newTripRequest(message)||!roomDetailInquiry(message))return false;
+  const names=s.match(/\b(?:reveillon|ano novo|virada|natal|carnaval|pascoa|finados|corpus christi|dia das criancas|dia das maes|dia dos pais|dia dos namorados|ostrabeach|independencia)\b/g)||[];
+  const current=norm(focus.name);
+  if(names.some(name=>/^(?:reveillon|ano novo|virada)$/.test(name)?!/\b(?:reveillon|ano novo|virada)\b/.test(current):!current.includes(name)))return false;
+  return !(s.match(/\b20\d{2}\b/g)||[]).some(year=>!current.includes(year)&&!focus.start_date.startsWith(year)&&!focus.end_date.startsWith(year));
+}
+
 /** A declared party or an apartment-capacity question is a focused package
  * continuation even when the customer repeats its name. This does not parse
  * ages, choose dates or authorize booking; the family controller owns facts. */
@@ -111,7 +123,8 @@ export function packageOccupancyFollowup(message:string,value:unknown,now=Date.n
   if(/^(?:(?:as idades sao|idades|eles tem|elas tem|tem|sao)[: ]+)?\d{1,2}(?:\s*(?:,|e)\s*\d{1,2}){1,5}(?:\s*anos)?[.!?]*$/.test(s))return true;
   const count='(?:\\d{1,2}|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)';
   const composition=new RegExp(`\\b${count}\\s*(?:pessoas|hospedes|adult[oa]s?|criancas?|filh[oa]s?|bebes?)\\b`).test(s)
-    || /\b(?:somos|seremos|vamos em)\s+(?:um )?casal\b|\b(?:casal|minha esposa|meu marido)\b.{0,35}\b(?:filh[oa]s?|criancas?|bebe)\b/.test(s);
+    || /\b(?:somos|seremos|vamos em)\s+(?:um )?casal\b|\b(?:casal|minha esposa|meu marido)\b.{0,35}\b(?:filh[oa]s?|criancas?|bebe)\b/.test(s)
+    || /^(?:(?:no caso|entao)[, ]+)?(?:e |somos |sera |seremos |vai ser |vamos )?(?:apenas |so )?eu e (?:uma? |minha? )amig[oa][.!]*$/.test(s);
   const capacity=/\b(?:apartamentos?|aptos?|quartos?|suites?|loft|acomodacoes|acomodacao)\b/.test(s)
     && /\b(?:cabem|cabe|caber|comporta|comportam|acomoda|acomodam|dividir|divididos?|separad[oa]s?|juntos|todos|capacidade|quantas pessoas|quantos hospedes|formato)\b/.test(s);
   const commercial=/\b(?:valor|valores|preco|precos|custa|custaria|orcamento|cotacao|quanto fica|quanto sai|indica|indicam|indicado|recomenda|recomendam|melhor|sugere|sugestao)\b/.test(s);
@@ -160,6 +173,7 @@ export function packageWeekdayReply(message: string, previousQuestion: string): 
 export function packageFollowup(message: string) {
   const s = norm(message);
   if (newTripRequest(message)) return false;
+  if(roomDetailInquiry(message))return true;
   if(packageAcknowledgment(message))return true;
   // A present-calendar reference must not borrow the active package's dates.
   // Unqualified weekdays are handled by packageWeekdayClarification instead.
@@ -183,5 +197,6 @@ export function packageBookingRequest(message: string) {
     && /\b(reservar|prosseguir|quero|prefiro|escolho|escolhi|aceito|pode ser|fico com|vou ficar|vou querer)\b/.test(s);
 }
 export function packageRecommendationInquiry(message: string) {
+  if(roomDetailInquiry(message))return false;
   return /\b(indica|indicam|recomenda|recomendam|melhor|sugere|sugestao|pessoas|hospedes|adultos?|casal|filh[oa]s?|familia|valores?|precos?|custa|mais barato|mais economico|loft|suites?|quartos?|acomodacoes|acomodacao)\b/.test(norm(message));
 }

@@ -1,7 +1,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { MANYCHAT_TEXT_TRANSPORT, withManyChatTextEnvelope } from '../utils/manychatText.js';
 import { createClient } from '@supabase/supabase-js';
-import { resolveRoomMedia, nextRoomMedia } from '../utils/roomMedia.js';
+import { resolveRoomMedia, nextRoomMedia, roomDetailInquiry, roomDetailAnswer } from '../utils/roomMedia.js';
 import { control, safeTypedMessage } from './conversation-control.js';
 import { withDailyGreeting, belemClock } from '../utils/dailyGreeting.js';
 import {stripAssistantDisclosure} from '../utils/assistantDisclosure.js';
@@ -15,7 +15,7 @@ import { isAudioInput } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage } from '../utils/audioInput.js';
 import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
 import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
-import { namedPackageInquiry, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup,packageDiscoveryRequest } from '../utils/packageContext.js';
+import { namedPackageInquiry, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup,packageDiscoveryRequest,packageRoomDetailFollowup } from '../utils/packageContext.js';
 import {packageInclusionReply} from '../utils/packageInclusions.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer} from '../utils/packageDateRequest.js';
@@ -23,7 +23,8 @@ import { packagePrices, packageRecommendation } from '../utils/packageReply.js';
 import { childPolicyQuestion, childAgeFollowup, packageChildReply } from '../utils/packageChildInquiry.js';
 import { stayDateClarification } from '../utils/stayDuration.js';
 import { guestServiceRequest } from '../utils/guestService.js';
-import { hotelPhoneInquiry, hotelContactAnswer } from '../utils/hotelContact.js';
+import { hotelPhoneInquiry, hotelContactAnswer,hotelCallDifficulty,hotelCallDifficultyAnswer } from '../utils/hotelContact.js';
+import {bookingDeferral,bookingDeferralAnswer} from '../utils/conversationContinuation.js';
 import { locmilAnswer, confirmedHotelAnswer } from '../utils/hotelPolicy.js';
 import { paymentStatusInquiry } from '../utils/paymentStatus.js';
 import { paymentSupportInquiry } from '../utils/paymentSupport.js';
@@ -310,6 +311,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch { /* Invalid state cannot establish payment context. */ }
   const discovery=!req.query?.operation&&packageDiscoveryRequest(serviceMessage,earlyState?.package_context);
   if (!req.query?.operation && hotelPhoneInquiry(serviceMessage)
+    && !hotelCallDifficulty(serviceMessage)
     && !paymentStatusInquiry(serviceMessage, previousPaymentMessage)
     && !existingReservationInquiry(serviceMessage, !!earlyState?.existing_reservation)) {
     const routed = control({operation:'route',user_message:incomingMessage,state:req.body?.state});
@@ -352,6 +354,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const answer='answer' in routed?routed.answer:'';
     return res.status(200).json({...routed,quote_text:answer,conversation_text:answer,
       matched:false,match_type:'human_request',availability_checked:false});
+  }
+  if(!req.query?.operation&&(bookingDeferral(serviceMessage)||hotelCallDifficulty(serviceMessage))){
+    const deferred=bookingDeferral(serviceMessage);
+    const answer=deferred?bookingDeferralAnswer:hotelCallDifficultyAnswer;
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    return res.status(200).json({...routed,quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
+      can_collect:'NAO',confirmation_text:'',matched:false,match_type:deferred?'booking_deferral':'hotel_call_difficulty',availability_checked:false});
   }
   const exceptionalPeriod=packageDateRequest(serviceMessage,earlyState?.package_context);
   if(!req.query?.operation&&exceptionalPeriod){
@@ -522,6 +531,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       matched:false,match_type,availability_checked:false,
       ...control({operation:'remember_response',state:safeState,response_text:answer})};
   };
+  if(!req.query?.operation&&roomDetailInquiry(userMessage)
+    &&(!namedPackageInquiry(userMessage)||packageRoomDetailFollowup(userMessage,safeState?.package_context))){
+    const supabase=createClient(supabaseUrl,supabaseKey);
+    const {data:rooms,error}=await supabase.from('room_types').select('*').eq('active',true);
+    if(error)return res.status(500).json({error:'Unable to load room information.'});
+    const focus=readPackageContext(safeState?.package_context);
+    const currentRoomTopic=['room_info','room_photos'].includes(safeState?.topic)&&Number.isFinite(safeState?.topic_at)
+      &&safeState.topic_at<=Date.now()&&Date.now()-safeState.topic_at<=30*60000;
+    const references=focus||currentRoomTopic?[safeState?.subject||'',...(safeState?.turns||[]).slice(-8).reverse().map((turn:any)=>String(turn.text||''))]:[];
+    const answer=roomDetailAnswer(userMessage,rooms||[],references)!;
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
+      can_collect:'NAO',confirmation_text:'',matched:false,match_type:'room_detail',availability_checked:false,
+      ...(focus?{package_id:focus.id,package_name:focus.name}:{}),
+      ...control({operation:'remember_response',state:'state' in routed?routed.state:safeState,response_text:answer,
+        ...(focus?{package_context:focus}:{})})});
+  }
   if (!req.query?.operation) {
     if (currentState && safeState?.arrival_time) {
       const handoff=safeState.arrival_time.status==='human_review';

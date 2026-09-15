@@ -21,7 +21,7 @@ test('prazo ou link explicitamente financeiro perdido pede conferência, não af
     assert.equal(inquiry(message),true,message);
   }
   assert.equal(inquiry(context),true);
-  assert.equal(answer,'Vou chamar a recepção para localizar sua solicitação, conferir a situação e orientar como prosseguir.');
+  assert.equal(answer,'Vou chamar a recepção para localizar sua solicitação, conferir a situação e as condições já informadas e orientar como prosseguir.');
   assert.doesNotMatch(answer,/reserva (?:confirmada|ativa|encontrada)|pagamento pendente|pagamento recebido|quitad|cancelei|link|https?:|\d/);
 });
 

@@ -6,7 +6,7 @@ const normalize = (value: string) => String(value || '').normalize('NFD')
 // These are routing descriptions, not a verified booking/payment status.
 // Persist only this generic context, never a name, amount or payment link.
 export const existingReservationContext = 'Quero conferir com a recepção uma solicitação de reserva já feita.';
-export const existingReservationAnswer = 'Vou chamar a recepção para localizar sua solicitação, conferir a situação e orientar como prosseguir.';
+export const existingReservationAnswer = 'Vou chamar a recepção para localizar sua solicitação, conferir a situação e as condições já informadas e orientar como prosseguir.';
 
 /** Recognizes an existing request needing staff, not a new booking or proof
  * that a reservation exists/is active. The caller owns the context's TTL and
@@ -23,6 +23,19 @@ export function existingReservationInquiry(message: string, contextual = false):
     || /\b(?:suponha|hipoteticamente|por exemplo)\b/.test(s)) return false;
   if (/\b(?:nao|nunca) (?:tenho|temos|tive|tivemos|fiz|fizemos|solicitei|solicitamos|pedi|pedimos)\b.{0,35}\breserva\b/.test(s)) return false;
   if (/\b(?:nao|nunca) (?:esqueci|esquecemos|perdi|perdemos)\b/.test(s)) return false;
+  // A reported staff negotiation is not a verified price or booking. Route
+  // before the new-request/FAQ branches so it cannot be silently repriced.
+  const staff='(?:recepcao|atendente|equipe|voces)';
+  const terms='(?:valor|preco|cotacao|orcamento|condicoes|proposta|periodo|datas)';
+  const pastQuote=new RegExp(`\\b${staff} (?:ja )?(?:(?:me|nos) )?(?:passou|passaram|informou|informaram|ofereceu|ofereceram|combinou|combinaram|negociou|negociaram)\\b`).test(s)
+    || new RegExp(`\\b(?:combinei|combinamos|negociei|negociamos|acertei|acertamos)\\b.{0,75}\\b(?:com (?:a |o |sua |sua equipe )?${staff})\\b`).test(s)
+    || new RegExp(`\\b(?:combinad[oa]s?|negociad[oa]s?|informad[oa]s?) (?:com|pela|pelo) (?:a |o )?${staff}\\b`).test(s);
+  const refusedNegotiation=/\b(?:nao|nunca) (?:combinei|combinamos|negociei|negociamos|acertei|acertamos)\b/.test(s)
+    ||/\b(?:nao (?:quero|queremos|vou|vamos|desejo|desejamos)|prefiro nao) (?:mais )?(?:retomar|continuar|fechar|aceitar|prosseguir|finalizar)\b/.test(s);
+  const hypotheticalNegotiation=/\b(?:se|caso|quando) (?:eu |nos )?(?:aceitar|aceitarmos|negociar|negociarmos|fechar|fecharmos|receber|recebermos)\b/.test(s);
+  const otherServicePrice=/\b(?:valor|preco|cotacao|orcamento) (?:d[ao]|para [oa]) (?:cafe|passeio|bicicleta|quadriciclo|barco|catamara)\b|\bcafe (?:da manha )?avulso\b/.test(s);
+  if(pastQuote&&!refusedNegotiation&&!hypotheticalNegotiation&&!otherServicePrice
+    &&(new RegExp(`\\b${terms}\\b`).test(s)||/\b(?:fechar|finalizar|prosseguir|continuar|retomar|reserva|hospedagem|pacote|reveillon)\b/.test(s)))return true;
   const newRequest = /\b(?:quero|queremos|gostaria(?:mos)?(?: de)?|preciso|precisamos|vou|vamos|pretendo|pretendemos|podemos|pode) (?:fazer |solicitar |pedir )?(?:uma |a |outra |nova |uma nova )?reserva\b|\b(?:quero|queremos|vou|vamos|pretendo|pretendemos|gostaria(?: de)?) reservar\b/;
   if (newRequest.test(s)) return false;
 

@@ -1,3 +1,5 @@
+import { coupleRoomConfigurationText } from './familyAccommodation.js';
+
 export type MediaRoom = { id: string; name?: string; images?: unknown; image_urls?: unknown; imageUrls?: unknown;
   capacity?: unknown; description?: unknown; features?: unknown };
 const norm = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -60,6 +62,52 @@ function roomDetail(value: unknown, limit: number): string {
   const chosen:string[]=[];
   for(const part of parts)if([...chosen,part].join(' ').length<=limit)chosen.push(part);
   return chosen.join(' ').replace(/[.!?;]+$/,'');
+}
+
+/** A specific room question is not a price/recommendation or media request. */
+export function roomDetailInquiry(message: string): 'view' | 'beds' | undefined {
+  const s=norm(message);
+  if(photoWords.test(s)||/\b(?:precos?|valores?|custa|custo|pagamento|pagar|pix|cartao|desconto|parcel\w*|reserva solar|restaurante|solar 73)\b/.test(s))return;
+  const beds='(?:camas? separadas|(?:duas |2 )?camas? de solteiro)';
+  const refusedBeds=new RegExp(`\\b(?:nao (?:quero|queremos|preciso|precisamos|desejo|desejamos|precisa)|sem|prefiro nao)(?:\\s+(?:mais|as|de|ter|usar|ficar|com|ser))*\\s+${beds}\\b|\\b${beds}\\s+nao\\b`).test(s);
+  if(new RegExp(`\\b${beds}\\b`).test(s)&&!refusedBeds)return 'beds';
+  // A category named "Vista Mar" inside a choice is not a view question.
+  const asksView=/\b(?:qual|quais|como|tem|teria|possui|possuem|informe|informa|informar|explique|explica|explicar|saber|dizer|diga)\b.{0,55}\bvista\b/.test(s)
+    || message.includes('?')&&/^(?:e )?(?:(?:a|essa|esta) )?vista\b/.test(s);
+  if(/\bvista\b/.test(s)&&asksView)return 'view';
+}
+
+function roomDetailSubjects(message:string,rooms:MediaRoom[],references:string[]):MediaRoom[] {
+  const s=norm(message),explicit=rooms.filter(room=>roomMentioned(s,room));
+  if(explicit.length)return explicit.slice(0,4);
+  // "Standard" is not an alias for Casal (nor any other category). Only
+  // genuinely referential wording may borrow a previously discussed room.
+  if(!/\b(?:desses?|dessas?|destes?|destas?|esses?|essas?|estes?|estas?|deles?|delas?)\b/.test(s)
+    &&!/\b(?:camas? separadas|camas? de solteiro|duas camas de solteiro|2 camas de solteiro)\b/.test(s))return [];
+  const groups=references.map(reference=>rooms.filter(room=>roomMentioned(norm(reference),room)));
+  const plural=/\b(?:quartos|aptos|apartamentos|suites|acomodacoes|camas|desses|dessas|destes|destas|deles|delas)\b/.test(s);
+  return (plural?groups.find(group=>group.length>1)||groups.find(group=>group.length):groups.find(group=>group.length))?.slice(0,4)||[];
+}
+
+/** Only current room fields establish a view; past assistant text identifies
+ * the category, never its attributes, price or physical unit availability. */
+export function roomDetailAnswer(message:string,rooms:MediaRoom[],references:string[]=[]):string|undefined {
+  const kind=roomDetailInquiry(message);if(!kind)return;
+  const selected=roomDetailSubjects(message,rooms,references);
+  if(kind==='beds'){
+    const other=selected.filter(room=>!/^suite casal$|^casal$/.test(norm(room.name||'')));
+    return coupleRoomConfigurationText+(other.length?` Para ${other.map(room=>room.name).join(' e ')}, a configuração de camas precisa ser conferida com a recepção.`:'');
+  }
+  if(!selected.length)return 'De quais categorias você gostaria de saber a vista? Preciso identificar os quartos para não informar uma vista incorreta.';
+  const lines=selected.map(room=>{
+    const fields=[room.description,...(Array.isArray(room.features)?room.features:[])];
+    const views=fields.flatMap(field=>typeof field==='string'?field.split(/(?<=[.!?;])\s+/):[])
+      .filter(field=>/\bvista\b/.test(norm(field))).map(field=>roomDetail(field,180)).filter(Boolean);
+    const namedView=norm(room.name||'').match(/\bvista (?:para (?:o |a )?)?(?:mar|jardim|rio|piscina|praia)\b/)?.[0];
+    const view=[...new Set(views)].slice(0,2).join('; ')||namedView;
+    return `• *${String(room.name||'Acomodação').slice(0,80)}*: ${view||'não tenho uma vista especificada para esta categoria; a recepção precisa conferir'}.`;
+  });
+  return [...lines,'A vista da unidade que será destinada a vocês precisa ser confirmada pela recepção.'].join('\n\n');
 }
 
 function roomComparison(selected: MediaRoom[]): string {
