@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import { withDailyGreeting } from '../utils/dailyGreeting.js';
 import { familyAccommodation, baseRoomCapacity, familyAgeQuestionFor, familyRoomExplanation, coupleRoomConfigurationText } from '../utils/familyAccommodation.js';
 import { explicitPackageBoatBenefit, safeBoatPackageCopy } from '../utils/extraMedia.js';
+import {motorStayPrice,motorStayRestriction,requiresFullPackagePeriod} from '../utils/motorStayPricing.js';
+import {readPackageStayQuery} from '../utils/packageStayQuery.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -141,35 +143,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Busca preços do Supabase. O orçamento é uma simulação comercial e não
-    // consulta estoque, bloqueios, restrições de check-in ou disponibilidade.
-    const { data: rooms } = await supabase.from('room_types').select('*').eq('active', true);
-    const { data: packages } = await supabase.from('packages').select('*').eq('active', true);
+    // consulta estoque nem confirma disponibilidade; respeita as restrições
+    // comerciais de entrada/saída e fechamento cadastradas no mesmo motor.
+    const { data: rooms, error: roomError } = await supabase.from('room_types').select('*').eq('active', true);
+    const { data: packages, error: packageError } = await supabase.from('packages').select('*').eq('active', true);
     const { data: extras } = await supabase.from('extras').select('*').eq('active', true);
 
-    if (!rooms) {
+    if (!rooms || roomError || !packages || packageError) {
       return res.status(500).json({ error: 'Failed to fetch rooms from Supabase.' });
+    }
+    if(state?.version===2&&state.package_stay_query){
+      const query=readPackageStayQuery(state.package_stay_query,state.package_context);
+      if(!query||!packages.some(pkg=>pkg.id===query.package_id&&pkg.start_iso_date===state.package_context.start_date&&pkg.end_iso_date===state.package_context.end_date)){
+        const answer='Preciso consultar o cadastro atual do pacote antes de recalcular essas datas. Qual pacote deseja consultar?';
+        return res.status(200).json({quote_request:'NOQUOTE',quote_state:'',can_collect:'NAO',conversation_text:answer,
+          whatsapp_text:answer,prices_summary:answer,availability_checked:false,requires_human_confirmation:true});
+      }
     }
 
     // A regra de período completo é lida do próprio cadastro do pacote. O
     // fallback do Réveillon preserva a regra atual até o pacote ser salvo uma
     // vez no editor novo, que passa a gravar explicitamente Obrigatório/Livre.
     const fullPeriodPackage = packages?.find(pkg => {
-      const storedRule = Array.isArray(pkg.no_checkin_dates)
-        && pkg.no_checkin_dates.includes('__FULL_PERIOD_REQUIRED__');
-      const storedFreeRule = Array.isArray(pkg.no_checkin_dates)
-        && pkg.no_checkin_dates.includes('__FULL_PERIOD_FREE__');
-      const legacyNewYearRule = normalize(pkg.name || '').includes('reveillon')
-        && String(pkg.start_iso_date || '').endsWith('-12-31');
-      const requiresFullPeriod = !storedFreeRule
-        && (pkg.full_period_required === true || storedRule || legacyNewYearRule);
-      return requiresFullPeriod
+      return requiresFullPackagePeriod(pkg)
         && periodsOverlap(checkIn, checkOut, pkg.start_iso_date, pkg.end_iso_date);
     });
     if (
       fullPeriodPackage &&
-      (checkIn !== fullPeriodPackage.start_iso_date || checkOut !== fullPeriodPackage.end_iso_date)
+      (checkIn > fullPeriodPackage.start_iso_date || checkOut < fullPeriodPackage.end_iso_date)
     ) {
-      const fullPeriodText = `🎆 O pacote ${fullPeriodPackage.name} é vendido somente no período completo, de ${formatDate(fullPeriodPackage.start_iso_date)} a ${formatDate(fullPeriodPackage.end_iso_date)} (${Math.round((new Date(`${fullPeriodPackage.end_iso_date}T12:00:00Z`).getTime() - new Date(`${fullPeriodPackage.start_iso_date}T12:00:00Z`).getTime()) / (1000 * 60 * 60 * 24))} diárias). Não fazemos simulação parcial dentro desse período. Para calcular o pacote completo ou esclarecer alguma condição, fale com a recepção: (91) 98100-0800.`;
+      const fullPeriodText = `🎆 O pacote ${fullPeriodPackage.name} exige incluir o período completo, de ${formatDate(fullPeriodPackage.start_iso_date)} a ${formatDate(fullPeriodPackage.end_iso_date)} (${Math.round((new Date(`${fullPeriodPackage.end_iso_date}T12:00:00Z`).getTime() - new Date(`${fullPeriodPackage.start_iso_date}T12:00:00Z`).getTime()) / (1000 * 60 * 60 * 24))} diárias). É possível simular diárias adicionais antes ou depois, respeitando as restrições do motor. O período pedido não inclui todas as noites obrigatórias; não confirmei essas datas. Para calcular o pacote completo ou esclarecer alguma condição, fale com a recepção: (91) 98100-0800.`;
 
       return res.status(200).json({
         message: 'Restricted package period',
@@ -179,13 +182,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         availability_checked: false,
         requires_human_confirmation: true,
         policy_restriction: 'package_full_period_only',
+        quote_request:'NOQUOTE',quote_state:'',can_collect:'NAO',
         required_check_in: fullPeriodPackage.start_iso_date,
         required_check_out: fullPeriodPackage.end_iso_date,
       });
     }
 
     // Verifica se algum pacote ativo casa exatamente com as datas pesquisadas
-    const activePackage = packages?.find(p => p.start_iso_date === checkIn && p.end_iso_date === checkOut);
+    const exactPackage = packages.find(p => p.start_iso_date === checkIn && p.end_iso_date === checkOut);
+    const activePackage = exactPackage || fullPeriodPackage;
+    const permittedRooms=rooms.filter(room=>!motorStayRestriction(room,checkIn,checkOut));
+    if(!permittedRooms.length){
+      const answer=`O motor tem uma restrição de entrada, saída ou funcionamento para ${formatDate(checkIn)} a ${formatDate(checkOut)}. Não vou apresentar esse período como permitido nem confirmar disponibilidade. Quais outras datas você gostaria de consultar?`;
+      return res.status(200).json({quote_request:'NOQUOTE',quote_state:'',can_collect:'NAO',
+        policy_restriction:'motor_date_restriction',conversation_text:answer,whatsapp_text:answer,prices_summary:answer,
+        availability_checked:false,requires_human_confirmation:true});
+    }
 
     let summaryText = `Simulação para ${nights} ${nights === 1 ? 'diária' : 'diárias'} (${formatDate(checkIn)} a ${formatDate(checkOut)}), ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}:\n\n`;
     let whatsappText = `☀️ Fiz uma simulação para ${nights} ${nights === 1 ? 'diária' : 'diárias'}, de ${formatDate(checkIn)} a ${formatDate(checkOut)}, para ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}:\n\n`;
@@ -239,28 +251,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const allRoomQuotes: Array<{ name: string; capacity: number; base_capacity: number; finalPrice: number }> = [];
 
-    for (const room of rooms) {
+    for (const room of permittedRooms) {
       const base_capacity = baseRoomCapacity(Number(room.capacity || 0));
       if (!base_capacity) continue;
       const capacity = base_capacity + Math.min(1, family.eligible);
 
-      let total = 0;
-      const current = new Date(ci);
-
-      for (let i = 0; i < nights; i++) {
-        const iso = current.toISOString().split('T')[0];
-        const override = room.overrides?.find((o: any) => o.dateIso === iso);
-        total += override?.price !== undefined ? override.price : room.base_price;
-        current.setDate(current.getDate() + 1);
-      }
-
-      let finalPrice = total;
-      if (activePackage && activePackage.discount_percentage) {
-        finalPrice = total * (1 - (activePackage.discount_percentage / 100));
-      }
+      const finalPrice=motorStayPrice(room,checkIn,checkOut,exactPackage);
+      if(!Number.isFinite(finalPrice)||finalPrice<=0)continue;
 
       allRoomQuotes.push({ name: room.name, capacity, base_capacity, finalPrice });
     }
+    if(!allRoomQuotes.length)return res.status(500).json({error:'No valid room tariffs for the requested stay.'});
 
     // Acomodação premium primeiro: entre as opções compatíveis, apresenta os
     // maiores valores antes das opções econômicas para favorecer o upsell.
@@ -431,7 +432,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         whatsapp_text: whatsappText,
         conversation_text: conversationText,
         quote_state: JSON.stringify({ version: 1, id: crypto.randomUUID(), created_at: Date.now(), check_in: checkIn, check_out: checkOut, guests: guestCount, family_key:family.key, extras: selectedExtras.map(extra => extra.code), options: quoteOptions }),
-        discount_applied: activePackage ? true : false,
+        discount_applied: Number(exactPackage?.full_period_discount_pct||0)>0,
         package_name: activePackage ? activePackage.name : null,
         check_in: checkIn,
         check_out: checkOut,

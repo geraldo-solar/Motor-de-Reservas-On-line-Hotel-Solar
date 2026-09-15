@@ -1,5 +1,5 @@
-import { Room } from '../types';
-import { toLocalISO } from './dateUtils';
+import type { Room } from '../types.js';
+import { toLocalISO } from './dateUtils.js';
 
 // Tarifas de sexta e sábado por acomodação. Aplicadas apenas quando a data não
 // possui preço específico cadastrado (override) no painel.

@@ -121,7 +121,7 @@ test('três hóspedes e seis categorias cabem no texto simples, não no bloco co
 
 test('cotação de pacote integral com seis categorias e extras conserva final e limite',async t=>{
   const payload=await quote(packageDates,['MESA','LUA']);
-  assert.equal(payload.discount_applied,true);
+  assert.equal(payload.discount_applied,false); // A package alone is not a configured discount.
   assert.equal(payload.package_name,packageFixture.name);
   assert.equal(JSON.parse(payload.quote_state).options.length,6);
   checkCompleteQuote(payload);

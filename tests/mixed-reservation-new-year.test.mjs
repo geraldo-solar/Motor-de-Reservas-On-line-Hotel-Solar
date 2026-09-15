@@ -55,14 +55,10 @@ test('café avulso, mesa, restaurante, Day Use e intenção hipotética continua
 });
 
 test('cruzamento explícito dezembro-janeiro reconhece consulta de exceção sem nome do pacote',()=>{
-  for(const message of [literal,
+  for(const message of [
     'Quero hospedagem de 30/12 a 02/01',
     'Quero hospedagem de 30/12/2026 a 02/01/2027',
     'Quero hospedagem de 30/12/26 a 02/01/27',
-    'Quero hospedagem de 30 de dezembro de 2026 a 4 de janeiro de 2027',
-    'Quero hospedagem de 2026-12-30 a 2027-01-04',
-    'Quero hospedagem de 30/12/2026 a 4 de janeiro de 2027',
-    'Quero hospedagem de 30/12 a 04/01/2027',
   ]) {
     assert.equal(newYearDateException(message,undefined,now),true,message);
     const answer=packageConsultationReply(message,undefined,now);
@@ -98,22 +94,18 @@ test('datas regulares, negadas, inválidas ou com ano invertido não viram exce�
   assert.equal(newYearDateException('Quero reservar Réveillon de 31/02 a 02/03',focus,now),false);
 });
 
-test('prepare → route → resolver chama humano para o literal sem cotação nem aprovação de datas',async()=>{
+test('período completo mais diárias não é exceção; literal segue para cálculo sem aprovar reserva',async()=>{
+  for(const message of [literal,'Quero hospedagem de 30 de dezembro de 2026 a 4 de janeiro de 2027',
+    'Quero hospedagem de 2026-12-30 a 2027-01-04','Quero hospedagem de 30/12 a 04/01/2027'])
+    assert.equal(newYearDateException(message,undefined,now),false,message);
   for(const proposed of ['NOQUOTE','COLETAR','QUOTE|2026-12-30|2027-01-04|2|NONE']) {
     const p=control({operation:'prepare',user_message:literal,state:blank},now);
     const r=control({operation:'route',user_message:literal,state:p.state,proposed,
       ai_response:'Sua reserva está confirmada, pode pagar R$999.'},now);
-    assert.equal(r.quote_request,'HUMANO');assert.equal(r.can_collect,'NAO');
+    assert.equal(r.quote_request,'QUOTE|2026-12-30|2027-01-04|2|NONE');assert.equal(r.can_collect,'NAO');
     assert.equal(r.confirmation_text,'');assert.equal(JSON.parse(r.state).pending,undefined);
-    assert.equal(JSON.parse(r.state).facts.check_in,undefined);
-    assert.equal(JSON.parse(r.state).facts.check_out,undefined);
-    let output;
-    await resolver({method:'POST',query:{},body:{user_message:literal,state:r.state}},
-      {status(code){assert.equal(code,200);return this},json(value){output=value;return value}});
-    assert.equal(output.quote_request,'HUMANO');assert.equal(output.can_collect,'NAO');
-    assert.equal(output.match_type,'package_date_consultation');assert.equal(output.availability_checked,false);
-    assert.match(output.conversation_text,/precisa ser consultado com a recepção/);
-    assert.doesNotMatch(output.conversation_text,/R\$999|reserva está confirmada|pode pagar/);
+    assert.equal(JSON.parse(r.state).facts.check_in,'2026-12-30');
+    assert.equal(JSON.parse(r.state).facts.check_out,'2027-01-04');
   }
 });
 

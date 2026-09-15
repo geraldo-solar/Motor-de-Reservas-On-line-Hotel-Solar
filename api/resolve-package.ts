@@ -18,6 +18,10 @@ import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
 import { namedPackageInquiry, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup,packageDiscoveryRequest,packageRoomDetailFollowup } from '../utils/packageContext.js';
 import {packageInclusionReply} from '../utils/packageInclusions.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
+import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
+import {packageStayDates,readPackageStayQuery,packageStayPriceRequest} from '../utils/packageStayQuery.js';
+import {motorStayRestriction,requiresFullPackagePeriod} from '../utils/motorStayPricing.js';
+import {updateFamilyParty} from '../utils/familyParty.js';
 import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer} from '../utils/packageDateRequest.js';
 import { packagePrices, packageRecommendation } from '../utils/packageReply.js';
 import { childPolicyQuestion, childAgeFollowup, packageChildReply } from '../utils/packageChildInquiry.js';
@@ -246,7 +250,7 @@ const formatPackageDetails = (
   const fullPeriodRequired = !storedFreePeriodRule
     && (pkg.full_period_required === true || storedFullPeriodRule || legacyNewYearRule);
   if (fullPeriodRequired) {
-    text.push('', `📌 *Regra de permanência:* este pacote é vendido somente no período completo de ${period}.`);
+    text.push('', `📌 *Regra de permanência:* é necessário incluir o período completo de ${period}. Também posso calcular diárias adicionais antes ou depois, conforme tarifas e restrições do motor, sem confirmar disponibilidade.`);
   } else {
     text.push('', '📌 *Regra de permanência:* pode ser solicitado por uma ou mais diárias dentro do período, conforme as tarifas cadastradas para as datas escolhidas.');
   }
@@ -362,6 +366,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({...routed,quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
       can_collect:'NAO',confirmation_text:'',matched:false,match_type:deferred?'booking_deferral':'hotel_call_difficulty',availability_checked:false});
   }
+  const currentStay=readPackageStayQuery(earlyState?.package_stay_query,earlyState?.package_context);
+  const queriedStay=!possibleCompanionInquiry(serviceMessage)?packageStayDates(serviceMessage,earlyState?.package_context,Date.now(),currentStay):undefined;
+  if(!req.query?.operation&&(queriedStay||currentStay&&earlyState?.history?.at(-1)===serviceMessage.slice(0,500)
+    &&currentStay.price_requested&&(packageStayPriceRequest(serviceMessage)||updateFamilyParty(serviceMessage,earlyState?.family_party,Date.now(),earlyState?.facts?.guests).handled))){
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    if('quote_request' in routed&&routed.quote_request==='HUMANO')return res.status(200).json({...routed,
+      quote_text:routed.answer,conversation_text:routed.answer,matched:false,match_type:'human_request',availability_checked:false});
+    const query=queriedStay||currentStay!;
+    const client=createClient(supabaseUrl,supabaseKey);
+    const [{data:packages,error:packageError},{data:rooms,error:roomError}]=await Promise.all([
+      client.from('packages').select('*').eq('active',true),client.from('room_types').select('*').eq('active',true)]);
+    if(packageError||roomError||!rooms?.length)return res.status(500).json({error:'Unable to validate stay dates.'});
+    const pkg=packages?.find((p:PackageRecord)=>p.id===query.package_id&&p.start_iso_date===earlyState?.package_context?.start_date&&p.end_iso_date===earlyState?.package_context?.end_date);
+    const permitted=rooms.filter((room:any)=>!motorStayRestriction(room,query.check_in,query.check_out));
+    const covered=pkg&&query.check_in<=pkg.start_iso_date&&query.check_out>=pkg.end_iso_date;
+    const blockedExit=rooms.every((room:any)=>motorStayRestriction(room,query.check_in,query.check_out)==='check_out');
+    const blockedEntry=rooms.every((room:any)=>motorStayRestriction(room,query.check_in,query.check_out)==='check_in');
+    const period=`${formatDate(query.check_in)} a ${formatDate(query.check_out)}`;
+    const regular=pkg?`${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}`:'';
+    const answer=!pkg?'O cadastro desse pacote mudou. Preciso consultar o pacote atual antes de calcular essas datas. Qual pacote deseja consultar?'
+      :!permitted.length?`${blockedExit?'A saída em '+formatDate(query.check_out):blockedEntry?'A entrada em '+formatDate(query.check_in):'O período '+period} está bloquead${blockedExit||blockedEntry?'a':'o'} no motor. O período regular do pacote é ${regular}; posso calcular diárias adicionais antes ou depois, respeitando essas restrições. Qual período você gostaria de simular? Não confirmei disponibilidade nem uma exceção.`
+      :!covered&&requiresFullPackagePeriod(pkg)&&query.check_in<pkg.end_iso_date&&query.check_out>pkg.start_iso_date
+      ?`O pacote regular é de ${regular}. O período ${period} não inclui todas as noites do pacote. Posso calcular o período completo com diárias adicionais; para uma exceção, a recepção precisa avaliar. Quais datas deseja simular?`
+      :currentStay?.price_requested&&'answer' in routed?routed.answer
+      :`Posso simular ${period}, somando as tarifas de cada diária cadastradas no motor${covered?' e mantendo todas as noites do pacote':''}. Isso não confirma disponibilidade nem reserva. ${earlyState?.facts?.guests?`Você já informou ${earlyState.facts.guests} hóspedes; pode pedir o cálculo para esse grupo.`:'Para quantas pessoas será a estadia? Se houver crianças, informe também as idades.'}`;
+    return res.status(200).json({quote_request:'ROOM_LIST',can_collect:'NAO',confirmation_text:'',quote_text:answer,conversation_text:answer,
+      matched:false,match_type:'package_stay_query',availability_checked:false,
+      ...control({operation:'remember_response',state:routed.state,response_text:answer})});
+  }
+  if(req.query?.operation==='offers'&&currentStay&&(earlyState?.turns?.at(-1)?.text===incomingMessage
+    ||packageStayDates(earlyState?.history?.at(-1)||'',earlyState?.package_context,Date.now(),currentStay)
+    ||packageStayPriceRequest(earlyState?.history?.at(-1)||'')))
+    return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',state:JSON.stringify(earlyState),availability_checked:false});
   const exceptionalPeriod=packageDateRequest(serviceMessage,earlyState?.package_context);
   if(!req.query?.operation&&exceptionalPeriod){
     const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
@@ -721,8 +758,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   const today=belemClock(Date.now()).day;
   const asksNext=discovery&&/\bproxim[oa]s?\b/.test(normalize(userMessage));
+  const endOfYear=discovery&&/\b(?:fim|final) (?:do|de) ano\b/.test(normalize(userMessage));
   const currentPackages=discovery&&!namedPackageInquiry(userMessage)
-    ?(packages||[]).filter((pkg:PackageRecord)=>validPackagePeriod(pkg)&&pkg.end_iso_date!>=today)
+    ?(packages||[]).filter((pkg:PackageRecord)=>validPackagePeriod(pkg)&&pkg.end_iso_date!>=today
+      &&(!endOfYear||pkg.start_iso_date!.slice(5,7)==='12'))
     :packages||[];
   let nextPackage:PackageRecord|undefined;
   if(asksNext){

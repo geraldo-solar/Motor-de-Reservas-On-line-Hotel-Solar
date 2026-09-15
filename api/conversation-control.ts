@@ -15,6 +15,8 @@ import { isAttachmentInput, analyzeAttachment, type AttachmentKind } from '../ut
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
 import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
+import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
+import {packageStayDates,readPackageStayQuery,packageStayPriceRequest,type PackageStayQuery} from '../utils/packageStayQuery.js';
 import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer,packageDateRequestRefused,type PackageDateRequest} from '../utils/packageDateRequest.js';
 import { guestInquiry, explicitLodgingRequest, type GuestInquiry } from '../utils/guestInquiry.js';
 import { confirmedDiningPolicy, diningPolicyAnswer, reservaHoursAnswer } from '../utils/diningPolicy.js';
@@ -45,7 +47,7 @@ import {splitStayDates,splitStayFollowup,declaredRelativeStay,readArrivalTime,ar
 type Facts = { check_in?: string; check_out?: string; guests?: number; extras: string[]; children_pending?: boolean };
 type Quote = { version: number; id: string; created_at: number; check_in: string; check_out: string; guests: number; family_key?: string; extras: string[]; options: { name: string; capacity: number; total: number; child_allowance?: number }[] };
 type GuestInquiryState = { kind: GuestInquiry; at: number };
-type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPartyResult['clarification'] };
+type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPartyResult['clarification'];package_stay_query?:PackageStayQuery };
 type ExistingReservationState = { existing_reservation?: {at: number};payment_support?:{at:number;topics?:PaymentSupportSupplementaryTopic[]};assistant_disclosure?:AssistantDisclosure;multi_room?:MultiRoomHandoff;checkout_question?:{at:number;key:string};arrival_time?:ArrivalTimePending;package_date_request?:PackageDateRequest };
 type State = ExistingReservationState & FamilyState & { programming_pending?: {question: string; at: number} } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -229,6 +231,7 @@ function loadState(value: unknown, now = Date.now()): State {
       ...(['party_composition','child_ages','age_reference'].includes(parsed.family_clarification) ? {family_clarification:parsed.family_clarification} : {})} : {}),
     ...(['room_photos', 'room_info', 'extra_photos', 'extra_info', 'photo_clarification', 'public_events', 'package_info'].includes(parsed.topic) ? {topic: parsed.topic, topic_at: Number(parsed.topic_at) || 0} : {}),
     ...(readPackageContext(parsed.package_context, now) ? {package_context:readPackageContext(parsed.package_context, now)} : {}),
+    ...(readPackageStayQuery(parsed.package_stay_query,parsed.package_context,now)?{package_stay_query:readPackageStayQuery(parsed.package_stay_query,parsed.package_context,now)}:{}),
     ...(readPackageDateRequest(parsed.package_date_request,parsed.package_context,now)?{package_date_request:readPackageDateRequest(parsed.package_date_request,parsed.package_context,now)}:{}),
     ...(Number.isFinite(parsed.existing_reservation?.at) && parsed.existing_reservation.at > 0
       && parsed.existing_reservation.at <= now && now - parsed.existing_reservation.at <= 30 * 60000
@@ -591,7 +594,8 @@ function validQuote(value: unknown, state: State, now: number): Quote | null {
   if (state.stay_date_pending) return null;
   const q = json(value);
   const f = state.facts;
-  if (state.topic === 'package_info' && state.package_context && (q?.check_in !== state.package_context.start_date || q?.check_out !== state.package_context.end_date)) return null;
+  const period=state.package_stay_query;
+  if (state.topic === 'package_info' && state.package_context && (q?.check_in !== (period?.check_in||state.package_context.start_date) || q?.check_out !== (period?.check_out||state.package_context.end_date))) return null;
   if (q?.version !== 1 || typeof q.id !== 'string' || !Number.isFinite(q.created_at) || now - q.created_at < 0 || now - q.created_at > 30 * 60000 || !Array.isArray(q.options) || !q.options.length || !Array.isArray(q.extras)) return null;
   if (q.check_in !== f.check_in || q.check_out !== f.check_out || q.guests !== f.guests || f.children_pending || JSON.stringify([...q.extras || []].sort()) !== JSON.stringify([...f.extras].sort())) return null;
   const family = familyAccommodation(state, f.guests || 0, now);
@@ -869,6 +873,47 @@ function controlTurn(body: any, now = Date.now()) {
       quote_request:'HUMANO',can_collect:'NAO',confirmation_text:'',answer:existingReservationAnswer};
   }
   if(body.operation==='prepare'&&packageDateRequestRefused(raw))delete state.package_date_request;
+  if(body.operation==='prepare'&&packageStayPriceRequest(raw)&&!state.package_stay_query&&state.package_context
+    &&state.facts.check_in&&state.facts.check_out){
+    state.package_stay_query=readPackageStayQuery({package_id:state.package_context.id,check_in:state.facts.check_in,check_out:state.facts.check_out,at:now},state.package_context,now);
+  }
+  const stayQuery=!human(s)&&!possibleCompanionInquiry(raw)?packageStayDates(raw,state.package_context,now,state.package_stay_query):undefined;
+  const stayFollowup=!!state.package_stay_query&&!human(s)&&!possibleCompanionInquiry(raw)
+    &&!packageInclusionFollowup(raw,state.package_context,now)&&!mediaRequest(s)&&!guestInquiry(raw)
+    &&(packageStayPriceRequest(raw)||updateFamilyParty(raw,state.family_party,now,state.facts.guests).handled);
+  if((stayQuery||stayFollowup)&&['prepare','route','confirm'].includes(body.operation)){
+    const query=stayQuery||state.package_stay_query!;
+    const wantsPrice=packageStayPriceRequest(raw)||stayFollowup||query.price_requested===true||!!stayQuery&&state.package_stay_query?.price_requested===true;
+    state.package_stay_query={...query,...(wantsPrice?{price_requested:true}:{})};
+    delete state.package_date_request;delete state.pending;delete state.awaiting;delete state.multi_room;
+    delete state.guest_inquiry;delete state.subject;clearStayDuration(state);
+    state.topic='package_info';state.topic_at=now;state.resolved_message=raw;
+    if(body.operation==='prepare'){
+      const {check_in,check_out}=state.facts;
+      updateFacts(state,raw,now);
+      if(!wantsPrice){
+        if(check_in)state.facts.check_in=check_in;else delete state.facts.check_in;
+        if(check_out)state.facts.check_out=check_out;else delete state.facts.check_out;
+      }
+      delete state.audio;state.first_turn=!state.greeted;state.greeted=true;
+      state.history=[...state.history,raw.slice(0,500)].slice(-12);remember(state,'user',raw);
+    }
+    if(wantsPrice){state.facts.check_in=query.check_in;state.facts.check_out=query.check_out;state.changed=true;}
+    const family=familyAccommodation(state,state.facts.guests||0,now);
+    const multiKey=wantsPrice?multiRoomKey(state,now):undefined;
+    if(multiKey)state.multi_room={at:now,key:multiKey,status:'offered'};
+    const answer=!wantsPrice?'Vou conferir no motor as regras para as datas que você consultou.'
+      :multiKey?multiRoomOfferText(state)
+      :family.pending?familyAgeQuestionFor(state):!state.facts.guests?'Para quantas pessoas será a estadia? Se houver crianças, informe também as idades.'
+      :'Vou calcular as tarifas para o período que você pediu, respeitando as restrições do motor.';
+    if(body.operation==='prepare')return {state:JSON.stringify(state),can_collect:'NAO',quote_request:'NOQUOTE',
+      context:JSON.stringify({ultima_mensagem:raw,pacote_em_foco:state.package_context,periodo_em_consulta:state.package_stay_query,
+        fatos_informados_pelo_cliente:state.facts,regra:'Consulta de datas/preço, sem disponibilidade, exceção, ocupante hipotético ou reserva confirmados. Não oferecer early check-in sem pergunta sobre horário. O motor vai validar e calcular; responda somente: '+answer})};
+    const decision=wantsPrice&&!multiKey&&state.facts.guests&&!family.pending&&!state.facts.children_pending
+      ?`QUOTE|${query.check_in}|${query.check_out}|${state.facts.guests}|${state.facts.extras.join(',')||'NONE'}`:'NOQUOTE';
+    remember(state,'assistant',answer);
+    return {state:JSON.stringify(state),resolved_message:raw,can_collect:'NAO',confirmation_text:'',answer,quote_request:decision};
+  }
   const dateRequest=packageDateRequest(raw,state.package_context,now);
   if(dateRequest&&['prepare','route','confirm'].includes(body.operation)){
     state.package_date_request=dateRequest;
@@ -1096,11 +1141,11 @@ function controlTurn(body: any, now = Date.now()) {
       delete state.pending;delete state.awaiting;delete state.multi_room;
       return {state:JSON.stringify(state)};
     }
-    if(packageDateRequest(state.history.at(-1)||'',state.package_context,now)){
+    if(!state.package_stay_query&&packageDateRequest(state.history.at(-1)||'',state.package_context,now)){
       delete state.pending;delete state.awaiting;
       return {state:JSON.stringify(state)};
     }
-    if(packageConsultationReply(state.history.at(-1)||'',state.package_context,now)){
+    if(!state.package_stay_query&&packageConsultationReply(state.history.at(-1)||'',state.package_context,now)){
       delete state.pending;delete state.awaiting;
       return {state:JSON.stringify(state)};
     }

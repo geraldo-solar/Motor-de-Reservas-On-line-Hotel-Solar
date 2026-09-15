@@ -63,6 +63,7 @@ export function packageDiscoveryRequest(message:string,value?:unknown,now=Date.n
   }
   // "Esse pacote" still means the current subject, not a request to list all.
   if(/\b(?:esse|este|desse|deste|nesse|neste|aquele|daquele) pacote\b/.test(s))return false;
+  if(/\bpacotes?\b/.test(s)&&/\b(?:fim|final) (?:do|de) ano\b/.test(s))return true;
   return /\b(?:quais|que|outros?|novos?|alguns?) pacotes\b|\b(?:algum|outro|novo) pacote\b|\bpacotes (?:disponiveis|ativos|especiais|de feriado)\b|\b(?:quais|que) feriados\b/.test(s)
     || /\b(?:pacotes|feriados)\b/.test(s)&&/\b(?:mostrar|mostre|ver|conhecer|consultar|lista|listar|oferecem|tem|temos|ha|disponiveis)\b/.test(s);
 }
@@ -186,6 +187,7 @@ export function packageFollowup(message: string) {
     && /\b(?:pacote|cafe|ceia|festa|virada|open bar|almoco|jantar)\b/.test(s))return true;
   if (weekdayReference === 'package') return true;
   if (childPolicyQuestion(message) || childAgeFollowup(message)) return true;
+  if (/\b(?:chegar|chegando|sair|saindo)\b/.test(s)&&/\bdia\b/.test(s))return true;
   if (/\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/.test(s)) return true;
   return /\b(indica|indicam|recomenda|recomendam|melhor|sugere|sugestao|pessoas|hospedes|adultos?|casal|criancas?|filh[oa]s?|bebe|familia|valores?|precos?|custa|custos?|mais barato|mais economico|quanto|pagamento|parcelamento|parcelar|parcelas|inclui|inclus[oa]s?|inclusoes|ceia|open bar|programacao|horarios?|barco|catamara|regras|periodo|noites|diarias|datas|entrada|saida|loft|suites?|quartos?|acomodacoes|acomodacao|informacoes|detalhes|reservar|prosseguir)\b/.test(s)
     || /^(sim|nao|pode ser|quero|pode mostrar|quais opcoes|\d{1,2})[.!?]*$/.test(s);

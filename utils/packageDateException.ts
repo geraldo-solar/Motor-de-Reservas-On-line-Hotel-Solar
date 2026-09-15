@@ -46,6 +46,9 @@ export function newYearDateException(message:string,context?:unknown,now=Date.no
   if(!named&&!focused && (!explicitLodgingRequest(message)
     ||dates[0].month!==12||dates[1].month!==1
     ||/\b(?:se|caso|quando) (?:eu |nos )?(?:quiser|quisermos|fizer|fizermos|reservar|reservarmos)\b/.test(s)))return false;
+  // A stay encompassing the regular package plus additional nights can be
+  // priced by the motor; only a shorter/shifted package needs an exception.
+  if(dates[0].month===12&&dates[1].month===1&&dates[1].day>=3)return false;
   const keys=dates.map(d=>`${d.month}-${d.day}`);
   return !(keys.includes('12-31')&&keys.includes('1-3'));
 }
