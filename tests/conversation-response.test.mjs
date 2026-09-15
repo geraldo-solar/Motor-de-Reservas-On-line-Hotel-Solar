@@ -11,7 +11,7 @@ const rooms = [
   { id: 'loft', name: 'Loft', capacity: 4, base_price: 900, overrides: [] },
 ];
 const packages = [
-  { id: 'independencia', name: 'Independência Solar', start_iso_date: '2026-09-04', end_iso_date: '2026-09-07', description: 'Praia e descanso.', includes: ['Música ao vivo'], benefits: [], room_prices: [], no_checkin_dates: [], no_checkout_dates: [] },
+  { id: 'independencia', name: 'Independência Solar 2027', start_iso_date: '2027-09-04', end_iso_date: '2027-09-07', description: 'Praia e descanso.', includes: ['Música ao vivo'], benefits: [], room_prices: [], no_checkin_dates: [], no_checkout_dates: [] },
   { id: 'reveillon', name: 'Réveillon Solar 2027', start_iso_date: '2026-12-31', end_iso_date: '2027-01-03', description: 'Celebração de Ano-Novo.', includes: [], benefits: [], room_prices: [], no_checkin_dates: [], no_checkout_dates: [] },
 ];
 const presented={version:2,history:[],facts:{extras:[]},greeted:false,assistant_disclosure:{version:1,show:false,rendered:true}};
@@ -265,7 +265,7 @@ test('foto específica vem da categoria cadastrada, sem preço ou disponibilidad
 
 test('pedido de foto de pacote mantém o caminho de pacote', async () => {
   const handler = await loadHandler('api/resolve-package.ts');
-  const r = await request(handler,{user_message:'Quero foto do pacote Independência Solar'});
+  const r = await request(handler,{user_message:'Quero foto do pacote Independência Solar 2027'});
   assert.equal(r.quote_request,'PACKAGE_ID|independencia');
 });
 
@@ -328,7 +328,7 @@ test('ocupação filtra apartamentos e Réveillon parcial propõe cotação comp
 
 test('pacote dinâmico preserva preços e imagem, mas continua qualificação na conversa', async () => {
   const handler = await loadHandler('api/resolve-package.ts');
-  const result = await request(handler, { user_message: 'Quero saber do pacote Independência Solar' });
+  const result = await request(handler, { user_message: 'Quero saber do pacote Independência Solar 2027' });
   assert.equal(result.package_id, 'independencia');
   assertSameAmounts(result.quote_text, result.conversation_text);
   assert.match(result.quote_text, /98100-0800/);
@@ -345,7 +345,7 @@ test('lista, ausência de pacote e texto longo também expõem saída conversaci
   assert.equal(faq.quote_request, 'ROOM_LIST');
   assert.equal(faq.conversation_text, 'Pode detalhar como podemos ajudar com sua dúvida sobre o hotel?');
   const longHandler = await loadHandler('api/resolve-package.ts', [{ ...packages[0], description: 'Detalhes da programação. '.repeat(200) }]);
-  const long = await request(longHandler, { user_message: 'Independência Solar' });
+  const long = await request(longHandler, { user_message: 'Independência Solar 2027' });
   assert.ok(long.conversation_text.length <= 1901);
   assert.doesNotMatch(long.conversation_text, /98100/);
   const emptyHandler = await loadHandler('api/resolve-package.ts', []);
@@ -354,7 +354,7 @@ test('lista, ausência de pacote e texto longo também expõem saída conversaci
 });
 
 test('saudações e termos genéricos não selecionam o Dia das Crianças', async () => {
-  const handler = await loadHandler('api/resolve-package.ts', [{ ...packages[0], name: 'Dia das Crianças: 4 Dias de Feriado em Salinas', description: 'Praia e lazer. Use o cupom OUTUBRO15 e garanta desconto. Apenas 15 reservas com desconto.' }]);
+  const handler = await loadHandler('api/resolve-package.ts', [{ ...packages[0], name: 'Dia das Crianças: 4 Dias de Feriado em Salinas', start_iso_date:'2026-10-09',end_iso_date:'2026-10-12',description: 'Praia e lazer. Use o cupom OUTUBRO15 e garanta desconto. Apenas 15 reservas com desconto.' }]);
   for (const user_message of ['Bom dia ☀️', 'Boa tarde', 'Oi', 'Para duas pessoas, qual vc me indica?', 'Quantos dias?', 'Qual a localização em Salinas?']) {
     const result = await request(handler, { user_message });
     assert.equal(result.matched, false, user_message);
@@ -399,9 +399,9 @@ test('teste de 11/09: dois adultos e três crianças em setembro não selecionam
 test('parentesco não identifica feriado, mas o nome completo do Dia das Crianças, Mães, Pais ou Namorados identifica', async()=>{
   const catalog=[
     ['criancas','Dia das Crianças: 4 Dias de Feriado em Salinas','2026-10-09','2026-10-12'],
-    ['maes','Dia das Mães no Solar','2026-05-08','2026-05-10'],
-    ['pais','Dia dos Pais no Solar','2026-08-07','2026-08-09'],
-    ['namorados','Dia dos Namorados no Solar','2026-06-12','2026-06-14'],
+    ['maes','Dia das Mães no Solar','2027-05-07','2027-05-09'],
+    ['pais','Dia dos Pais no Solar','2027-08-06','2027-08-08'],
+    ['namorados','Dia dos Namorados no Solar','2027-06-11','2027-06-13'],
   ].map(([id,name,start_iso_date,end_iso_date])=>({...packages[0],id,name,start_iso_date,end_iso_date}));
   const handler=await loadHandler('api/resolve-package.ts',catalog);
   for(const user_message of ['Somos dois adultos e três crianças','Quero viajar com meus pais','Somos duas mães com nossos filhos','Somos namorados, queremos hospedagem']) {

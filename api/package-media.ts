@@ -1,11 +1,13 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
+import {currentPackage} from '../utils/packageAvailability.js';
 
 type PackageRecord = {
   name?: string;
   image_url?: string;
   description?: string;
   start_iso_date?: string;
+  end_iso_date?: string;
   active?: boolean;
 };
 
@@ -42,7 +44,7 @@ const parsePackageId = (value: unknown): string | null => {
 };
 
 const findPackageByCode = (packages: PackageRecord[], code: string) =>
-  packages.find(pkg => pkg.active !== false && getPackageCode(pkg) === code);
+  packages.find(pkg => currentPackage(pkg) && getPackageCode(pkg) === code);
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -64,7 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (error) return res.status(500).json({ error: error.message });
 
   const pkg = packageId
-    ? (packages || []).find(item => String(item.id) === packageId)
+    ? (packages || []).find(item => currentPackage(item)&&String(item.id) === packageId)
     : findPackageByCode(packages || [], code!);
   if (!pkg) return res.status(404).json({ error: 'Active package not found.' });
 

@@ -5,6 +5,7 @@ import { familyAccommodation, baseRoomCapacity, familyAgeQuestionFor, familyRoom
 import { explicitPackageBoatBenefit, safeBoatPackageCopy } from '../utils/extraMedia.js';
 import {motorStayPrice,motorStayRestriction,requiresFullPackagePeriod} from '../utils/motorStayPricing.js';
 import {readPackageStayQuery} from '../utils/packageStayQuery.js';
+import {packageToday} from '../utils/packageAvailability.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -118,6 +119,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // The conversational integration may not quote a fixed third-party boat
     // price. Preserve the public motor's existing explicit-date API behavior.
     const conversationQuote = typeof body.quote_request === 'string' || state?.version === 2;
+    if(conversationQuote&&checkIn<packageToday()){
+      const answer='Esse período já passou. Não vou reutilizar tarifas ou pacotes antigos. Quais são as novas datas de entrada e saída que deseja consultar?';
+      return res.status(200).json({quote_request:'NOQUOTE',quote_state:'',can_collect:'NAO',conversation_text:answer,
+        whatsapp_text:answer,prices_summary:answer,availability_checked:false,requires_human_confirmation:true});
+    }
     const family = familyAccommodation(state, guestCount);
     const familyDatesMismatch = (state?.version === 2 || !!state?.family_party?.children) && (state?.facts?.guests !== guestCount
       || state?.facts?.check_in !== checkIn || state?.facts?.check_out !== checkOut);

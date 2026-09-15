@@ -8,6 +8,7 @@ import { paymentStatusInquiry } from './paymentStatus.js';
 import { paymentSupportInquiry } from './paymentSupport.js';
 import { multiRoomRequest,roomAlternativeComparison } from './lodgingScope.js';
 import {roomDetailInquiry} from './roomMedia.js';
+import {packageEnded} from './packageAvailability.js';
 
 // A catalog reference is conversational context, never a quote or consent.
 export type PackageContext = {id: string; name: string; start_date: string; end_date: string; updated_at: number};
@@ -21,7 +22,7 @@ export function readPackageContext(value: any, now = Date.now()): PackageContext
     const date = new Date(`${value[key]}T12:00:00Z`);
     if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value[key]) return;
   }
-  if (value.end_date <= value.start_date) return;
+  if (value.end_date <= value.start_date || packageEnded(value,now)) return;
   return {id:value.id, name:value.name.trim(), start_date:value.start_date, end_date:value.end_date, updated_at:value.updated_at};
 }
 export function packageInquiry(message: string) {

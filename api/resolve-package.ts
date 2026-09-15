@@ -22,6 +22,7 @@ import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
 import {packageStayDates,readPackageStayQuery,packageStayPriceRequest} from '../utils/packageStayQuery.js';
 import {motorStayRestriction,requiresFullPackagePeriod} from '../utils/motorStayPricing.js';
 import {updateFamilyParty} from '../utils/familyParty.js';
+import {currentPackage,packageEnded,retiredIndependence,endedPackageMarker,endedPackageAnswer} from '../utils/packageAvailability.js';
 import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer} from '../utils/packageDateRequest.js';
 import { packagePrices, packageRecommendation } from '../utils/packageReply.js';
 import { childPolicyQuestion, childAgeFollowup, packageChildReply } from '../utils/packageChildInquiry.js';
@@ -205,7 +206,7 @@ function validPackagePeriod(pkg:PackageRecord):boolean {
 async function catalogBoatBenefit(supabase: any, focus: ReturnType<typeof readPackageContext>) {
   if (!focus) return false;
   const { data: packages, error } = await supabase.from('packages').select('*').eq('active', true);
-  const pkg = !error && (packages || []).find((item: PackageRecord) => item.id === focus.id
+  const pkg = !error && (packages || []).find((item: PackageRecord) => currentPackage(item)&&item.id === focus.id
     && item.start_iso_date === focus.start_date && item.end_iso_date === focus.end_date);
   return !!pkg && explicitPackageBoatBenefit(pkg);
 }
@@ -366,6 +367,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({...routed,quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
       can_collect:'NAO',confirmation_text:'',matched:false,match_type:deferred?'booking_deferral':'hotel_call_difficulty',availability_checked:false});
   }
+  let expiredSource=false;
+  try{const source=typeof req.body?.state==='string'?JSON.parse(req.body.state):req.body?.state;expiredSource=packageEnded(source?.package_context);}catch{ /* No valid old focus. */ }
+  if(!req.query?.operation&&(retiredIndependence(serviceMessage)||expiredSource||earlyState?.resolved_message===endedPackageMarker)){
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    if('quote_request' in routed&&routed.quote_request==='HUMANO')return res.status(200).json({...routed,
+      quote_text:routed.answer,conversation_text:routed.answer,matched:false,match_type:'human_request',availability_checked:false});
+    if('resolved_message' in routed&&routed.resolved_message===endedPackageMarker)return res.status(200).json({...routed,
+      quote_request:'ROOM_LIST',quote_text:endedPackageAnswer,conversation_text:endedPackageAnswer,
+      package_image_url:'',matched:false,match_type:'ended_package',availability_checked:false});
+  }
+  if(req.query?.operation==='offers'&&earlyState?.resolved_message===endedPackageMarker)
+    return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',state:JSON.stringify(earlyState),availability_checked:false});
   const currentStay=readPackageStayQuery(earlyState?.package_stay_query,earlyState?.package_context);
   const queriedStay=!possibleCompanionInquiry(serviceMessage)?packageStayDates(serviceMessage,earlyState?.package_context,Date.now(),currentStay):undefined;
   if(!req.query?.operation&&(queriedStay||currentStay&&earlyState?.history?.at(-1)===serviceMessage.slice(0,500)
@@ -378,7 +391,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const [{data:packages,error:packageError},{data:rooms,error:roomError}]=await Promise.all([
       client.from('packages').select('*').eq('active',true),client.from('room_types').select('*').eq('active',true)]);
     if(packageError||roomError||!rooms?.length)return res.status(500).json({error:'Unable to validate stay dates.'});
-    const pkg=packages?.find((p:PackageRecord)=>p.id===query.package_id&&p.start_iso_date===earlyState?.package_context?.start_date&&p.end_iso_date===earlyState?.package_context?.end_date);
+    const pkg=packages?.find((p:PackageRecord)=>currentPackage(p)&&p.id===query.package_id&&p.start_iso_date===earlyState?.package_context?.start_date&&p.end_iso_date===earlyState?.package_context?.end_date);
     const permitted=rooms.filter((room:any)=>!motorStayRestriction(room,query.check_in,query.check_out));
     const covered=pkg&&query.check_in<=pkg.start_iso_date&&query.check_out>=pkg.end_iso_date;
     const blockedExit=rooms.every((room:any)=>motorStayRestriction(room,query.check_in,query.check_out)==='check_out');
@@ -684,7 +697,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       supabase.from('room_types').select('*').eq('active',true),
     ]);
     if (packageError || roomError) return res.status(500).json({error:'Unable to load package information.'});
-    const catalogPackage = (packages || []).find((item: PackageRecord) => item.id === focusedPackage.id);
+    const catalogPackage = (packages || []).find((item: PackageRecord) => currentPackage(item)&&item.id === focusedPackage.id);
     if (!catalogPackage) {
       const answer = 'Esse pacote não está mais disponível no catálogo ativo. Qual período ou pacote você gostaria de consultar?';
       return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,availability_checked:false,...control({operation:'remember_response',state:req.body?.state,response_text:answer,clear_package:true})});
@@ -759,10 +772,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const today=belemClock(Date.now()).day;
   const asksNext=discovery&&/\bproxim[oa]s?\b/.test(normalize(userMessage));
   const endOfYear=discovery&&/\b(?:fim|final) (?:do|de) ano\b/.test(normalize(userMessage));
-  const currentPackages=discovery&&!namedPackageInquiry(userMessage)
-    ?(packages||[]).filter((pkg:PackageRecord)=>validPackagePeriod(pkg)&&pkg.end_iso_date!>=today
-      &&(!endOfYear||pkg.start_iso_date!.slice(5,7)==='12'))
-    :packages||[];
+  const currentPackages=(packages||[]).filter((pkg:PackageRecord)=>currentPackage(pkg)
+    &&(!endOfYear||pkg.start_iso_date!.slice(5,7)==='12'));
   let nextPackage:PackageRecord|undefined;
   if(asksNext){
     const candidates=(packages||[]).filter((pkg:PackageRecord)=>validPackagePeriod(pkg)&&pkg.start_iso_date!>=today

@@ -4,11 +4,13 @@ import { roomImages } from '../utils/roomMedia.js';
 import sharp from 'sharp';
 import {extraCode,extraImages} from '../utils/extraMedia.js';
 import {sitePhotoUrl} from '../utils/hotelInfo.js';
+import {currentPackage} from '../utils/packageAvailability.js';
 
 type PackageRecord = {
   name?: string;
   image_url?: string;
   start_iso_date?: string;
+  end_iso_date?: string;
   active?: boolean;
 };
 
@@ -45,7 +47,7 @@ const parsePackageId = (value: unknown): string | null => {
 };
 
 const findPackageByCode = (packages: PackageRecord[], code: string) =>
-  packages.find(pkg => pkg.active !== false && getPackageCode(pkg) === code);
+  packages.find(pkg => currentPackage(pkg) && getPackageCode(pkg) === code);
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -87,7 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const pkg = serviceCode ? (packages||[]).find(item=>extraCode(item.name||'')===serviceCode) : roomId
     ? (packages || []).find(item => String(item.id) === roomId)
     : packageId
-    ? (packages || []).find(item => String(item.id) === packageId)
+    ? (packages || []).find(item => currentPackage(item)&&String(item.id) === packageId)
     : findPackageByCode(packages || [], code!);
   const selectedImages = serviceCode ? extraImages(pkg,serviceCode) : [siteImage || (roomId && pkg ? roomImages(pkg)[0] : pkg?.image_url)].filter(Boolean);
   if (!selectedImages.length) return res.status(404).json({ error: 'Image not found.' });

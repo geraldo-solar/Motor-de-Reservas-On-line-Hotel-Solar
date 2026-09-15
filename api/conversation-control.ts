@@ -16,6 +16,7 @@ import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachm
 import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
+import {packageToday,packageEnded,retiredIndependence,endedPackageAnswer,endedPackageMarker} from '../utils/packageAvailability.js';
 import {packageStayDates,readPackageStayQuery,packageStayPriceRequest,type PackageStayQuery} from '../utils/packageStayQuery.js';
 import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer,packageDateRequestRefused,type PackageDateRequest} from '../utils/packageDateRequest.js';
 import { guestInquiry, explicitLodgingRequest, type GuestInquiry } from '../utils/guestInquiry.js';
@@ -255,6 +256,11 @@ function loadState(value: unknown, now = Date.now()): State {
     ...(readAttachmentTurn(parsed.attachment, now) ? {attachment: readAttachmentTurn(parsed.attachment, now)} : {}),
   };
   const multi=readMultiRoomHandoff(parsed.multi_room,state,now);
+  state.turns=state.turns?.filter(turn=>turn.role!=='assistant'||!retiredIndependence(turn.text,now));
+  if(packageEnded(parsed.package_context,now)){
+    delete state.pending;delete state.package_stay_query;delete state.package_date_request;
+    if(state.topic==='package_info'){delete state.topic;delete state.topic_at;}
+  }
   if(multi)state.multi_room=multi;
   const asked=parsed.checkout_question;
   if(stayDatePending?.reason==='relative_checkout' && asked?.key===JSON.stringify(stayDatePending)
@@ -593,6 +599,7 @@ function validQuote(value: unknown, state: State, now: number): Quote | null {
   if (state.existing_reservation) return null;
   if (state.stay_date_pending) return null;
   const q = json(value);
+  if(typeof q?.check_in==='string'&&q.check_in<packageToday(now))return null;
   const f = state.facts;
   const period=state.package_stay_query;
   if (state.topic === 'package_info' && state.package_context && (q?.check_in !== (period?.check_in||state.package_context.start_date) || q?.check_out !== (period?.check_out||state.package_context.end_date))) return null;
@@ -872,6 +879,23 @@ function controlTurn(body: any, now = Date.now()) {
     return {state:JSON.stringify(state),resolved_message:existingReservationContext,
       quote_request:'HUMANO',can_collect:'NAO',confirmation_text:'',answer:existingReservationAnswer};
   }
+  const endedFollowup=packageEnded(json(body.state)?.package_context,now)&&!packageDiscovery
+    &&!guestInquiry(raw)&&packageFollowup(raw)&&!newTripRequest(raw);
+  const endedTurn=body.operation!=='prepare'&&state.resolved_message===endedPackageMarker&&state.history.at(-1)===raw.slice(0,500);
+  if(!human(s)&&(retiredIndependence(raw,now)||endedFollowup||endedTurn)&&['prepare','route','confirm'].includes(body.operation)){
+    delete state.package_context;delete state.package_stay_query;delete state.package_date_request;
+    delete state.pending;delete state.awaiting;delete state.multi_room;delete state.topic;delete state.topic_at;
+    state.changed=false;state.resolved_message=endedPackageMarker;
+    if(body.operation==='prepare'){
+      delete state.audio;state.first_turn=!state.greeted;state.greeted=true;
+      state.history=[...state.history,raw.slice(0,500)].slice(-12);remember(state,'user',raw);
+      return {state:JSON.stringify(state),quote_request:'NOQUOTE',can_collect:'NAO',context:JSON.stringify({
+        ultima_mensagem:raw,pacote_em_foco:null,cotacao_valida_para_estes_dados:null,
+        regra:'O pacote consultado está encerrado. Não recuperar preços, fotos ou programação de ofertas encerradas do histórico. Responda somente: '+endedPackageAnswer})};
+    }
+    remember(state,'assistant',endedPackageAnswer);
+    return {state:JSON.stringify(state),resolved_message:endedPackageMarker,quote_request:'NOQUOTE',can_collect:'NAO',confirmation_text:'',answer:endedPackageAnswer};
+  }
   if(body.operation==='prepare'&&packageDateRequestRefused(raw))delete state.package_date_request;
   if(body.operation==='prepare'&&packageStayPriceRequest(raw)&&!state.package_stay_query&&state.package_context
     &&state.facts.check_in&&state.facts.check_out){
@@ -1127,6 +1151,7 @@ function controlTurn(body: any, now = Date.now()) {
       pacote_em_foco: state.topic === 'package_info' && (!packageQuery||occupancyFollowup) ? state.package_context || null : null,
       pedido_periodo_excepcional:state.package_date_request||null,
       regra_pacote: 'Pacote em foco é somente o assunto consultado, não aceite de reserva. Responda continuações sobre hóspedes, acomodações, valores e inclusões no mesmo pacote. O próximo passo consulta os dados atuais do catálogo. Não reaproveite datas, preços ou extras de outra viagem nem confirme disponibilidade. As datas do catálogo não são datas declaradas pelo cliente.',
+      regra_validade_pacotes:'Pacotes encerrados não fazem parte da base comercial atual. Não reutilize preços, fotos, programação nem ofertas vencidas de mensagens anteriores. Consulte somente pacotes vigentes; uma reserva histórica ou pagamento continua exigindo conferência humana.',
       interpretacao_da_ultima_mensagem: personal(raw) ? '[Dado pessoal omitido]' : state.resolved_message,
       ultima_mensagem: personal(raw) ? '[Dado pessoal omitido; não repetir nem guardar]' : raw,
       cotacao_valida_para_estes_dados: currentQuote,
@@ -1157,7 +1182,8 @@ function controlTurn(body: any, now = Date.now()) {
       delete state.subject; delete state.extra_photo_subjects; delete state.extra_photo_requests;
       return {state:JSON.stringify(state)};
     }
-    remember(state, 'assistant', String(body.response_text || ''), true);
+    const rememberedText=String(body.response_text || '');
+    remember(state, 'assistant', retiredIndependence(rememberedText,now)?'':rememberedText, true);
     if(Array.isArray(body.extra_photo_requests)) state.extra_photo_requests=[...new Set([...(state.extra_photo_requests||[]),...body.extra_photo_requests.filter(knownMediaCode)])];
     if (body.clear_subject === true) delete state.subject;
     if (typeof body.room_name === 'string' && body.room_name) state.subject = body.room_name.slice(0,100);
@@ -1361,6 +1387,7 @@ function controlTurn(body: any, now = Date.now()) {
     delete state.pending;delete state.multi_room;
   }
   if (decision === 'NOQUOTE' && photoRetryRequest(publicMessage)) answer = PHOTO_CLARIFY;
+  else if(decision==='NOQUOTE'&&retiredIndependence(answer,now))answer=endedPackageAnswer;
   else if (decision === 'NOQUOTE' && photoDeliveryClaim(answer)) answer = mediaRequest(norm(publicMessage)) ? PHOTO_LOOKUP : PHOTO_CLARIFY;
   if (decision === 'NOQUOTE') awaitPhotoSubject(state, answer, now);
   if (decision !== 'COLETAR') confirmationText = '';
