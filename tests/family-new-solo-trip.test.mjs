@@ -73,11 +73,14 @@ test('negação, hipótese e cotação por pessoa não substituem o grupo por um
     'Qual o preço por pessoa, só uma pessoa?',
     'Cada quarto é para uma pessoa','Não quero outra viagem para minha mãe sozinha',
     'Vou sozinha e minha mãe também','Vou sozinha com minha mãe',
-    'Só eu e minha esposa','Só eu, minha mãe e meu pai']){
+    'Só eu, minha mãe e meu pai']){
     const r=update(message,family.party,now);
     assert.notEqual(r.guests,1,message);
     assert.deepEqual(r.party,family.party,message);
   }
+  const couple=update('Só eu e minha esposa',family.party,now);
+  assert.equal(couple.guests,2);assert.notEqual(couple.guests,1);
+  assert.deepEqual(couple.party.ages_months,[]);
 });
 
 test('pessoa singular em composição declarada não apaga criança e idade',()=>{

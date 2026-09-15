@@ -117,17 +117,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // price. Preserve the public motor's existing explicit-date API behavior.
     const conversationQuote = typeof body.quote_request === 'string' || state?.version === 2;
     const family = familyAccommodation(state, guestCount);
-    const familyDatesMismatch = !!state?.family_party?.children && (state?.facts?.guests !== guestCount
+    const familyDatesMismatch = (state?.version === 2 || !!state?.family_party?.children) && (state?.facts?.guests !== guestCount
       || state?.facts?.check_in !== checkIn || state?.facts?.check_out !== checkOut);
     if (family.pending || familyDatesMismatch) {
       const answer = familyDatesMismatch
         ? state?.family_party?.age_subject === 'offspring'
           ? 'Preciso conferir as datas e a composição da família antes de simular. Quais são as datas de entrada e saída e quantas pessoas vão se hospedar? ' + familyAgeQuestionFor(state)
-          : 'Preciso conferir as datas e a composição da família antes de simular. Quais são as datas de entrada e saída, quantos adultos e quais as idades das crianças?'
+          : 'Preciso conferir os dados atuais antes de simular. Quais são as datas de entrada e saída e quantas pessoas vão se hospedar? Se houver crianças, informe também suas idades.'
         : familyAgeQuestionFor(state);
       return res.status(200).json({quote_request:'NOQUOTE',quote_state:'',can_collect:'NAO',
         conversation_text:answer,whatsapp_text:answer,prices_summary:answer,
         availability_checked:false,requires_human_confirmation:true});
+    }
+    if (state?.version === 2) {
+      const extraKey = (codes: unknown) => [...new Set(Array.isArray(codes)
+        ? codes.filter(code => typeof code === 'string' && ['BARCO','MESA','LUA'].includes(code)) : [])].sort().join(',');
+      if (extraKey(state?.facts?.extras) !== extraKey(requestedExtraCodes)) {
+        const answer = 'Antes de simular, confirme quais extras deseja incluir, ou se prefere somente a hospedagem.';
+        return res.status(200).json({quote_request:'NOQUOTE',quote_state:'',can_collect:'NAO',
+          conversation_text:answer,whatsapp_text:answer,prices_summary:answer,
+          availability_checked:false,requires_human_confirmation:true});
+      }
     }
 
     // Busca preços do Supabase. O orçamento é uma simulação comercial e não

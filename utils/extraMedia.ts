@@ -122,7 +122,7 @@ export function extraCaption(code:string,extras:ExtraRecord[],includedBoat=false
   if(code==='MESA') return `Mesa Posta\nUma decoração especial para o jantar.\n${value} pela decoração/montagem; o consumo do jantar é cobrado à parte.`;
   return `Kit Lua de Mel/Celebração\nUma preparação especial com decoração, flores, chocolates e espumante.\n${value}.`;
 }
-export function requestedExtraCodes(message:string,assistant:string,requestedBefore:string[]=[]) {
+export function requestedExtraCodes(message:string,_assistant:string,requestedBefore:string[]=[]) {
   const s=normalizeExtra(message);
   if (/nao quero|sem extras|remov|retir|cancel|reclam|reembolso/.test(s)) return [];
   const explicitPhoto=extraPhotoRequest(message);
@@ -132,7 +132,10 @@ export function requestedExtraCodes(message:string,assistant:string,requestedBef
   // unrelated picture. Context resolution uses customer-derived subjects.
   if(explicitPhoto && !all && !direct.length) return [];
   if(!direct.length && /\b(pacotes?|feriados?|aptos?|apartamentos?|quartos?|loft|suite)\b/.test(s) && (explicitPhoto || /pacotes?|feriados?/.test(s))) return [];
-  const source=all ? SERVICE_CODES : direct.length ? direct : extraCodes(assistant).filter(code=>SERVICE_CODES.includes(code));
+  // A quote or model suggestion is not a customer request for a photo series.
+  // Keep the offers endpoint/transport compatible, but only expand services
+  // actually requested by the customer. Textual extras remain in the quote.
+  const source=all ? SERVICE_CODES : direct;
   // Leisure-space questions keep their informative answer unless the client
   // actually asks for photos. Proactive offers remain limited to the services.
   return source.filter(code=>explicitPhoto || SERVICE_CODES.includes(code) && !requestedBefore.includes(code));

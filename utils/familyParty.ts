@@ -117,6 +117,50 @@ function singleTravelerDeclaration(s: string): 'single' | 'unasserted' | undefin
   return 'single';
 }
 
+/** Explicit replacements are not incremental family components. Only direct,
+ * self-contained declarations can retire the previous occupants and ages. */
+function replacementFamily(s: string, old: FamilyParty | undefined, now: number, hash: string): FamilyPartyResult | undefined {
+  const direct=s.replace(/^(?:(?:no(?: meu| nosso)? caso|nesse caso|neste caso|agora|na verdade|corrigindo|correcao|desta vez|dessa vez)\s*[,;:]?\s*)+/,'')
+    .replace(/[.!]+$/,'').trim();
+  const fresh={ages_months:[] as number[],updated_at:now,last_message_hash:hash};
+  const unchanged=()=>({handled:false,...(old?{party:old}:{})});
+  const partner='eu\\s+e\\s+(?:(?:a\\s+)?minha\\s+(?:esposa|companheira|namorada)|(?:o\\s+)?meu\\s+(?:marido|esposo|companheiro|namorado))';
+  const onlyPair=new RegExp(`^(?:(?:ira|irao|vai|vao|vou|vamos|iremos|somos|seremos|sera|serao|e|ficaremos)\\s+)?(?:(?:so|apenas|somente)\\s+${partner}|${partner}\\s+(?:apenas|somente))$`).test(direct);
+  if(onlyPair)return result({...fresh,adults:2,children:0,total:2});
+
+  const withoutChildren=/^(?:as (?:nossas )?criancas|os (?:nossos )?filhos|as (?:nossas )?filhas) nao (?:vao|irao|vem|virao|viajam|viajarao)(?: (?:mais|conosco|nessa viagem|nesta viagem|desta vez|dessa vez))?$/.exec(direct);
+  if(withoutChildren){
+    // "Crianças" cannot silently remove adult offspring. If the antecedent
+    // is incomplete/conflicting, ask for the remaining group rather than guess.
+    const total=old?.total??(old?.adults===undefined?undefined:old.adults+(old.children||0));
+    if(!old||old.children===undefined||old.clarification==='party_composition'||total===undefined
+      ||old.adults!==undefined&&old.total!==undefined&&old.adults+old.children!==old.total
+      ||/criancas/.test(direct)&&(old.ages_months.some(age=>age>=18*12)
+        ||old.age_subject==='offspring'&&old.ages_months.length<old.children))
+      return result(old?{...old,ages_months:[...old.ages_months],updated_at:now,last_message_hash:hash}:fresh,'party_composition');
+    return result({...fresh,...(old.adults===undefined?{}:{adults:old.adults}),children:0,total:total-old.children});
+  }
+
+  // A contrast with a complete positive total supersedes the rejected total,
+  // but does not reveal who makes up the new party or their ages.
+  const people='(?:pessoas?|hospedes?)',verb='(?:nos\\s+)?(?:somos|seremos|sao|serao)';
+  const forward=new RegExp(`^${verb}\\s+${number}\\s+${people}\\s*[,;]?\\s*(?:e\\s+)?nao\\s+${number}(?:\\s+${people})?$`).exec(direct);
+  const reverse=new RegExp(`^nao\\s+${verb}\\s+${number}\\s+${people}\\s*[,;]\\s*(?:mas\\s+)?${verb}\\s+${number}\\s+${people}$`).exec(direct);
+  const contrast=forward||reverse;
+  if(contrast){
+    const next=quantity(contrast[forward?1:2]),rejected=quantity(contrast[forward?2:1]);
+    if(next===rejected)return unchanged();
+    const previous=old?.total??(old?.adults===undefined?undefined:old.adults+(old.children||0));
+    if(next===previous&&old&&old.clarification!=='party_composition')
+      return result({...old,ages_months:[...old.ages_months],updated_at:now,last_message_hash:hash},old.clarification);
+    return result({...fresh,total:next});
+  }
+  // Do not let the ordinary count parser select one side of a hypothetical,
+  // quoted third-party statement, question or malformed numeric correction.
+  if(new RegExp(`\\b(?:${verb}|sejam|sejamos|fossem|fossemos|seria|seriam)\\s+${number}\\s+${people}\\b`).test(s)
+    &&new RegExp(`\\bnao\\s+(?:${verb}\\s+)?${number}\\b`).test(s))return unchanged();
+}
+
 /**
  * Call only in a lodging/family fact-collection context. It neither chooses
  * that context nor changes booking facts. The caller owns topic/TTL resets.
@@ -136,6 +180,8 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
       familyAgeFollowup(s)?'age_reference':'party_composition');
   }
   if(childPolicyQuestion(s))return {handled:false,...(old?{party:old}:{})};
+  const replacement=replacementFamily(s,old,now,messageHash);
+  if(replacement)return replacement;
   const contrast=contrastingComposition(s);
   if(!contrast.message)return result({ages_months:[],updated_at:now,last_message_hash:messageHash},'party_composition');
   s=contrast.message;

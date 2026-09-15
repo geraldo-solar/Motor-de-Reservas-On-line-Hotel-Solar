@@ -680,8 +680,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const media = resolveRoomMedia(userMessage, rooms || []);
   const remember = (response_text: string, room_name = '', clear_subject = false) => control({operation:'remember_response', state:req.body?.state, response_text, room_name, clear_subject});
   if (media) {
-    const gallery = media.match_type === 'room_gallery';
-    return res.status(200).json({...media, ...remember(gallery ? `Fotos solicitadas das categorias: ${('room_names' in media ? media.room_names : []).join(', ')}. Se a referência a uma delas for ambígua, pergunte qual.` : media.conversation_text, gallery ? '' : media.room_name, gallery)});
+    const gallery = ['room_gallery','room_comparison_gallery','room_comparison_information','room_gallery_information'].includes(media.match_type);
+    const comparison=media.match_type.startsWith('room_comparison');
+    return res.status(200).json({...media,can_collect:'NAO',confirmation_text:'',
+      ...remember(gallery&&!comparison ? `Fotos solicitadas das categorias: ${('room_names' in media ? media.room_names : []).join(', ')}. Se a referência a uma delas for ambígua, pergunte qual.` : media.conversation_text, gallery ? '' : media.room_name, gallery)});
   }
   const bestPackageScore = Math.max(0, ...(packages || []).map(pkg => scorePackage(userMessage, pkg)));
   if (extraPhotoRequest(userMessage) && !isPackageIntent(userMessage, bestPackageScore)) {

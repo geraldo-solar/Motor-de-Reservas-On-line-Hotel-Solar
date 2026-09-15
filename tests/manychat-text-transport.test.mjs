@@ -127,10 +127,10 @@ test('offers ROOM_DONE keeps empty legacy texts, maps a nonempty envelope and pe
   assert.deepEqual(queries,[]);
 });
 
-test('offers with media extracts exactly the first result without rerunning offers or consuming another page',async()=>{
+test('requested media extracts exactly the first result without rerunning lookup or consuming another page',async()=>{
   queries.length=0;
-  const body={user_message:'Também posso mostrar as bicicletas, gratuitas para hóspedes.',state:initial};
-  const mapped=(await request(resolver,body,{operation:'offers',...transport})).result;
+  const body={user_message:'Quero fotos das bicicletas',state:initial};
+  const mapped=(await request(resolver,body,transport)).result;
   assert.match(mapped.quote_request,/^EXTRA_ID\|BIKE\|/);assert.equal(mapped.has_conversation_text,'SIM');assert.deepEqual(queries,['extras']);
   const savedState=mapped.state;
   const extracted=(await request(extractor,{payload:JSON.parse(mapped.manychat_payload),key:'conversation_text'})).result;

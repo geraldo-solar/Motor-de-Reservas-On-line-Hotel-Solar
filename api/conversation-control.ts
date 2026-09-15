@@ -33,6 +33,7 @@ import {paymentSupportTopic,paymentSupportInquiry,paymentSupportContext,paymentS
 import { existingReservationInquiry, existingReservationContext, existingReservationAnswer } from '../utils/existingReservation.js';
 import { readFamilyParty, updateFamilyParty, type FamilyParty, type FamilyPartyResult } from '../utils/familyParty.js';
 import {withAssignedFamilyAgeUnits} from '../utils/familyAges.js';
+import {lodgingPartyConflict,lodgingCommercialAnswer} from '../utils/lodgingAnswerGuard.js';
 import { familyAccommodation, familyAccommodationPolicy, familyAgeQuestionFor, familyRoomRule } from '../utils/familyAccommodation.js';
 import { readStayDuration, readStayDatePending, stayDurationRequest, conflictingStayDuration, stayDateClarification, relativeStayDateMention, unparsedStayDateDeclaration, calendarDateMention, explicitStayEntry, explicitStayExit, todayStayDatePending, confirmRelativeCheckout, type StayDuration, type StayDatePending } from '../utils/stayDuration.js';
 import {splitStayDates,splitStayFollowup,declaredRelativeStay,readArrivalTime,arrivalTimeReply,arrivalTimeQuestion,arrivalTimeHandoff,type ArrivalTimePending} from '../utils/conversationalStayDates.js';
@@ -530,6 +531,7 @@ function updateStayDates(state: State, s: string, now: number) {
 
 function updateFacts(state: State, message: string, now: number) {
   const before = JSON.stringify(state.facts);
+  const guestsBefore = state.facts.guests;
   const arrivalBefore=JSON.stringify(state.arrival_time);
   const familyBefore = familyAccommodation(state, state.facts.guests || 0, now).key;
   const s = norm(message);
@@ -566,7 +568,17 @@ function updateFacts(state: State, message: string, now: number) {
     else if(!state.facts.extras.includes(code))state.facts.extras.push(code);
   }
   state.changed = before !== JSON.stringify(state.facts) || familyBefore !== familyAccommodation(state, state.facts.guests || 0, now).key||arrivalBefore!==JSON.stringify(state.arrival_time);
-  if (state.changed) delete state.pending;
+  if (state.changed) {
+    delete state.pending;
+    if(guestsBefore!==state.facts.guests||familyBefore!==familyAccommodation(state,state.facts.guests||0,now).key){
+      // Retire commercial advice for the old party, but keep the customer's
+      // own corrections and unrelated hotel information. A model answer is
+      // never a source of current occupancy or an authority to quote.
+      state.turns=state.turns?.filter(turn=>turn.role!=='assistant'
+        || !lodgingCommercialAnswer(turn.text)&&!lodgingPartyConflict(turn.text,state.facts.guests));
+      delete state.multi_room;
+    }
+  }
 }
 
 function validQuote(value: unknown, state: State, now: number): Quote | null {
@@ -1015,6 +1027,8 @@ function controlTurn(body: any, now = Date.now()) {
       regra_composicao_familiar: 'Conte todos os ocupantes, inclusive bebês. Filhos podem ser adultos; não presuma idade ou gratuidade pelo parentesco. Idades são somente declarações do cliente; uma idade não completa várias crianças ou filhos. Se a composição estiver inconsistente, esclareça quem compõe o total antes de cotar. Não deduza necessidade de acessibilidade ou saúde pelas idades. ' + familyRoomRule,
       politica_acomodacao_familiar: familyAccommodationPolicy,
       mensagens_do_cliente: state.history, conversa_recente: state.turns,
+      regra_fatos_atuais: 'Os fatos estruturados atuais prevalecem sobre a conversa anterior. Mudança de acompanhantes substitui a composição anterior; não reutilize hóspedes, crianças, idades, preços ou combinações antigas. Nunca diga que atualizou a ocupação se ela divergir dos fatos atuais. Uma categoria expressamente escolhida deve seguir para o resumo de confirmação, sem perguntar novamente qual categoria. Fotos e comparações não são escolhas nem autorização de reserva.',
+      regra_concisao: 'Responda primeiro à pergunta atual. Não repita ofertas de extras ou convites para chamar a recepção a cada resposta: o fluxo já apresenta a opção de atendimento humano e telefone. Não afirme encaminhamento sem a ação própria. Se o cliente pedir um serviço que exige a equipe, preserve o encaminhamento previsto.',
       marketing_recusa: marketingOptOut(s),
       ...(stripNegatedHumanRequests(raw) !== raw && !human(s) ? {
         recusa_atendimento_humano: true,
@@ -1237,9 +1251,11 @@ function controlTurn(body: any, now = Date.now()) {
     if (quote && selected && selecting && !question(s) && !/\b(nao|talvez|pensar|depois|ainda)\b/.test(s)) {
       state.pending = { quote_id: quote.id, option: selected.name };
       confirmationText = confirmation(quote, selected.name);
+      answer = confirmationText;
       decision = 'COLETAR'; // Routes only to the confirmation card, NEVER directly to data collection.
     } else if (quote && state.pending?.quote_id === quote.id && /^(sim|confirmo|pode prosseguir|quero prosseguir)[.!]?$/.test(s)) {
       confirmationText = confirmation(quote, state.pending.option);
+      answer = confirmationText;
       decision = 'COLETAR';
     } else if (recommendation(s) && (state.facts.children_pending || familyAccommodation(state,state.facts.guests || 0,now).pending)) {
       answer = familyAgeQuestionFor(state);
@@ -1265,6 +1281,13 @@ function controlTurn(body: any, now = Date.now()) {
     }
   }
   if (question(s)) delete state.pending;
+  if(decision==='NOQUOTE' && !inquiry && !restaurantInquiry(s) && !mediaRequest(norm(publicMessage))
+    && !eventInquiry(publicMessage) && !publicEventInquiry(publicMessage)
+    && answer===String(body.ai_response||'').slice(0,1800)
+    && lodgingPartyConflict(answer,state.facts.guests)){
+    answer=`Para esta viagem, estou considerando ${state.facts.guests} ${state.facts.guests===1?'hóspede':'hóspedes'}. Se essa quantidade mudou, me avise.`;
+    delete state.pending;delete state.multi_room;
+  }
   if (decision === 'NOQUOTE' && photoRetryRequest(publicMessage)) answer = PHOTO_CLARIFY;
   else if (decision === 'NOQUOTE' && photoDeliveryClaim(answer)) answer = mediaRequest(norm(publicMessage)) ? PHOTO_LOOKUP : PHOTO_CLARIFY;
   if (decision === 'NOQUOTE') awaitPhotoSubject(state, answer, now);

@@ -241,10 +241,12 @@ test('foto específica vem da categoria cadastrada, sem preço ou disponibilidad
     assert.equal(r.availability_checked, false);
     assert.doesNotMatch(r.conversation_text, /R\$|Confirmar opção|CPF|disponível/);
   }
-  for (const message of ['Fotos da suíte presidencial', 'Fotos do Loft e da suíte quádruplo']) {
+  for (const message of ['Fotos da suíte presidencial']) {
     const r = await request(handler, {user_message: message});
     assert.equal(r.quote_request, 'ROOM_LIST');
   }
+  const combined = await request(handler, {user_message: 'Fotos do Loft e da suíte quádruplo'});
+  assert.equal(combined.quote_request, `ROOM_ID|${room.id}|${quad.id}`);
   const missing = await loadHandler('api/resolve-package.ts', [], [{...room, images: []}]);
   assert.equal((await request(missing, {user_message: 'Fotos do Loft'})).quote_request, 'ROOM_LIST');
   const imageHandler = await loadHandler('api/package-image.ts', [], [room, quad]);
@@ -267,12 +269,14 @@ test('pedido de foto de pacote mantém o caminho de pacote', async () => {
   assert.equal(r.quote_request,'PACKAGE_ID|independencia');
 });
 
-test('serviço oferecido recebe imagem real, preço correto e memória sem aceite', async()=>{
+test('serviço solicitado recebe imagem real, preço correto e memória sem aceite', async()=>{
   const image='data:image/png;base64,'+(await sharp({create:{width:1600,height:1000,channels:3,background:'#369'}}).png().toBuffer()).toString('base64');
   const extras=[{id:'barco',name:'Passeio de Barco',price:100,image_url:image},{id:'mesa',name:'Mesa Posta',price:180,image_url:image}];
   const handler=await loadHandler('api/resolve-package.ts',packages,rooms,extras);
   const state={version:2,history:['Vamos comemorar'],facts:{extras:[]},greeted:true,turns:[{role:'assistant',text:'Que tal a Mesa Posta para celebrar?'}]};
-  const result=await request(handler,{user_message:'Vamos comemorar',state});
+  const suggestion=await request(handler,{user_message:'Vamos comemorar',state});
+  assert.doesNotMatch(suggestion.quote_request,/^EXTRA_ID\|/);
+  const result=await request(handler,{user_message:'Quero conhecer a Mesa Posta',state});
   assert.match(result.quote_request,/^EXTRA_ID\|MESA/);assert.match(result.conversation_text,/180,00/);
   assert.deepEqual(JSON.parse(result.state).facts.extras,[]);
   assert.deepEqual(JSON.parse(result.state).extra_photo_requests,['MESA']);

@@ -111,27 +111,29 @@ test('resumo IA e detalhes de pacote não repetem tarifa antiga de barco nem alt
   assert.equal(JSON.stringify(pkg), original);
 });
 
-test('resolver sanitiza prefixo antigo e só declara INCLUDED com benefício atual validado', async () => {
+test('resolver não expande sugestão antiga; barco solicitado só é INCLUDED com benefício atual validado', async () => {
   const pkg = { id: 'solar', name: 'Verão Solar', start_iso_date: ci, end_iso_date: co,
     includes: ['Passeio de barco'], benefits: [], description: '', no_checkin_dates: [], no_checkout_dates: [] };
   const resolver = await handlerFor([pkg], 'api/resolve-package.ts');
   const baseState = { version: 2, history: ['Vamos conversar'], facts: { extras: [] }, greeted: true,
     turns: [{ role: 'assistant', text: 'Hospedagem: R$ 2.500,00; Passeio de barco: R$ 350; Kit Lua de Mel: R$ 350.' }] };
   const prefixed = await request(resolver, { user_message: 'Vamos conversar', state: baseState });
-  assert.match(prefixed.conversation_text, /Hospedagem: R\$ 2\.500,00/);
-  assert.match(prefixed.conversation_text, /Kit Lua de Mel: R\$ 350/);
+  assert.doesNotMatch(prefixed.quote_request,/^EXTRA_ID\|/);
+  assert.doesNotMatch(prefixed.conversation_text, /Hospedagem: R\$ 2\.500,00|Kit Lua de Mel: R\$ 350/);
   assert.doesNotMatch(prefixed.conversation_text, /Passeio de barco: R\$ 350|Já incluído/);
   const assertion = 'Passeio de barco já incluído no pacote, sem cobrança adicional.';
   const untrusted = await request(resolver, { user_message: assertion, state: baseState }, 'offers');
   assert.doesNotMatch(untrusted.conversation_text, /Já incluído/);
-  assert.match(untrusted.quote_request, /\|PAID$/);
+  assert.equal(untrusted.quote_request,'ROOM_DONE');
   const focused = { ...baseState, topic: 'package_info', topic_at: Date.now(),
     package_context: { id: pkg.id, name: pkg.name, start_date: ci, end_date: co, updated_at: Date.now() } };
-  const proven = await request(resolver, { user_message: assertion, state: focused }, 'offers');
+  const noAutomaticOffer = await request(resolver, { user_message: assertion, state: focused }, 'offers');
+  assert.equal(noAutomaticOffer.quote_request,'ROOM_DONE');
+  const proven = await request(resolver, { user_message: 'Quero fotos do barco', state: focused });
   assert.match(proven.conversation_text, /Já incluído no pacote informado/);
   assert.match(proven.quote_request, /\|INCLUDED$/);
   const noBenefitResolver = await handlerFor([{ ...pkg, includes: [], description: 'Passeio de barco sob consulta.' }], 'api/resolve-package.ts');
-  const removed = await request(noBenefitResolver, { user_message: assertion, state: focused }, 'offers');
+  const removed = await request(noBenefitResolver, { user_message: 'Quero fotos do barco', state: focused });
   assert.doesNotMatch(removed.conversation_text, /Já incluído/);
   const oldReference = await request(resolver, { user_message: 'EXTRA_ID|MESA|BARCO|INCLUDED' }, 'next');
   assert.match(oldReference.quote_request, /\|PAID$/);
@@ -140,7 +142,7 @@ test('resolver sanitiza prefixo antigo e só declara INCLUDED com benefício atu
 
 test('pedido de barco pago pela IA bloqueia cotação e não adiciona R$350 nem cria opção confirmável', async () => {
   const handler = await handlerFor();
-  const state = { version: 2, facts: { extras: ['BARCO'] } };
+  const state = { version: 2, facts: { check_in: ci, check_out: co, guests: 2, extras: ['BARCO'] } };
   for (const body of [{ quote_request: quoteRequest }, { ...baseBody, state },
     { ...baseBody, state: JSON.stringify(state) }]) {
     const result = await request(handler, body);

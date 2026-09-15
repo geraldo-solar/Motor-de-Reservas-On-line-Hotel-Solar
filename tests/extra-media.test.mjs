@@ -9,7 +9,7 @@ const {extraCodes,requestedExtraCodes,extraMediaResult,nextExtraMedia,extraImage
 const extras=[{id:'b',name:'Passeio de Barco',price:100,image_url:'https://example.com/barco.jpg'},{id:'m',name:'Mesa Posta',price:180,image_url:'https://example.com/mesa.jpg'},{id:'l',name:'Kit Lua de Mel',price:350,image_url:'https://example.com/lua.jpg'},{id:'c',name:'Bicicletas',price:50,image_url:'https://example.com/bike.jpg'}];
 test('oferta específica, contextual e todos; não repete automaticamente, mas reenvia a pedido',()=>{
  assert.deepEqual(requestedExtraCodes('Quero conhecer o barco',''),['BARCO']);
- assert.deepEqual(requestedExtraCodes('Viagem romântica','Que tal a Mesa Posta?'),['MESA']);
+ assert.deepEqual(requestedExtraCodes('Viagem romântica','Que tal a Mesa Posta?'),[]);
  assert.deepEqual(requestedExtraCodes('Quais os extras?',''),['BARCO','MESA','LUA','BIKE']);
  assert.deepEqual(requestedExtraCodes('Qual valor do barco?','',['BARCO']),[]);
  assert.deepEqual(requestedExtraCodes('Mande a foto do barco novamente','',['BARCO']),['BARCO']);
@@ -120,7 +120,7 @@ test('perguntas informativas de lazer não são substituídas por uma legenda de
  assert.deepEqual(requestedExtraCodes('Quero fotos da piscina','',['PISCINA']),['PISCINA']);
  assert.deepEqual(requestedExtraCodes('Quero uma imagem do parque infantil','',['PARQUE']),['PARQUE']);
  assert.deepEqual(requestedExtraCodes('Quero conhecer o barco',''),['BARCO']);
- assert.deepEqual(requestedExtraCodes('','Sugiro bicicletas e piscina'),['BIKE']);
+ assert.deepEqual(requestedExtraCodes('','Sugiro bicicletas e piscina'),[]);
 });
 
 test('cadastro válido precede ManyChat e site; inválido ou vazio não esconde a fonte oficial correta',()=>{
