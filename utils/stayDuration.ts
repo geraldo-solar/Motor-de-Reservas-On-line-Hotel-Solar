@@ -72,22 +72,38 @@ export const relativeStayDateMention = (message: string) => /\b(?:hoje|amanha|de
 
 // This recognizes an arrival requested for today, not merely a conversation
 // happening today. An earlier checkout is only a candidate, never a stay fact.
-export function todayStayDatePending(message: string, previousCheckOut?: string, now = Date.now()): StayDatePending | undefined {
+export function todayStayDatePending(message: string, previousCheckOut?: string, now = Date.now(), awaitingDates=false): StayDatePending | undefined {
   const s = norm(message);
+  const shortToday=awaitingDates&&/^(?:(?:para|pra|entrada|entro|chego)(?: e| sera)? )?hoje[.!?]*$/.test(s);
   if (!/\bhoje\b/.test(s) || calendarDateMention(s) || stayDurationRequest(s, now)
     || explicitStayExit(s) || /\b(?:amanha|depois de amanha|ate)\b/.test(s)) return;
-  if (/\b(?:se|caso|quando)\b|\bnao (?:quero|queremos|vou|vamos|pretendo|pretendemos|preciso|precisamos)\b/.test(s)) return;
+  // A conditional availability question supplies a date to CONSULT, not
+  // consent to book. Other hypothetical/negated statements remain excluded.
+  const conditionalInquiry=/\b(?:se|caso) (?:eu |nos )?(?:quiser|quisermos|for|formos)\b/.test(s)
+    && /\b(?:tem|ha|teria|teriam) (?:alguma? )?(?:vagas?|quartos?|disponibilidade)\b/.test(s);
+  if (/\bnao\b/.test(s)||/\b(?:se|caso|quando)\b/.test(s)&&!conditionalInquiry) return;
   if (/\b(?:day[ -]?use|restaurante|reserva solar|cardapio|fotos?|imagens?|horarios?|que horas|inclui|incluso|inclusa|pagamento|pagar|paguei|pagamos|comprovante|boleto|reembolso|ja estou hospedado|ja estamos hospedados)\b/.test(s)) return;
   const lodging = /\b(?:diarias?|hospedagem|estadia|hospedar|quartos?|apartamentos?|aptos?|suites?|vagas?|check.?in|entrada)\b/.test(s);
   const arrivalToday = /\b(?:para|pra|de|em) (?:o dia de )?hoje\b|\b(?:diarias?|hospedagem|estadia|hospedar|quartos?|apartamentos?|aptos?|suites?|vagas?|chego|entro) hoje\b|\b(?:entrada|check.?in) (?:e |sera )?hoje\b/.test(s);
   const inquiry = /\b(?:valor|preco|quanto|qual|orcamento|cotacao|cotar|disponibilidade|tem|quero|queremos|preciso|precisamos|gostaria|pretendo|vamos|vou|chego|entro|entrada|check.?in)\b/.test(s);
-  if (!lodging || !arrivalToday || !inquiry) return;
+  if (!shortToday&&(!lodging || !arrivalToday || !inquiry)) return;
   const check_in = belemDate(now);
   if (!check_in) return;
   const candidate = validDate(previousCheckOut) && stayNights(check_in, previousCheckOut) >= 1
     && stayNights(check_in, previousCheckOut) <= 30 ? previousCheckOut : undefined;
   return readStayDatePending({at:now,reason:'relative_checkout',check_in,
     ...(candidate ? {suggested_check_out:candidate} : {})}, now);
+}
+
+// An answer to the current checkout question, never a date taken from a
+// meal, an unrelated "tomorrow", or a model-generated answer.
+export function relativeCheckoutReply(value:unknown,message:string,shown:boolean,now=Date.now()):{check_in:string;check_out:string}|undefined {
+  const pending=readStayDatePending(value,now),s=norm(message);
+  if(!shown||pending?.reason!=='relative_checkout'||!pending.check_in)return;
+  const match=/^(?:(?:saida(?: e| sera)?|saio|sair|ate|vamos sair|quero sair) )?(amanha|depois de amanha)[.!]*$/.exec(s);
+  if(!match)return;
+  const end=new Date(pending.check_in+'T12:00:00Z');end.setUTCDate(end.getUTCDate()+(match[1]==='amanha'?1:2));
+  return {check_in:pending.check_in,check_out:end.toISOString().slice(0,10)};
 }
 
 // The caller must establish that THIS deterministic checkout question was
@@ -131,7 +147,7 @@ export function stayDateClarification(pending: StayDatePending): string {
       : `Entrada hoje, ${label(pending.check_in)}. Qual será a data de saída? Informe no formato dia/mês.`;
   }
   if (pending.reason !== 'duration_conflict' || !pending.check_in || !pending.check_out || !pending.suggested_check_out)
-    return 'Para evitar usar datas de outra conversa, pode informar as datas de entrada e saída no formato dia/mês?';
+    return 'Quais são as datas de entrada e saída? Pode informar no formato dia/mês.';
   const label = (s: string) => s.slice(0, 10).split('-').reverse().join('/');
   const nights = stayNights(pending.check_in, pending.check_out);
   return `Preciso confirmar o período: de ${label(pending.check_in)} a ${label(pending.check_out)} corresponde a ${nights} ${nights === 1 ? 'noite' : 'noites'}. Você deseja entrada em ${label(pending.check_in)} e saída em ${label(pending.check_out)} ou em ${label(pending.suggested_check_out)}? Responda com as datas desejadas de entrada e saída; não alterei nem confirmei a estadia.`;

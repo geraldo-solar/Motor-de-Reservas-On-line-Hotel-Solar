@@ -39,7 +39,7 @@ import { readFamilyParty, updateFamilyParty, type FamilyParty, type FamilyPartyR
 import {withAssignedFamilyAgeUnits} from '../utils/familyAges.js';
 import {lodgingPartyConflict,lodgingCommercialAnswer} from '../utils/lodgingAnswerGuard.js';
 import { familyAccommodation, familyAccommodationPolicy, familyAgeQuestionFor, familyRoomRule } from '../utils/familyAccommodation.js';
-import { readStayDuration, readStayDatePending, stayDurationRequest, conflictingStayDuration, stayDateClarification, relativeStayDateMention, unparsedStayDateDeclaration, calendarDateMention, explicitStayEntry, explicitStayExit, todayStayDatePending, confirmRelativeCheckout, type StayDuration, type StayDatePending } from '../utils/stayDuration.js';
+import { readStayDuration, readStayDatePending, stayDurationRequest, conflictingStayDuration, stayDateClarification, relativeStayDateMention, unparsedStayDateDeclaration, calendarDateMention, explicitStayEntry, explicitStayExit, todayStayDatePending, confirmRelativeCheckout, relativeCheckoutReply, type StayDuration, type StayDatePending } from '../utils/stayDuration.js';
 import {splitStayDates,splitStayFollowup,declaredRelativeStay,readArrivalTime,arrivalTimeReply,arrivalTimeQuestion,arrivalTimeHandoff,type ArrivalTimePending} from '../utils/conversationalStayDates.js';
 
 // No bookings, stock queries or outbound messages. The HTTP adapter interprets
@@ -48,7 +48,7 @@ import {splitStayDates,splitStayFollowup,declaredRelativeStay,readArrivalTime,ar
 type Facts = { check_in?: string; check_out?: string; guests?: number; extras: string[]; children_pending?: boolean };
 type Quote = { version: number; id: string; created_at: number; check_in: string; check_out: string; guests: number; family_key?: string; extras: string[]; options: { name: string; capacity: number; total: number; child_allowance?: number }[] };
 type GuestInquiryState = { kind: GuestInquiry; at: number };
-type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPartyResult['clarification'];package_stay_query?:PackageStayQuery };
+type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPartyResult['clarification'];package_stay_query?:PackageStayQuery;party_confirmed_at?:number };
 type ExistingReservationState = { existing_reservation?: {at: number};payment_support?:{at:number;topics?:PaymentSupportSupplementaryTopic[]};assistant_disclosure?:AssistantDisclosure;multi_room?:MultiRoomHandoff;checkout_question?:{at:number;key:string};arrival_time?:ArrivalTimePending;package_date_request?:PackageDateRequest };
 type State = ExistingReservationState & FamilyState & { programming_pending?: {question: string; at: number} } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -230,6 +230,8 @@ function loadState(value: unknown, now = Date.now()): State {
     ...(readEvent(parsed.event) ? {event:readEvent(parsed.event)} : {}),
     ...(readFamilyParty(parsed.family_party, now) ? {family_party:readFamilyParty(parsed.family_party, now),
       ...(['party_composition','child_ages','age_reference'].includes(parsed.family_clarification) ? {family_clarification:parsed.family_clarification} : {})} : {}),
+    ...(Number.isFinite(parsed.party_confirmed_at)&&parsed.party_confirmed_at>0&&parsed.party_confirmed_at<=now&&now-parsed.party_confirmed_at<=30*60000
+      ?{party_confirmed_at:parsed.party_confirmed_at}:{}),
     ...(['room_photos', 'room_info', 'extra_photos', 'extra_info', 'photo_clarification', 'public_events', 'package_info'].includes(parsed.topic) ? {topic: parsed.topic, topic_at: Number(parsed.topic_at) || 0} : {}),
     ...(readPackageContext(parsed.package_context, now) ? {package_context:readPackageContext(parsed.package_context, now)} : {}),
     ...(readPackageStayQuery(parsed.package_stay_query,parsed.package_context,now)?{package_stay_query:readPackageStayQuery(parsed.package_stay_query,parsed.package_context,now)}:{}),
@@ -452,12 +454,13 @@ function updateStayDates(state: State, s: string, now: number) {
   const previousPending = state.stay_date_pending;
   if (packageScope) clearStayDuration(state);
   if(!packageScope){
-    const confirmed=confirmRelativeCheckout(previousPending,s,!!state.checkout_question,now);
+    const confirmed=confirmRelativeCheckout(previousPending,s,!!state.checkout_question,now)
+      ||relativeCheckoutReply(previousPending,s,!!state.checkout_question,now);
     if(confirmed){Object.assign(state.facts,confirmed);clearStayDuration(state);delete state.pending;return;}
     if(previousPending?.reason==='relative_checkout' && state.checkout_question && multiRoomReply(s)==='declined'){
       delete previousPending.suggested_check_out;delete state.checkout_question;return;
     }
-    const today=todayStayDatePending(s,state.facts.check_out||previousPending?.suggested_check_out,now);
+    const today=todayStayDatePending(s,state.facts.check_out||previousPending?.suggested_check_out,now,!!previousPending||state.awaiting==='dates');
     if(today){state.facts.check_in=today.check_in;delete state.facts.check_out;state.stay_date_pending=today;
       delete state.checkout_question;delete state.pending;return;}
   }
@@ -556,6 +559,7 @@ function updateFacts(state: State, message: string, now: number) {
   const group = s.match(new RegExp(`\\b(?:somos|seremos|vamos em|agora somos)\\s+${numberPattern}\\b`));
   const shortCount = s.match(new RegExp(`^(?:para\\s+)?${numberPattern}[.!]?$`));
   if (family.handled) {
+    state.party_confirmed_at=now;
     state.family_party = family.party;
     state.family_clarification = family.clarification;
     if (family.guests) state.facts.guests = family.guests;
@@ -564,6 +568,7 @@ function updateFacts(state: State, message: string, now: number) {
       state.facts.children_pending = !!family.children_pending || !!family.clarification;
   } else {
     if (group || shortCount && !state.facts.children_pending && (!state.facts.guests || state.awaiting === 'guests')) {
+      state.party_confirmed_at=now;
       state.facts.guests = count((group || shortCount)![1]);
       delete state.family_party; delete state.family_clarification;
     }
@@ -1022,6 +1027,22 @@ function controlTurn(body: any, now = Date.now()) {
     state.first_turn = !state.greeted;
     state.greeted = true;
     delete state.pending; // Any new typed message invalidates an older confirmation card.
+    const todayInquiry=!state.package_context&&!currentGuestInquiry(state,raw,now)
+      &&!human(s)&&!mediaRequest(s)&&todayStayDatePending(raw,undefined,now,!!state.stay_date_pending||state.awaiting==='dates');
+    if(todayInquiry&&!state.family_party&&!state.party_confirmed_at
+      &&(state.facts.guests||state.subject||state.facts.extras.length||state.turns?.some(t=>lodgingCommercialAnswer(t.text)))){
+      // A new inquiry for today cannot inherit an unverified party or room
+      // from a previous visit. Clear only the operational conversation window;
+      // the customer's ManyChat history and historical bookings are untouched.
+      state.facts={extras:[]};state.history=[];state.turns=[];
+      delete state.family_party;delete state.family_clarification;delete state.multi_room;
+      delete state.topic;delete state.topic_at;delete state.subject;delete state.awaiting;
+      delete state.package_stay_query;delete state.package_date_request;delete state.arrival_time;
+      state.extra_photo_requests=[];delete state.extra_photo_subjects;
+      clearStayDuration(state);
+      // A short answer must retain its date meaning after retiring old state.
+      state.stay_date_pending=todayInquiry;state.facts.check_in=todayInquiry.check_in;
+    }
     const programmingReply = state.programming_pending
       ? packageWeekdayReply(raw, state.programming_pending.question) : undefined;
     const topicMessage = programmingReply || raw;
@@ -1119,7 +1140,7 @@ function controlTurn(body: any, now = Date.now()) {
       regra_composicao_familiar: 'Conte todos os ocupantes, inclusive bebês. Filhos podem ser adultos; não presuma idade ou gratuidade pelo parentesco. Idades são somente declarações do cliente; uma idade não completa várias crianças ou filhos. Se a composição estiver inconsistente, esclareça quem compõe o total antes de cotar. Não deduza necessidade de acessibilidade ou saúde pelas idades. ' + familyRoomRule,
       politica_acomodacao_familiar: familyAccommodationPolicy,
       mensagens_do_cliente: state.history, conversa_recente: state.turns,
-      regra_fatos_atuais: 'Os fatos estruturados atuais prevalecem sobre a conversa anterior. Mudança de acompanhantes substitui a composição anterior; não reutilize hóspedes, crianças, idades, preços ou combinações antigas. Nunca diga que atualizou a ocupação se ela divergir dos fatos atuais. Uma categoria expressamente escolhida deve seguir para o resumo de confirmação, sem perguntar novamente qual categoria. Fotos e comparações não são escolhas nem autorização de reserva.',
+      regra_fatos_atuais: 'Os fatos estruturados atuais prevalecem sobre a conversa anterior. Mudança de acompanhantes substitui a composição anterior; não reutilize hóspedes, crianças, idades, preços ou combinações antigas. Uma consulta para hoje não confirma reserva. Sem quantidade atual de hóspedes, pergunte para quantas pessoas será; não recupere acompanhantes ou categoria de outra viagem. Nunca diga que atualizou a ocupação se ela divergir dos fatos atuais. Uma categoria expressamente escolhida deve seguir para o resumo de confirmação, sem perguntar novamente qual categoria. Fotos e comparações não são escolhas nem autorização de reserva.',
       regra_concisao: 'Responda primeiro à pergunta atual. Não repita ofertas de extras ou convites para chamar a recepção a cada resposta: o fluxo já apresenta a opção de atendimento humano e telefone. Não afirme encaminhamento sem a ação própria. Se o cliente pedir um serviço que exige a equipe, preserve o encaminhamento previsto.',
       marketing_recusa: marketingOptOut(s),
       ...(stripNegatedHumanRequests(raw) !== raw && !human(s) ? {
@@ -1398,7 +1419,7 @@ function controlTurn(body: any, now = Date.now()) {
   if (decision === 'NOQUOTE' && (!mediaRequest(norm(state.resolved_message || raw)) || documentPhotoInquiry(state.resolved_message || raw))) {
     remember(state, 'assistant', answer);
     if (!inquiry && /quantas pessoas/.test(answer)) state.awaiting = 'guests';
-    else if (!inquiry && /datas de entrada e sa[ií]da/.test(answer)) state.awaiting = 'dates';
+    else if (!inquiry && (state.stay_date_pending||/datas de entrada e sa[ií]da|data de entrada.*data de sa[ií]da/.test(answer))) state.awaiting = 'dates';
   }
   return { state: JSON.stringify(state), resolved_message: state.resolved_message || raw, quote_request: decision, can_collect: 'NAO', confirmation_text: confirmationText, answer };
 }
