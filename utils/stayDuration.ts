@@ -8,6 +8,7 @@ export type StayDatePending = {
   check_in?: string;
   check_out?: string;
   suggested_check_out?: string;
+  checkout_weekday?: number;
 };
 const norm = (s: string) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\bhj\b/g, 'hoje').replace(/\s+/g, ' ').trim();
 const recent = (at: unknown, now: number) => typeof at === 'number' && Number.isFinite(at) && at > 0 && at <= now && now - at <= 30 * 60000;
@@ -42,8 +43,12 @@ export function readStayDatePending(value: any, now = Date.now()): StayDatePendi
     if (value.suggested_check_out !== undefined && (!validDate(value.suggested_check_out)
       || stayNights(value.check_in, value.suggested_check_out) < 1
       || stayNights(value.check_in, value.suggested_check_out) > 30)) return;
+    if (value.checkout_weekday !== undefined && (!Number.isInteger(value.checkout_weekday)
+      || value.checkout_weekday < 0 || value.checkout_weekday > 6 || !value.suggested_check_out
+      || new Date(value.suggested_check_out+'T12:00:00Z').getUTCDay() !== value.checkout_weekday)) return;
     return { at: value.at, reason: 'relative_checkout', check_in: value.check_in,
-      ...(value.suggested_check_out === undefined ? {} : {suggested_check_out:value.suggested_check_out}) };
+      ...(value.suggested_check_out === undefined ? {} : {suggested_check_out:value.suggested_check_out}),
+      ...(value.checkout_weekday === undefined ? {} : {checkout_weekday:value.checkout_weekday}) };
   }
   if (value.reason !== 'duration_conflict' || !validDate(value.check_in)
     || !validDate(value.check_out) || !validDate(value.suggested_check_out)) return;
@@ -106,6 +111,32 @@ export function relativeCheckoutReply(value:unknown,message:string,shown:boolean
   return {check_in:pending.check_in,check_out:end.toISOString().slice(0,10)};
 }
 
+const checkoutWeekdays=['domingo','segunda','terca','quarta','quinta','sexta','sabado'];
+const checkoutWeekdayLabels=['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+// A weekday reply supplies a candidate, not a checkout fact. The concrete
+// calendar date must be shown and confirmed through the existing question gate.
+export function weekdayCheckoutPending(value:unknown,message:string,shown:boolean,now=Date.now()):StayDatePending|undefined {
+  const pending=readStayDatePending(value,now);
+  if(shown!==true||pending?.reason!=='relative_checkout'||!pending.check_in)return;
+  const match=new RegExp(`^(?:(?:a )?(?:saida(?: e| sera)?|saio|sair|ate|vamos sair|quero sair) )?(?:(?:na|no|nesta|neste|nessa|nesse) )?(?:(proxim[oa]|outr[oa]) )?(${checkoutWeekdays.join('|')})(?:[ -]feira)?(?: (que vem|da semana que vem|da proxima semana|desta semana|dessa semana))?[.!]*$`).exec(norm(message));
+  if(!match)return;
+  const weekday=checkoutWeekdays.indexOf(match[2]);
+  const entry=new Date(pending.check_in+'T12:00:00Z');
+  let days=(weekday-entry.getUTCDay()+7)%7||7;
+  if(match[3]==='da semana que vem'||match[3]==='da proxima semana')
+    days=7-((entry.getUTCDay()+6)%7)+((weekday+6)%7);
+  else if(match[3]==='desta semana'||match[3]==='dessa semana'){
+    days=((weekday+6)%7)-((entry.getUTCDay()+6)%7);
+    if(days<=0)return; // Do not reinterpret a past/same-day exit as next week.
+  } else if(/^outr/.test(match[1]||'')){
+    if(pending.checkout_weekday!==weekday||!pending.suggested_check_out)return;
+    days=stayNights(pending.check_in,pending.suggested_check_out)+7;
+  }
+  const end=new Date(entry);end.setUTCDate(end.getUTCDate()+days);
+  return readStayDatePending({at:now,reason:'relative_checkout',check_in:pending.check_in,
+    suggested_check_out:end.toISOString().slice(0,10),checkout_weekday:weekday},now);
+}
+
 // The caller must establish that THIS deterministic checkout question was
 // actually shown. A model's offer, history alone or a bare "sim" is not proof.
 // This confirms only customer-declared dates, never availability or a booking.
@@ -142,6 +173,8 @@ export function stayDateClarification(pending: StayDatePending): string {
     return `Mantendo a entrada em ${pending.check_in.split('-').reverse().join('/')}, qual será a nova data de saída? Informe no formato dia/mês. A saída anterior não será usada na cotação.`;
   if (pending.reason === 'relative_checkout' && pending.check_in) {
     const label = (s: string) => s.slice(0, 10).split('-').reverse().join('/');
+    if(pending.checkout_weekday!==undefined&&pending.suggested_check_out)
+      return `Entrada hoje, ${label(pending.check_in)}. Você se refere à saída em ${checkoutWeekdayLabels[pending.checkout_weekday]}, ${label(pending.suggested_check_out)}? Se for essa data, responda sim; se for outra, informe a data desejada.`;
     return pending.suggested_check_out
       ? `Entrada hoje, ${label(pending.check_in)}. Mantém a saída em ${label(pending.suggested_check_out)}? Se for outra data, informe a saída no formato dia/mês.`
       : `Entrada hoje, ${label(pending.check_in)}. Qual será a data de saída? Informe no formato dia/mês.`;

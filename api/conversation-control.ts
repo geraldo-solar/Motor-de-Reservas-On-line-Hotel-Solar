@@ -39,7 +39,7 @@ import { readFamilyParty, updateFamilyParty, type FamilyParty, type FamilyPartyR
 import {withAssignedFamilyAgeUnits} from '../utils/familyAges.js';
 import {lodgingPartyConflict,lodgingCommercialAnswer} from '../utils/lodgingAnswerGuard.js';
 import { familyAccommodation, familyAccommodationPolicy, familyAgeQuestionFor, familyRoomRule } from '../utils/familyAccommodation.js';
-import { readStayDuration, readStayDatePending, stayDurationRequest, conflictingStayDuration, stayDateClarification, relativeStayDateMention, unparsedStayDateDeclaration, calendarDateMention, explicitStayEntry, explicitStayExit, todayStayDatePending, confirmRelativeCheckout, relativeCheckoutReply, type StayDuration, type StayDatePending } from '../utils/stayDuration.js';
+import { readStayDuration, readStayDatePending, stayDurationRequest, conflictingStayDuration, stayDateClarification, relativeStayDateMention, unparsedStayDateDeclaration, calendarDateMention, explicitStayEntry, explicitStayExit, todayStayDatePending, confirmRelativeCheckout, relativeCheckoutReply, weekdayCheckoutPending, type StayDuration, type StayDatePending } from '../utils/stayDuration.js';
 import {splitStayDates,splitStayFollowup,declaredRelativeStay,readArrivalTime,arrivalTimeReply,arrivalTimeQuestion,arrivalTimeHandoff,type ArrivalTimePending} from '../utils/conversationalStayDates.js';
 
 // No bookings, stock queries or outbound messages. The HTTP adapter interprets
@@ -457,8 +457,10 @@ function updateStayDates(state: State, s: string, now: number) {
     const confirmed=confirmRelativeCheckout(previousPending,s,!!state.checkout_question,now)
       ||relativeCheckoutReply(previousPending,s,!!state.checkout_question,now);
     if(confirmed){Object.assign(state.facts,confirmed);clearStayDuration(state);delete state.pending;return;}
+    const weekday=weekdayCheckoutPending(previousPending,s,!!state.checkout_question,now);
+    if(weekday){state.stay_date_pending=weekday;delete state.facts.check_out;delete state.checkout_question;delete state.pending;return;}
     if(previousPending?.reason==='relative_checkout' && state.checkout_question && multiRoomReply(s)==='declined'){
-      delete previousPending.suggested_check_out;delete state.checkout_question;return;
+      delete previousPending.suggested_check_out;delete previousPending.checkout_weekday;delete state.checkout_question;return;
     }
     const today=todayStayDatePending(s,state.facts.check_out||previousPending?.suggested_check_out,now,!!previousPending||state.awaiting==='dates');
     if(today){state.facts.check_in=today.check_in;delete state.facts.check_out;state.stay_date_pending=today;
@@ -1106,6 +1108,8 @@ function controlTurn(body: any, now = Date.now()) {
         || childPolicyQuestion(raw) || !extraSelection && !lodging(s) && !calendarDateMention(raw)
           && !guestInquiryFollowup(raw) && !stayDurationRequest(raw, now)
           && !relativeStayDateMention(raw) && !updateFamilyParty(raw,state.family_party,now,state.facts.guests).handled
+          && !weekdayCheckoutPending(state.stay_date_pending,raw,!!state.checkout_question,now)
+          && !confirmRelativeCheckout(state.stay_date_pending,raw,!!state.checkout_question,now)
           && !splitStayFollowup(raw,state.stay_date_pending,now)) clearStayDuration(state);
       if (inquiry) {
         // Only this client turn establishes/renews the focus. Neither an AI
