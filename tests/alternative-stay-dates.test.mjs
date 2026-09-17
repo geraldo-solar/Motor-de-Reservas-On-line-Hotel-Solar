@@ -14,7 +14,9 @@ const bundle=await build({stdin:{contents:`export {control,handleConversation} f
     b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:`const data=${JSON.stringify(fixture)};export function createClient(){return {from(table){if(!(table in data))throw Error('Unexpected table '+table);const q={select(){return q},eq(){return q},then(r){return Promise.resolve({data:data[table],error:null}).then(r)}};return q}}}` }));
   }}]});
 const {control,handleConversation,resolver,prices,alternativeStayDates}=await import('data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text).toString('base64'));
-const other='E outra data, existe uma outra data que sai mais em conta?';
+// A plain date change still asks for dates. Cheapest-date requests now have
+// their own monthly-comparison regression in flexible-stay.test.mjs.
+const other='Quero outra data';
 const weekday='Então, veja para meio de semana quanto fica para quatro pessoas no meio de semana, a diária.';
 const wrong='Para quatro pessoas em meio de semana, de 17 a 19/09/2026, as diárias ficam assim: Loft por R$1.180, Suíte Varanda Térreo por R$785 e Suíte Quádruplo por R$705, valores por diária.';
 const oldQuote={version:1,id:'old',created_at:now,check_in:'2026-09-17',check_out:'2026-09-19',guests:4,extras:[],options:[{name:'LOFT',capacity:4,total:2360},{name:'Suíte Varanda Térreo',capacity:4,total:1570},{name:'Suíte Quádruplo',capacity:4,total:1409}]};
@@ -40,7 +42,7 @@ function awaiting(t){
   assert.equal(t.state.pending,undefined);assert.match(t.out.conversation_text,/datas de entrada e saída/);
   assert.doesNotMatch(t.out.conversation_text,/R\$|17\/09|19\/09|confirmad[ao]/);
 }
-test('reteste real: alternativa de data e diária de meio de semana não usam média anterior (texto e áudio)',async()=>{
+test('mudança simples de data e diária de meio de semana não usam média anterior (texto e áudio)',async()=>{
   for(const audio of [false,true]){
     const t=await turn(other,old(),audio);awaiting(t);
     assert.doesNotMatch(t.p.context,/R\$2\.360|2026-09-19/);assert.equal(JSON.parse(t.p.context).cotacao_valida_para_estes_dados,null);
@@ -54,7 +56,7 @@ test('reteste real: alternativa de data e diária de meio de semana não usam m�
   }
 });
 test('pedido direto e variações de nova data suspendem datas antigas',async()=>{
-  for(const message of [weekday,'Tem outra data mais barata?','Você não tem outra data mais em conta?','Outra data?',
+  for(const message of [weekday,'Quero outra data','Outra data?',
     'Quero outras datas','Prefiro outro período','Veja quanto fica durante a semana','Quanto fica a diária em dias úteis?',
     'Meio de semana'])awaiting(await turn(message));
   const fresh={version:2,history:[],facts:{extras:[]},greeted:true};

@@ -120,6 +120,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // The conversational integration may not quote a fixed third-party boat
     // price. Preserve the public motor's existing explicit-date API behavior.
     const conversationQuote = typeof body.quote_request === 'string' || state?.version === 2;
+    if(state?.version===2&&state.flexible_stay){
+      const answer='Escolha primeiro uma das opções de datas, ou informe entrada e saída. A busca por datas econômicas não confirma um período nem autoriza reutilizar a cotação anterior.';
+      return res.status(200).json({quote_request:'NOQUOTE',quote_state:'',can_collect:'NAO',conversation_text:answer,
+        whatsapp_text:answer,prices_summary:answer,availability_checked:false,requires_human_confirmation:true});
+    }
     if(state?.version===2&&state.stay_date_pending){
       // Even a stale/raw state with the old dates restored cannot bypass the
       // unresolved date question by calling the pricing endpoint directly.

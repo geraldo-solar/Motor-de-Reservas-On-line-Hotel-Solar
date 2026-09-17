@@ -27,6 +27,7 @@ import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer} from
 import { packagePrices, packageRecommendation } from '../utils/packageReply.js';
 import { childPolicyQuestion, childAgeFollowup, packageChildReply } from '../utils/packageChildInquiry.js';
 import { stayDateClarification } from '../utils/stayDuration.js';
+import {flexibleStayQuestion,flexibleStayAnswer,compareFlexibleStays} from '../utils/flexibleStay.js';
 import { guestServiceRequest } from '../utils/guestService.js';
 import { hotelPhoneInquiry, hotelContactAnswer,hotelCallDifficulty,hotelCallDifficultyAnswer } from '../utils/hotelContact.js';
 import {bookingDeferral,bookingDeferralAnswer} from '../utils/conversationContinuation.js';
@@ -576,6 +577,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const currentInput = sourceMessage.slice(0,2000);
   const currentState = safeState?.history?.at(-1) === currentInput.slice(0,500)
     && safeState?.resolved_message === userMessage.slice(0,500);
+  if(req.query?.operation==='offers'&&safeState?.flexible_stay)
+    return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',state:JSON.stringify(safeState),availability_checked:false});
+  if(!req.query?.operation&&currentState&&safeState?.flexible_stay){
+    const search=safeState.flexible_stay;
+    let results;
+    if(!flexibleStayQuestion(search,safeState)){
+      try{
+        const client=createClient(supabaseUrl,supabaseKey);
+        const [{data:rooms,error:roomError},{data:packages,error:packageError}]=await Promise.all([
+          client.from('room_types').select('*').eq('active',true),client.from('packages').select('*').eq('active',true)]);
+        if(roomError||packageError||!Array.isArray(rooms)||!rooms.length||!Array.isArray(packages))throw Error('Unable to compare motor tariffs');
+        results=compareFlexibleStays(search,safeState,rooms,packages);search.results=results;
+      }catch{
+        delete search.results;
+        const answer='Não consegui comparar as tarifas agora. Não vou apresentar valores antigos como atuais. Podemos tentar novamente ou falar com a recepção pelo (91) 98100-0800.';
+        return res.status(200).json({quote_request:'ROOM_LIST',quote_state:'',can_collect:'NAO',confirmation_text:'',
+          quote_text:answer,conversation_text:answer,state:JSON.stringify(safeState),matched:false,
+          match_type:'flexible_stay_unavailable',availability_checked:false,requires_human_confirmation:true});
+      }
+    }
+    const answer=flexibleStayAnswer(search,safeState);
+    return res.status(200).json({quote_request:'ROOM_LIST',quote_state:'',can_collect:'NAO',confirmation_text:'',
+      quote_text:answer,conversation_text:answer,matched:false,match_type:'flexible_stay_search',availability_checked:false,requires_human_confirmation:true,
+      ...control({operation:'remember_response',state:safeState,response_text:answer,flexible_results:results})});
+  }
   const previous = safeState?.turns?.at(-2);
   const latest = safeState?.turns?.at(-1);
   const currentAnswer = currentState

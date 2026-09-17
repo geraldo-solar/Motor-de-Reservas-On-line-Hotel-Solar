@@ -6,6 +6,7 @@ import { EXTRA_MEDIA_CODES, extraCodes, extraPhotoRequest } from '../utils/extra
 import {extraSelectionActions} from '../utils/extraSelection.js';
 import {rejectedStayDates} from '../utils/stayDateRefusal.js';
 import {alternativeStayDates} from '../utils/alternativeStayDates.js';
+import {readFlexibleStay,readFlexibleResults,updateFlexibleStay,flexibleStayAnswer,flexibleStaySelection,type FlexibleStay} from '../utils/flexibleStay.js';
 import { PHOTO_CLARIFY, PHOTO_LOOKUP, documentPhotoInquiry, photoClarificationQuestion, photoDeliveryClaim, photoRetryRequest, shortPhotoRetry } from '../utils/photoIntent.js';
 import { eventInquiry, eventContactText } from '../utils/hotelInfo.js';
 import { advanceEvent, readEvent, eventFieldReply, type EventState } from '../utils/eventInquiry.js';
@@ -51,7 +52,7 @@ type Facts = { check_in?: string; check_out?: string; guests?: number; extras: s
 type Quote = { version: number; id: string; created_at: number; check_in: string; check_out: string; guests: number; family_key?: string; extras: string[]; options: { name: string; capacity: number; total: number; child_allowance?: number }[] };
 type GuestInquiryState = { kind: GuestInquiry; at: number };
 type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPartyResult['clarification'];package_stay_query?:PackageStayQuery;party_confirmed_at?:number };
-type ExistingReservationState = { existing_reservation?: {at: number};payment_support?:{at:number;topics?:PaymentSupportSupplementaryTopic[]};assistant_disclosure?:AssistantDisclosure;multi_room?:MultiRoomHandoff;checkout_question?:{at:number;key:string};arrival_time?:ArrivalTimePending;package_date_request?:PackageDateRequest };
+type ExistingReservationState = { flexible_stay?:FlexibleStay;existing_reservation?: {at: number};payment_support?:{at:number;topics?:PaymentSupportSupplementaryTopic[]};assistant_disclosure?:AssistantDisclosure;multi_room?:MultiRoomHandoff;checkout_question?:{at:number;key:string};arrival_time?:ArrivalTimePending;package_date_request?:PackageDateRequest };
 type State = ExistingReservationState & FamilyState & { massage_context?: {at:number}; programming_pending?: {question: string; at: number} } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
 const json = (v: unknown): any => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
@@ -219,6 +220,7 @@ function loadState(value: unknown, now = Date.now()): State {
   // Expiry must not restore a checkout that was deliberately left unconfirmed.
   if (parsed.stay_date_pending) delete facts.check_out;
   if (['relative_dates', 'unparsed_dates','rejected_dates','split_dates','alternative_dates'].includes(parsed.stay_date_pending?.reason)) delete facts.check_in;
+  if(parsed.flexible_stay){delete facts.check_in;delete facts.check_out;}
   const arrivalTime=readArrivalTime(parsed.arrival_time,facts,now);
   // An unresolved morning arrival must not become an ordinary-room quote just
   // because its short operational marker expired.
@@ -261,6 +263,11 @@ function loadState(value: unknown, now = Date.now()): State {
     ...(readAttachmentTurn(parsed.attachment, now) ? {attachment: readAttachmentTurn(parsed.attachment, now)} : {}),
   };
   const multi=readMultiRoomHandoff(parsed.multi_room,state,now);
+  const flexible=readFlexibleStay(parsed.flexible_stay,now);
+  if(flexible){
+    flexible.results=readFlexibleResults(parsed.flexible_stay.results,flexible,state,now);
+    state.flexible_stay=flexible;
+  }
   state.turns=state.turns?.filter(turn=>turn.role!=='assistant'||!retiredIndependence(turn.text,now));
   if(packageEnded(parsed.package_context,now)){
     delete state.pending;delete state.package_stay_query;delete state.package_date_request;
@@ -425,6 +432,7 @@ function clearStayDuration(state: State) {
   delete state.duration_request;
   delete state.stay_date_pending;
   delete state.checkout_question;
+  delete state.flexible_stay;
 }
 
 function updateStayDates(state: State, s: string, now: number) {
@@ -602,6 +610,7 @@ function updateFacts(state: State, message: string, now: number) {
 }
 
 function validQuote(value: unknown, state: State, now: number): Quote | null {
+  if(state.flexible_stay)return null;
   if(state.payment_support)return null;
   if(state.arrival_time)return null;
   if(state.multi_room)return null;
@@ -915,6 +924,46 @@ function controlTurn(body: any, now = Date.now()) {
     return {state:JSON.stringify(state),resolved_message:existingReservationContext,
       quote_request:'HUMANO',can_collect:'NAO',confirmation_text:'',answer:existingReservationAnswer};
   }
+  const previousFlexible=state.flexible_stay;
+  const flexible=!human(s)&&!mediaRequest(s)&&!eventInquiry(raw)&&!publicEventInquiry(raw)
+    ?updateFlexibleStay(raw,previousFlexible,state.duration_request,
+      !!state.facts.guests||!!state.facts.check_in||!!state.stay_date_pending,
+      updateFamilyParty(raw,state.family_party,now,state.facts.guests).handled||!state.facts.guests&&/^\d{1,2}[.!]?$/.test(s),now):undefined;
+  if(flexible&&['prepare','route','confirm'].includes(body.operation)){
+    const choice=previousFlexible&&flexibleStaySelection(raw,previousFlexible,state,now);
+    const prepared=state.history.at(-1)===raw.slice(0,500)&&state.resolved_message===raw;
+    if(body.operation==='prepare'||!prepared){
+      if(!previousFlexible){state.history=[];state.turns=[];}
+      delete state.facts.check_in;delete state.facts.check_out;clearStayDuration(state);
+      delete state.pending;delete state.multi_room;delete state.arrival_time;delete state.awaiting;
+      delete state.package_context;delete state.package_stay_query;delete state.package_date_request;
+      delete state.programming_pending;delete state.guest_inquiry;delete state.topic;delete state.topic_at;
+      delete state.subject;delete state.extra_photo_subjects;delete state.event;state.extra_photo_requests=[];
+      // A bare number answering "quantas diárias" is not a new guest count.
+      if(!(previousFlexible&&!previousFlexible.nights&&flexible.nights&&/^(?:\d{1,2}|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)[.!]?$/.test(s)))updateFacts(state,raw,now);
+      clearStayDuration(state);state.flexible_stay=flexible;
+      flexible.results=readFlexibleResults(flexible.results,flexible,state,now);
+      state.resolved_message=raw;state.history=[...state.history,raw.slice(0,500)].slice(-12);remember(state,'user',raw);
+    }
+    state.flexible_stay=state.flexible_stay||flexible;
+    if(body.operation==='route'&&choice){
+      clearStayDuration(state);state.facts.check_in=choice.check_in;state.facts.check_out=choice.check_out;
+      delete state.pending;state.changed=true;
+      return {state:JSON.stringify(state),resolved_message:raw,can_collect:'NAO',confirmation_text:'',
+        quote_request:`QUOTE|${choice.check_in}|${choice.check_out}|${state.facts.guests}|${state.facts.extras.join(',')||'NONE'}`,
+        answer:'Vou recalcular o período escolhido no motor, sem confirmar disponibilidade ou reserva.'};
+    }
+    const answer=flexibleStayAnswer(state.flexible_stay,state,now);
+    if(body.operation==='prepare'){
+      delete state.audio;state.first_turn=!state.greeted;state.greeted=true;
+      return {state:JSON.stringify(state),quote_request:'NOQUOTE',can_collect:'NAO',context:JSON.stringify({
+        ultima_mensagem:raw,fatos_informados_pelo_cliente:state.facts,busca_datas_flexiveis:state.flexible_stay,
+        cotacao_valida_para_estes_dados:null,regra:'O cliente pede comparação de datas, não escolha automática de hospedagem. Não reutilize cotação antiga, invente tarifas, diga que há vagas nem colete dados pessoais. Datas sugeridas não são fatos escolhidos. O motor calcula os resultados no próximo passo. Responda somente: '+answer})};
+    }
+    remember(state,'assistant',answer);
+    return {state:JSON.stringify(state),resolved_message:raw,quote_request:'NOQUOTE',can_collect:'NAO',confirmation_text:'',answer};
+  }
+  if(body.operation==='prepare'&&!flexible)delete state.flexible_stay;
   const alternativeDates=!human(s)&&!mediaRequest(s)&&!eventInquiry(raw)&&!publicEventInquiry(raw)
     &&alternativeStayDates(raw,!!state.facts.check_in||!!state.facts.guests||state.awaiting==='dates'||!!state.stay_date_pending);
   if(alternativeDates&&['prepare','route','confirm'].includes(body.operation)
@@ -1235,6 +1284,13 @@ function controlTurn(body: any, now = Date.now()) {
     return { state: JSON.stringify(state), context, can_collect: 'NAO', quote_request: 'NOQUOTE' };
   }
   if (body.operation === 'remember_response') {
+    if(state.flexible_stay){
+      const results=readFlexibleResults(body.flexible_results,state.flexible_stay,state,now);
+      if(results)state.flexible_stay.results=results;
+      if(body.response_text)remember(state,'assistant',flexibleStayAnswer(state.flexible_stay,state,now),true);
+      delete state.pending;delete state.awaiting;
+      return {state:JSON.stringify(state)};
+    }
     if(bookingDeferral(state.history.at(-1)||'')||hotelCallDifficulty(state.history.at(-1)||'')){
       delete state.pending;delete state.awaiting;delete state.multi_room;
       return {state:JSON.stringify(state)};
