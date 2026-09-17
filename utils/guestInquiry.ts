@@ -7,6 +7,7 @@ import { diningPolicyAnswer } from './diningPolicy.js';
 import { hotelPolicyInquiry } from './hotelPolicy.js';
 import { reservaRestaurantMessage } from './restaurantIntent.js';
 import { stripNegatedHumanRequests } from './humanIntent.js';
+import { todayStayDatePending } from './stayDuration.js';
 
 export type GuestInquiry = 'lodging_faq' | 'day_use' | 'dining';
 
@@ -34,7 +35,10 @@ function stayDateDeclaration(s: string): boolean {
   const dates = /\b(?:20\d{2}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}(?:\/(?:20)?\d{2})?)\b/.test(s)
     || /\b\d{1,2} (?:de )?(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b/.test(s);
   const policy = /\b(?:horarios?|horas?|qual|quais|como|funciona|politicas?|regras?|antecipar|antecipado|early|late|tolerancia|limite|documentos?|dados|cpf)\b/.test(s);
-  return dates && !policy;
+  // A declared relative check-in/check-out period is also a date answer,
+  // not a question about the hotel's check-in hours. Keep the same guarded
+  // period parser used by the controller, including its confirmation step.
+  return !policy && (dates || !!todayStayDatePending(s, undefined, Date.now(), true)?.suggested_check_out);
 }
 
 function roomRequirementQuestion(s: string): boolean {

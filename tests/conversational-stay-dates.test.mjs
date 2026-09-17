@@ -92,10 +92,12 @@ test('horários inválidos e marcador expirado não liberam cotação antiga',()
   assert.equal(readArrivalTime({...party.state.arrival_time,at:sep12+1},party.state.facts,sep12),undefined);
 });
 
-test('W18 sexta hoje até segunda produz11–14/9, sem número de hóspedes ou escolha de alternativa',()=>{
+test('W18 sexta hoje até segunda propõe11–14/9, sem confirmar saída, hóspedes ou alternativa',()=>{
   const message='Qual valor para quarto duplo solteiro ou dois quartos solteiros para entrar hoje e sair segunda?';
   const t=turn(message,empty,sep11);
-  assert.equal(t.state.facts.check_in,'2026-09-11');assert.equal(t.state.facts.check_out,'2026-09-14');
+  assert.equal(t.state.facts.check_in,'2026-09-11');assert.equal(t.state.facts.check_out,undefined);
+  assert.equal(t.state.stay_date_pending.reason,'relative_checkout');
+  assert.equal(t.state.stay_date_pending.suggested_check_out,'2026-09-14');
   assert.equal(t.state.facts.guests,undefined);assert.equal(t.r.can_collect,'NAO');
   assert.equal(t.state.arrival_time,undefined);
 });

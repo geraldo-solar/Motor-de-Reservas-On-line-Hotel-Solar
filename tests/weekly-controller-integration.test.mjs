@@ -61,7 +61,9 @@ test('W18 áudio preserva alternativas e datas originais, sem condensar a pedido
   const p=await handleConversation({operation:'prepare',user_message:audio,state:{...empty(),facts:{extras:[]}}},'',async()=>message,now);
   const r=control({operation:'route',user_message:audio,state:p.state,proposed:'QUOTE|2026-09-11|2026-09-14|2|NONE'},now);
   const state=JSON.parse(r.state);
-  assert.equal(r.quote_request,'HUMANO');assert.equal(state.facts.check_in,'2026-09-11');assert.equal(state.facts.check_out,'2026-09-14');assert.equal(state.facts.guests,undefined);
+  assert.equal(r.quote_request,'HUMANO');assert.equal(state.facts.check_in,'2026-09-11');assert.equal(state.facts.check_out,undefined);assert.equal(state.facts.guests,undefined);
+  assert.equal(state.stay_date_pending.reason,'relative_checkout');
+  assert.equal(state.stay_date_pending.suggested_check_out,'2026-09-14');
   assert.match(state.audio.text,/duplo solteiro ou dois quartos/);assert.match(r.answer,/comparar as duas alternativas/);
   const result=await resolve(audio,r.state);assert.equal(result.quote_request,'HUMANO');assert.match(result.conversation_text,/dois quartos individuais/);
 });
