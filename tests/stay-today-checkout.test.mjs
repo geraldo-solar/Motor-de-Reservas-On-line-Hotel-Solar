@@ -44,11 +44,19 @@ test('FAQ, refeições, execução, hipótese e datas/quantidades explícitas fi
   for(const message of ['O Reserva vai funcionar hj?','Qual o café da manhã para hj?',
     'Qual valor do Day Use para hj?','Quero fotos do quarto para hj','Qual o horário do check-in hoje?',
     'A diária de hoje inclui café?','Não quero hospedagem para hoje','Se eu quiser hospedagem para hoje?',
-    'Quero hospedagem de hoje até amanhã','Quero hospedagem por duas noites para hj',
-    'Quero uma diária para hoje','Quero entrada hoje e saída 14/09','Quero entrar hoje e sair amanhã',
+    'Quero hospedagem por duas noites para hj',
+    'Quero uma diária para hoje','Quero entrada hoje e saída 14/09',
     'Hoje quero cotar hospedagem para o mês que vem','Quero hospedagem para amanhã',
     'Qual o valor da diária?','Vou fazer o pagamento da diária de hoje']){
     assert.equal(todayStayDatePending(message,'2026-09-14',now),undefined,message);
+  }
+});
+
+test('período completo hoje–amanhã agora propõe a saída sem confirmar automaticamente',()=>{
+  for(const message of ['Quero hospedagem de hoje até amanhã','Quero entrar hoje e sair amanhã']){
+    const result=todayStayDatePending(message,'2026-09-14',now);
+    assert.equal(result.check_in,'2026-09-12');assert.equal(result.suggested_check_out,'2026-09-13');
+    assert.equal(result.check_out,undefined);assert.match(stayDateClarification(result),/responda sim/);
   }
 });
 

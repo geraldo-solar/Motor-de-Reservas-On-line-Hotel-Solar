@@ -78,43 +78,75 @@ export const relativeStayDateMention = (message: string) => /\b(?:hoje|amanha|de
 const checkoutWeekdays=['domingo','segunda','terca','quarta','quinta','sexta','sabado'];
 const checkoutWeekdayLabels=['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
 const weekdayPeriodEnd = `(?:(?:na|no|nesta|neste|nessa|nesse) )?(?:proxim[oa] )?(?:${checkoutWeekdays.join('|')})(?:[ -]feira)?(?: (?:que vem|da semana que vem|da proxima semana|desta semana|dessa semana))?`;
-// Capture one complete today → weekday period, optionally followed by the
-// current party. Do not take a weekday out of alternatives or a time request.
-const todayWeekdayPeriod = new RegExp(`\\bhoje(?: (?:a|ate|ao) |(?:,? e |, )(?:a )?(?:saida(?: e| sera)?|saio|sair|saindo|check.?out)(?: (?:e|sera))? )(${weekdayPeriodEnd})(?=[.!?]*$|[, ]+(?:para|pra|somos) (?:\\d+|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|casal)\\b)`);
+const relativePeriodEnd='(?:depois de amanha|amanha)';
+const periodEnd=`(?:${relativePeriodEnd}|${weekdayPeriodEnd})`;
+const availabilityPredicate='(?:(?:voce|voces|vc|vcs|o hotel(?: solar)?) )?(?:tem|ha|teria|teriam|existe|existem|possui|possuem) (?:alguma? )?(?:disponibilidade|vagas?|quartos?|suites?|apartamentos?)';
+// Recognize an indirect availability question by its verb AND complement,
+// not by removing every "se". A later "caso/se eu decidir" remains a guard.
+const inquiryVerb='(?:saber|soubesse|ver|veja|visse|verificar|verifica|verifique|verificasse|verificassem|consultar|consulte|consultasse|consultassem|conferir|confira|conferisse|informar|informe|informasse|dizer|diga|dissesse)';
+const inquiryAside='(?:(?:(?:pra|para) (?:mim|nos|gente|a gente)|por favor|pfv),? )*';
+const indirectAvailability=new RegExp(`\\b${inquiryVerb} ${inquiryAside}se (?=${availabilityPredicate}\\b)`,'g');
+// Read both boundaries from one current message. The allowed tail contains
+// only a party, courtesy, or availability question; extra dates/times and
+// alternatives must never silently select the first matching endpoint.
+const todayPeriod=new RegExp(`\\bhoje(?: (?:a|ate|ao|para|pra) |(?:,? e |, | )(?:a )?(?:saida(?: e| sera)?|saio|sair|saindo|check.?out)(?: (?:e|sera))? )(${periodEnd})\\b`);
+function combinedTodayPeriod(s:string):RegExpExecArray|undefined{
+  const period=todayPeriod.exec(s);
+  if(!period)return;
+  const outside=s.slice(0,period.index)+' '+s.slice(period.index+period[0].length);
+  // Spoken requests may repeat the same arrival ("vaga hoje, entrando
+  // hoje..."). A different relative day or weekday is still ambiguous.
+  if(new RegExp(`\\b(?:amanha|${checkoutWeekdays.join('|')})\\b`).test(outside))return;
+  const tail=s.slice(period.index+period[0].length).replace(/^[,;.!?\s]+/,'').replace(/[.!?]+$/,'').trim();
+  if(!tail||/^(?:por favor|pfv)$/.test(tail)||new RegExp(`^${availabilityPredicate}(?: (?:por favor|pfv))?$`).test(tail))return period;
+  if(/^(?:para|pra|somos) (?:\d+|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|casal)\b/.test(tail)
+    && !/\b(?:ou|talvez|horas?|as|manha|tarde|noite)\b|\d\s*[:h]/.test(tail))return period;
+}
 
 // This recognizes an arrival requested for today, not merely a conversation
 // happening today. An earlier checkout is only a candidate, never a stay fact.
 export function todayStayDatePending(message: string, previousCheckOut?: string, now = Date.now(), awaitingDates=false): StayDatePending | undefined {
   const s = norm(message);
-  const period = todayWeekdayPeriod.exec(s);
+  const period = combinedTodayPeriod(s);
   const shortToday=awaitingDates&&/^(?:(?:para|pra|entrada|entro|chego)(?: e| sera)? )?hoje[.!?]*$/.test(s);
   if (!/\bhoje\b/.test(s) || calendarDateMention(s) || stayDurationRequest(s, now)
-    || /\b(?:amanha|depois de amanha)\b/.test(s)
-    || !period && (explicitStayExit(s) || /\bate\b/.test(s))) return;
+    || !period && (explicitStayExit(s) || /\b(?:amanha|ate)\b/.test(s))) return;
   // A conditional availability question supplies a date to CONSULT, not
   // consent to book. Other hypothetical/negated statements remain excluded.
   const conditionalInquiry=/\b(?:se|caso) (?:eu |nos )?(?:quiser|quisermos|for|formos)\b/.test(s)
     && /\b(?:tem|ha|teria|teriam) (?:alguma? )?(?:vagas?|quartos?|disponibilidade)\b/.test(s);
-  // "Gostaria de saber se vocês têm vaga" is an indirect question, not a
-  // hypothetical stay. Only remove that grammatical use of "se".
-  const hypothesisText=s.replace(/\b(?:saber|informar|dizer|verificar|consultar) se\b/g,'consultar');
+  const hypothesisText=s.replace(indirectAvailability,'consultar ');
   if (/\bnao\b/.test(s)||/\b(?:se|caso|quando)\b/.test(hypothesisText)&&!conditionalInquiry) return;
   if (/\b(?:day[ -]?use|restaurante|reserva solar|cardapio|cafe|almoco|jantar|massagem|massagens|passeio|piscina|fotos?|imagens?|horarios?|que horas|inclui|incluso|inclusa|pagamento|pagar|paguei|pagamos|comprovante|boleto|reembolso|ja estou hospedado|ja estamos hospedados)\b/.test(s)) return;
   const lodging = /\b(?:diarias?|hospedagem|estadia|hospedar|quartos?|apartamentos?|aptos?|suites?|vagas?|disponibilidade|check.?in|entrada)\b/.test(s);
   const arrivalToday = /\b(?:para|pra|de|em) (?:o dia de )?hoje\b|\b(?:diarias?|hospedagem|estadia|hospedar|quartos?|apartamentos?|aptos?|suites?|vagas?|chego|chegar|chegando|entro|entrar|entrando) hoje\b|\b(?:entrada|check.?in) (?:e |sera )?hoje\b/.test(s);
   const inquiry = /\b(?:valor|preco|quanto|qual|orcamento|cotacao|cotar|disponibilidade|tem|quero|queremos|preciso|precisamos|gostaria|pretendo|vamos|vou|chego|entro|entrada|check.?in)\b/.test(s);
-  const contextualPeriod=!!period&&(awaitingDates||lodging&&inquiry);
+  const declaredArrival=/\b(?:entrar|entrando|chego|chegar|chegando|entro|entrada|check.?in) hoje\b/.test(s);
+  const barePeriod=!!period&&/^(?:de )?$/.test(s.slice(0,period.index));
+  const contextualPeriod=!!period&&(awaitingDates||lodging&&inquiry||declaredArrival||barePeriod);
   if (!shortToday&&!contextualPeriod&&(!lodging || !arrivalToday || !inquiry)) return;
   const check_in = belemDate(now);
   if (!check_in) return;
   // The combined period supplies a candidate, not confirmed dates. Reuse the
   // same calendar calculation as a separate weekday reply, without bypassing
   // the controller's shown-question gate for a subsequent "sim".
-  if(period)return weekdayCheckoutCandidate({at:now,reason:'relative_checkout',check_in},period[1],now);
+  if(period){
+    const relativeEnd=relativeCheckoutDate(check_in,period[1]);
+    if(relativeEnd)return readStayDatePending({at:now,reason:'relative_checkout',check_in,
+      suggested_check_out:relativeEnd,checkout_weekday:new Date(relativeEnd+'T12:00:00Z').getUTCDay()},now);
+    return weekdayCheckoutCandidate({at:now,reason:'relative_checkout',check_in},period[1],now);
+  }
   const candidate = validDate(previousCheckOut) && stayNights(check_in, previousCheckOut) >= 1
     && stayNights(check_in, previousCheckOut) <= 30 ? previousCheckOut : undefined;
   return readStayDatePending({at:now,reason:'relative_checkout',check_in,
     ...(candidate ? {suggested_check_out:candidate} : {})}, now);
+}
+
+function relativeCheckoutDate(checkIn:string,relative:string):string|undefined{
+  const days=relative==='amanha'?1:relative==='depois de amanha'?2:undefined;
+  if(days===undefined)return;
+  const end=new Date(checkIn+'T12:00:00Z');end.setUTCDate(end.getUTCDate()+days);
+  return end.toISOString().slice(0,10);
 }
 
 // An answer to the current checkout question, never a date taken from a
@@ -124,8 +156,7 @@ export function relativeCheckoutReply(value:unknown,message:string,shown:boolean
   if(!shown||pending?.reason!=='relative_checkout'||!pending.check_in)return;
   const match=/^(?:(?:saida(?: e| sera)?|saio|sair|ate|vamos sair|quero sair) )?(amanha|depois de amanha)[.!]*$/.exec(s);
   if(!match)return;
-  const end=new Date(pending.check_in+'T12:00:00Z');end.setUTCDate(end.getUTCDate()+(match[1]==='amanha'?1:2));
-  return {check_in:pending.check_in,check_out:end.toISOString().slice(0,10)};
+  return {check_in:pending.check_in,check_out:relativeCheckoutDate(pending.check_in,match[1])!};
 }
 
 // A weekday reply supplies a candidate, not a checkout fact. The concrete
