@@ -3,7 +3,7 @@ import {readSplitStayDates,splitStayQuestion,type SplitStayDatePending} from './
 export type StayDuration = { count: number; unit: 'days' | 'nights'; at: number };
 export type StayDatePending = {
   at: number;
-  reason: 'duration_conflict' | 'relative_dates' | 'unparsed_dates' | 'rejected_dates' | 'relative_checkout' | 'checkout_correction' | 'split_dates';
+  reason: 'duration_conflict' | 'relative_dates' | 'unparsed_dates' | 'rejected_dates' | 'relative_checkout' | 'checkout_correction' | 'split_dates' | 'alternative_dates';
   days?: [number,number]; month?:number; year?:number; weekday_span?:[number,number];
   check_in?: string;
   check_out?: string;
@@ -32,7 +32,7 @@ export function readStayDuration(value: any, now = Date.now()): StayDuration | u
 export function readStayDatePending(value: any, now = Date.now()): StayDatePending | undefined {
   if (!value || !recent(value.at, now)) return;
   if(value.reason==='split_dates')return readSplitStayDates(value,now);
-  if (value.reason === 'relative_dates' || value.reason === 'unparsed_dates' || value.reason === 'rejected_dates') return { at: value.at, reason: value.reason };
+  if (value.reason === 'relative_dates' || value.reason === 'unparsed_dates' || value.reason === 'rejected_dates' || value.reason === 'alternative_dates') return { at: value.at, reason: value.reason };
   if (value.reason === 'checkout_correction') return validDate(value.check_in)
     ? {at:value.at,reason:'checkout_correction',check_in:value.check_in} : undefined;
   if (value.reason === 'relative_checkout') {
@@ -218,6 +218,7 @@ export function conflictingStayDuration(request: StayDuration, start: string, en
 }
 
 export function stayDateClarification(pending: StayDatePending): string {
+  if(pending.reason==='alternative_dates')return 'Posso consultar outro período para vocês. Quais datas de entrada e saída você prefere? Pode informar no formato dia/mês. Vou recalcular os valores para essas datas; a cotação anterior não vale para o novo período.';
   if(pending.reason==='rejected_dates')return 'Entendi que esse período não serve. Quais são as datas desejadas de entrada e saída? Informe no formato dia/mês; não vou usar o período recusado na cotação.';
   if(pending.reason==='split_dates')return splitStayQuestion(pending as SplitStayDatePending);
   if (pending.reason === 'checkout_correction' && pending.check_in)

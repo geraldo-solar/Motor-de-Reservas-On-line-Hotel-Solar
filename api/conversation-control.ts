@@ -5,6 +5,7 @@ import {readAssistantDisclosure,prepareDisclosure,stripAssistantDisclosure,type 
 import { EXTRA_MEDIA_CODES, extraCodes, extraPhotoRequest } from '../utils/extraMedia.js';
 import {extraSelectionActions} from '../utils/extraSelection.js';
 import {rejectedStayDates} from '../utils/stayDateRefusal.js';
+import {alternativeStayDates} from '../utils/alternativeStayDates.js';
 import { PHOTO_CLARIFY, PHOTO_LOOKUP, documentPhotoInquiry, photoClarificationQuestion, photoDeliveryClaim, photoRetryRequest, shortPhotoRetry } from '../utils/photoIntent.js';
 import { eventInquiry, eventContactText } from '../utils/hotelInfo.js';
 import { advanceEvent, readEvent, eventFieldReply, type EventState } from '../utils/eventInquiry.js';
@@ -217,7 +218,7 @@ function loadState(value: unknown, now = Date.now()): State {
   const stayDatePending = readStayDatePending(parsed.stay_date_pending, now);
   // Expiry must not restore a checkout that was deliberately left unconfirmed.
   if (parsed.stay_date_pending) delete facts.check_out;
-  if (['relative_dates', 'unparsed_dates','rejected_dates','split_dates'].includes(parsed.stay_date_pending?.reason)) delete facts.check_in;
+  if (['relative_dates', 'unparsed_dates','rejected_dates','split_dates','alternative_dates'].includes(parsed.stay_date_pending?.reason)) delete facts.check_in;
   const arrivalTime=readArrivalTime(parsed.arrival_time,facts,now);
   // An unresolved morning arrival must not become an ordinary-room quote just
   // because its short operational marker expired.
@@ -914,7 +915,26 @@ function controlTurn(body: any, now = Date.now()) {
     return {state:JSON.stringify(state),resolved_message:existingReservationContext,
       quote_request:'HUMANO',can_collect:'NAO',confirmation_text:'',answer:existingReservationAnswer};
   }
-  const endedFollowup=packageEnded(json(body.state)?.package_context,now)&&!packageDiscovery
+  const alternativeDates=!human(s)&&!mediaRequest(s)&&!eventInquiry(raw)&&!publicEventInquiry(raw)
+    &&alternativeStayDates(raw,!!state.facts.check_in||!!state.facts.guests||state.awaiting==='dates'||!!state.stay_date_pending);
+  if(alternativeDates&&['prepare','route','confirm'].includes(body.operation)
+    &&(body.operation==='prepare'||state.history.at(-1)!==raw.slice(0,500)||state.resolved_message!==raw)){
+    // Retire only the operational quote window, not the ManyChat transcript.
+    // Preserve customer-declared party/ages/extras, but not old dates, room
+    // choices, package scope, or assistant prices for a different period.
+    delete state.facts.check_in;delete state.facts.check_out;clearStayDuration(state);
+    delete state.pending;delete state.arrival_time;delete state.multi_room;
+    delete state.package_context;delete state.package_stay_query;delete state.package_date_request;
+    delete state.topic;delete state.topic_at;delete state.subject;delete state.guest_inquiry;
+    delete state.programming_pending;delete state.event;delete state.extra_photo_subjects;
+    state.extra_photo_requests=[];state.history=[];state.turns=[];
+    state.stay_date_pending={at:now,reason:'alternative_dates'};state.awaiting='dates';
+    state.resolved_message=raw;
+    if(body.operation!=='prepare'){
+      updateFacts(state,raw,now);state.history=[raw.slice(0,500)];remember(state,'user',raw);
+    }
+  }
+  const endedFollowup=packageEnded(json(body.state)?.package_context,now)&&!packageDiscovery&&!alternativeDates
     &&!guestInquiry(raw)&&packageFollowup(raw)&&!newTripRequest(raw);
   const endedTurn=body.operation!=='prepare'&&state.resolved_message===endedPackageMarker&&state.history.at(-1)===raw.slice(0,500);
   if(!human(s)&&(retiredIndependence(raw,now)||endedFollowup||endedTurn)&&['prepare','route','confirm'].includes(body.operation)){
@@ -1086,7 +1106,7 @@ function controlTurn(body: any, now = Date.now()) {
     const directInquiry = occupancyFollowup||roomDetailFollowup||state.topic==='package_info'&&packageInclusionFollowup(raw,state.package_context,now)?undefined:guestInquiry(raw);
     const packageQuery = !human(s) && !restaurantInquiry(s) && !eventInquiry(topicMessage) && !publicEventInquiry(topicMessage) && directInquiry !== 'lodging_faq' && packageInquiry(topicMessage);
     const packageContinuation = !human(s) && !eventInquiry(topicMessage) && !publicEventInquiry(topicMessage) && (!guestFacilityInquiry(raw)||roomDetailFollowup) && directInquiry !== 'dining' && directInquiry !== 'day_use' && state.topic === 'package_info' && !!state.package_context && (packageFollowup(topicMessage)||occupancyFollowup||roomDetailFollowup);
-    if (newTripRequest(raw)) {
+    if (newTripRequest(raw)&&!alternativeDates) {
       delete state.facts.check_in; delete state.facts.check_out; state.facts.extras = [];
       clearStayDuration(state);
     }
@@ -1133,7 +1153,7 @@ function controlTurn(body: any, now = Date.now()) {
       const inquiry = currentGuestInquiry(state, state.resolved_message,now);
       const extraSelection = extraSelectionActions(raw).length>0;
       if (inquiry || human(s) || mediaRequest(norm(state.resolved_message)) || eventInquiry(raw)
-        || childPolicyQuestion(raw) || !extraSelection && !lodging(s) && !calendarDateMention(raw)
+        || childPolicyQuestion(raw) || state.stay_date_pending?.reason!=='alternative_dates' && !extraSelection && !lodging(s) && !calendarDateMention(raw)
           && !guestInquiryFollowup(raw) && !stayDurationRequest(raw, now)
           && !relativeStayDateMention(raw) && !updateFamilyParty(raw,state.family_party,now,state.facts.guests).handled
           && !weekdayCheckoutPending(state.stay_date_pending,raw,!!state.checkout_question,now)
@@ -1233,6 +1253,13 @@ function controlTurn(body: any, now = Date.now()) {
       delete state.pending; delete state.awaiting;
       if(!state.multi_room){delete state.package_context;delete state.package_date_request;delete state.topic;delete state.topic_at;}
       delete state.subject; delete state.extra_photo_subjects; delete state.extra_photo_requests;
+      return {state:JSON.stringify(state)};
+    }
+    if(state.stay_date_pending?.reason==='alternative_dates'){
+      // Neither AI prose nor a catalog response can supply the missing dates
+      // or republish a price from the retired quote.
+      if(body.response_text)remember(state,'assistant',stayDateClarification(state.stay_date_pending),true);
+      delete state.pending;state.awaiting='dates';
       return {state:JSON.stringify(state)};
     }
     const rememberedText=String(body.response_text || '');

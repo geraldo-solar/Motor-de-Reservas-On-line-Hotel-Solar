@@ -584,8 +584,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     && previous?.role === 'user' && previous.text === currentInput.slice(0,900)
     && latest?.role === 'assistant' && latest.text?.trim()
     && !photoClarificationQuestion(latest.text) ? latest.text : '';
-  const informationResult = (fallback: string, match_type: string) => {
-    const answer = currentAnswer || fallback;
+  const informationResult = (fallback: string, match_type: string, authoritative=false) => {
+    const answer = authoritative ? fallback : currentAnswer || fallback;
     return {quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
       matched:false,match_type,availability_checked:false,
       ...control({operation:'remember_response',state:safeState,response_text:answer})};
@@ -617,7 +617,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // A paid-extra mention such as "lua de mel" must not replace the
       // unresolved date question with a kit photo or a price. Candidates are
       // still not confirmed room facts, and an expired state cannot block.
-      return res.status(200).json(informationResult(stayDateClarification(safeState.stay_date_pending),'stay_date_clarification'));
+      return res.status(200).json(informationResult(stayDateClarification(safeState.stay_date_pending),'stay_date_clarification',safeState.stay_date_pending.reason==='alternative_dates'));
     }
     if (currentState && safeState?.guest_inquiry) {
       const fallback = safeState.guest_inquiry.kind === 'dining'

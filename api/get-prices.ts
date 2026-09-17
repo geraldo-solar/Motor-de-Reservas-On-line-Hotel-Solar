@@ -6,6 +6,7 @@ import { explicitPackageBoatBenefit, safeBoatPackageCopy } from '../utils/extraM
 import {motorStayPrice,motorStayRestriction,requiresFullPackagePeriod} from '../utils/motorStayPricing.js';
 import {readPackageStayQuery} from '../utils/packageStayQuery.js';
 import {packageToday} from '../utils/packageAvailability.js';
+import {readStayDatePending,stayDateClarification} from '../utils/stayDuration.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -119,6 +120,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // The conversational integration may not quote a fixed third-party boat
     // price. Preserve the public motor's existing explicit-date API behavior.
     const conversationQuote = typeof body.quote_request === 'string' || state?.version === 2;
+    if(state?.version===2&&state.stay_date_pending){
+      // Even a stale/raw state with the old dates restored cannot bypass the
+      // unresolved date question by calling the pricing endpoint directly.
+      const pending=readStayDatePending(state.stay_date_pending);
+      const answer=pending?stayDateClarification(pending):'Quais são as novas datas de entrada e saída? Preciso confirmar o período antes de recalcular os valores.';
+      return res.status(200).json({quote_request:'NOQUOTE',quote_state:'',can_collect:'NAO',conversation_text:answer,
+        whatsapp_text:answer,prices_summary:answer,availability_checked:false,requires_human_confirmation:true});
+    }
     if(conversationQuote&&checkIn<packageToday()){
       const answer='Esse período já passou. Não vou reutilizar tarifas ou pacotes antigos. Quais são as novas datas de entrada e saída que deseja consultar?';
       return res.status(200).json({quote_request:'NOQUOTE',quote_state:'',can_collect:'NAO',conversation_text:answer,
