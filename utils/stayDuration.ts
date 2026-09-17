@@ -1,4 +1,5 @@
 import {readSplitStayDates,splitStayQuestion,type SplitStayDatePending} from './conversationalStayDates.js';
+import {affirmedStayInformation} from './stayInformation.js';
 // A stated duration is conversational intent, not permission to extend a stay.
 export type StayDuration = { count: number; unit: 'days' | 'nights'; at: number };
 export type StayDatePending = {
@@ -195,7 +196,8 @@ export function confirmRelativeCheckout(value: unknown, message: string, shownTo
   if (shownToCustomer !== true) return;
   const pending = readStayDatePending(value, now);
   if (pending?.reason !== 'relative_checkout' || !pending.check_in || !pending.suggested_check_out) return;
-  if (!/^(?:sim(?:,? por favor)?|isso(?: mesmo)?|pode manter|mantenha|mantem)[.!]*$/.test(norm(message))) return;
+  if (!/^(?:sim(?:,? por favor)?|isso(?: mesmo)?|pode manter|mantenha|mantem)[.!]*$/.test(norm(message))
+    && !affirmedStayInformation(message)) return;
   return {check_in:pending.check_in,check_out:pending.suggested_check_out};
 }
 export const unparsedStayDateDeclaration = (message: string) => {

@@ -27,6 +27,7 @@ import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer} from
 import { packagePrices, packageRecommendation } from '../utils/packageReply.js';
 import { childPolicyQuestion, childAgeFollowup, packageChildReply } from '../utils/packageChildInquiry.js';
 import { stayDateClarification } from '../utils/stayDuration.js';
+import {lodgingInclusionsAnswer} from '../utils/stayInformation.js';
 import {flexibleStayQuestion,flexibleStayAnswer,compareFlexibleStays} from '../utils/flexibleStay.js';
 import { guestServiceRequest } from '../utils/guestService.js';
 import { hotelPhoneInquiry, hotelContactAnswer,hotelCallDifficulty,hotelCallDifficultyAnswer } from '../utils/hotelContact.js';
@@ -454,7 +455,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     &&photoFocusAt>0&&photoFocusAt<=policyNow&&policyNow-photoFocusAt<=30*60000
     &&extraPhotoRequest(earlyState?.resolved_message||'')&&extraCodes(earlyState?.resolved_message||'').length
     ?earlyState.resolved_message:serviceMessage;
-  const confirmedAnswer=confirmedHotelAnswer(currentPhotoMessage);
+  const confirmedAnswer=confirmedHotelAnswer(currentPhotoMessage)
+    || (!earlyState?.package_context?lodgingInclusionsAnswer(currentPhotoMessage):undefined);
   if(!req.query?.operation && confirmedAnswer) {
     // A photo shoot is a policy question, not a request to browse pictures.
     const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});

@@ -22,6 +22,7 @@ import {packageToday,packageEnded,retiredIndependence,endedPackageAnswer,endedPa
 import {packageStayDates,readPackageStayQuery,packageStayPriceRequest,type PackageStayQuery} from '../utils/packageStayQuery.js';
 import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer,packageDateRequestRefused,type PackageDateRequest} from '../utils/packageDateRequest.js';
 import { guestInquiry, explicitLodgingRequest, type GuestInquiry } from '../utils/guestInquiry.js';
+import {affirmedStayInformation,lodgingInclusionsAnswer} from '../utils/stayInformation.js';
 import { confirmedDiningPolicy, diningPolicyAnswer, reservaHoursAnswer } from '../utils/diningPolicy.js';
 import { reservaRestaurantMessage } from '../utils/restaurantIntent.js';
 import { explicitHumanRequest, stripNegatedHumanRequests } from '../utils/humanIntent.js';
@@ -701,6 +702,12 @@ function controlTurn(body: any, now = Date.now()) {
   const audio = isAudioInput(input);
   const raw = (audio ? audioMessage(input, state, now) || AUDIO_UNAVAILABLE : safeTypedMessage(input)).slice(0, 2000);
   const s = norm(raw);
+  // Consume the displayed date question before a factual FAQ changes topic.
+  // This is date confirmation only: never create a room selection or consent.
+  if(['prepare','route'].includes(body.operation)&&!state.package_context&&affirmedStayInformation(raw)){
+    const dates=confirmRelativeCheckout(state.stay_date_pending,raw,!!state.checkout_question,now);
+    if(dates){Object.assign(state.facts,dates);clearStayDuration(state);delete state.pending;}
+  }
   const massageAnswer=massageServiceAnswer(raw,state.massage_context,now);
   const massageTurn=!!massageAnswer&&!human(s)&&!guestServiceRequest(raw)&&!explicitLodgingRequest(raw)
     &&!paymentStatusInquiry(raw,state.history.at(-1)||'')&&!paymentSupportInquiry(raw,!!state.payment_support)
@@ -1371,7 +1378,7 @@ function controlTurn(body: any, now = Date.now()) {
   const occupancyFollowup=packageOccupancyFollowup(publicMessage,state.package_context,now);
   const inquiry = occupancyFollowup?undefined:currentGuestInquiry(state, publicMessage,now);
   const diningAnswer = diningPolicyAnswer(publicMessage) || reservaHoursAnswer(publicMessage,now) || visitorBreakfastAnswer(publicMessage);
-  const facilityAnswer = confirmedHotelAnswer(publicMessage) || (inquiry === 'lodging_faq' ? guestFacilityAnswer(publicMessage) || locmilAnswer(publicMessage) : undefined);
+  const facilityAnswer = confirmedHotelAnswer(publicMessage) || (inquiry === 'lodging_faq' ? lodgingInclusionsAnswer(publicMessage) || guestFacilityAnswer(publicMessage) || locmilAnswer(publicMessage) : undefined);
   const weekdayQuestion = packageWeekdayClarification(publicMessage, state.package_context, now);
   const roomGuidance=multiRoomGuidanceText(state,publicMessage,now);
   if (raw === AUDIO_UNAVAILABLE) {

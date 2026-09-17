@@ -8,6 +8,7 @@ import { hotelPolicyInquiry } from './hotelPolicy.js';
 import { reservaRestaurantMessage } from './restaurantIntent.js';
 import { stripNegatedHumanRequests } from './humanIntent.js';
 import { todayStayDatePending } from './stayDuration.js';
+import {lodgingInclusionsQuestion} from './stayInformation.js';
 
 export type GuestInquiry = 'lodging_faq' | 'day_use' | 'dining';
 
@@ -121,6 +122,7 @@ export function explicitLodgingRequest(message: string): boolean {
 }
 
 function lodgingFaq(s: string): boolean {
+  if (lodgingInclusionsQuestion(s)) return true;
   if (hotelPolicyInquiry(s)) return true;
   if (quotedAmountQuestion(s) || roomRequirementQuestion(s) || guestFacilityInquiry(s)) return true;
   const includedMeal = mealWords.test(s)
