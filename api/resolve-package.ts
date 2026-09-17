@@ -31,6 +31,7 @@ import { guestServiceRequest } from '../utils/guestService.js';
 import { hotelPhoneInquiry, hotelContactAnswer,hotelCallDifficulty,hotelCallDifficultyAnswer } from '../utils/hotelContact.js';
 import {bookingDeferral,bookingDeferralAnswer} from '../utils/conversationContinuation.js';
 import { locmilAnswer, confirmedHotelAnswer } from '../utils/hotelPolicy.js';
+import {massageServiceAnswer} from '../utils/massageService.js';
 import { paymentStatusInquiry } from '../utils/paymentStatus.js';
 import { paymentSupportInquiry } from '../utils/paymentSupport.js';
 import {arrivalTimeQuestion,arrivalTimeHandoff} from '../utils/conversationalStayDates.js';
@@ -315,6 +316,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     previousPaymentMessage = earlyState?.history?.at(-1) || '';
   } catch { /* Invalid state cannot establish payment context. */ }
   const discovery=!req.query?.operation&&packageDiscoveryRequest(serviceMessage,earlyState?.package_context);
+  if(!req.query?.operation&&massageServiceAnswer(serviceMessage,earlyState?.massage_context)){
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    if('service_info' in routed&&routed.service_info==='outsourced_massage'){
+      const answer='answer' in routed?routed.answer:'';
+      return res.status(200).json({...routed,quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
+        matched:false,match_type:'outsourced_massage',availability_checked:false});
+    }
+  }
   if (!req.query?.operation && hotelPhoneInquiry(serviceMessage)
     && !hotelCallDifficulty(serviceMessage)
     && !paymentStatusInquiry(serviceMessage, previousPaymentMessage)

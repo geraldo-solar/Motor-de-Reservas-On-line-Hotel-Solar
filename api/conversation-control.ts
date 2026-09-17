@@ -31,6 +31,7 @@ import { hotelPhoneInquiry, hotelContactAnswer, hotelCallDifficulty, hotelCallDi
 import {bookingDeferral,bookingDeferralAnswer} from '../utils/conversationContinuation.js';
 import { confirmedGuestFacilitiesPolicy, guestFacilityInquiry, guestFacilityAnswer } from '../utils/guestFacilities.js';
 import { confirmedHotelPolicy, confirmedHotelAnswer, locmilAnswer } from '../utils/hotelPolicy.js';
+import { massagePolicy, massageServiceAnswer, readMassageContext } from '../utils/massageService.js';
 import {photoSessionInquiry} from '../utils/photoSession.js';
 import { paymentStatusInquiry, paymentStatusContext, paymentStatusAnswer } from '../utils/paymentStatus.js';
 import {paymentSupportTopic,paymentSupportInquiry,paymentSupportContext,paymentSupportContextFor,paymentSupportAnswerFor,paymentSupportSupplementaryTopics,readPaymentSupportTopics,type PaymentSupportSupplementaryTopic} from '../utils/paymentSupport.js';
@@ -50,7 +51,7 @@ type Quote = { version: number; id: string; created_at: number; check_in: string
 type GuestInquiryState = { kind: GuestInquiry; at: number };
 type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPartyResult['clarification'];package_stay_query?:PackageStayQuery;party_confirmed_at?:number };
 type ExistingReservationState = { existing_reservation?: {at: number};payment_support?:{at:number;topics?:PaymentSupportSupplementaryTopic[]};assistant_disclosure?:AssistantDisclosure;multi_room?:MultiRoomHandoff;checkout_question?:{at:number;key:string};arrival_time?:ArrivalTimePending;package_date_request?:PackageDateRequest };
-type State = ExistingReservationState & FamilyState & { programming_pending?: {question: string; at: number} } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
+type State = ExistingReservationState & FamilyState & { massage_context?: {at:number}; programming_pending?: {question: string; at: number} } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
 const json = (v: unknown): any => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
 const months = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -228,6 +229,7 @@ function loadState(value: unknown, now = Date.now()): State {
     extra_photo_requests: Array.isArray(parsed.extra_photo_requests) ? [...new Set<string>(parsed.extra_photo_requests.filter(knownMediaCode))] : [],
     ...(Array.isArray(parsed.extra_photo_subjects) ? {extra_photo_subjects: [...new Set<string>(parsed.extra_photo_subjects.filter(knownMediaCode))]} : {}),
     ...(readEvent(parsed.event) ? {event:readEvent(parsed.event)} : {}),
+    ...(readMassageContext(parsed.massage_context,now)?{massage_context:readMassageContext(parsed.massage_context,now)}:{}),
     ...(readFamilyParty(parsed.family_party, now) ? {family_party:readFamilyParty(parsed.family_party, now),
       ...(['party_composition','child_ages','age_reference'].includes(parsed.family_clarification) ? {family_clarification:parsed.family_clarification} : {})} : {}),
     ...(Number.isFinite(parsed.party_confirmed_at)&&parsed.party_confirmed_at>0&&parsed.party_confirmed_at<=now&&now-parsed.party_confirmed_at<=30*60000
@@ -655,6 +657,7 @@ function controlTurn(body: any, now = Date.now()) {
   // Intercept documents before fact extraction, event advancement and all
   // booking/confirmation branches. A missing prepare must still fail safely.
   if (attachment && ['prepare', 'route', 'confirm'].includes(body.operation)) {
+    delete state.massage_context;
     const current = attachmentForMessage(input, state, now) || { source_hash: attachmentSourceHash(input), kind: 'unreadable' as const, created_at: now };
     state.attachment = current;
     state.changed = false;
@@ -688,6 +691,31 @@ function controlTurn(body: any, now = Date.now()) {
   const audio = isAudioInput(input);
   const raw = (audio ? audioMessage(input, state, now) || AUDIO_UNAVAILABLE : safeTypedMessage(input)).slice(0, 2000);
   const s = norm(raw);
+  const massageAnswer=massageServiceAnswer(raw,state.massage_context,now);
+  const massageTurn=!!massageAnswer&&!human(s)&&!guestServiceRequest(raw)&&!explicitLodgingRequest(raw)
+    &&!paymentStatusInquiry(raw,state.history.at(-1)||'')&&!paymentSupportInquiry(raw,!!state.payment_support)
+    &&!existingReservationInquiry(raw,!!state.existing_reservation);
+  if(body.operation==='prepare'&&!massageTurn)delete state.massage_context;
+  if(massageTurn&&['prepare','route','confirm'].includes(body.operation)){
+    // Provider contact information is not a hotel booking or a handoff. Keep
+    // lodging facts but invalidate previous confirmation cards and topic state.
+    state.changed=false;clearStayDuration(state);delete state.pending;delete state.awaiting;
+    delete state.topic;delete state.topic_at;delete state.subject;delete state.package_context;
+    delete state.package_stay_query;delete state.package_date_request;delete state.programming_pending;
+    delete state.extra_photo_subjects;delete state.event;delete state.multi_room;
+    delete state.existing_reservation;delete state.payment_support;
+    state.guest_inquiry={kind:'lodging_faq',at:now};state.resolved_message=raw;
+    if(body.operation==='prepare'){
+      state.massage_context={at:now};state.first_turn=!state.greeted;state.greeted=true;
+      state.history=[...state.history,raw.slice(0,500)].slice(-12);remember(state,'user',raw);
+      return {state:JSON.stringify(state),can_collect:'NAO',quote_request:'NOQUOTE',
+        context:JSON.stringify({primeira_resposta:state.first_turn,ultima_mensagem:raw,
+          fatos_informados_pelo_cliente:state.facts,politicas_hotel_confirmadas:confirmedHotelPolicy,
+          servico_massagem_confirmado:massagePolicy,regra:'Informação atual confirmada pelo responsável em 17/09/2026 prevalece sobre a antiga negativa de massagens avulsas. Não confirmar agendamento, valor, benefício terapêutico, vaga ou reserva. Não cotar hospedagem nem pedir dados pessoais. Responda: '+massageAnswer})};
+    }
+    remember(state,'assistant',massageAnswer!);
+    return {state:JSON.stringify(state),resolved_message:raw,answer:massageAnswer!,quote_request:'NOQUOTE',can_collect:'NAO',confirmation_text:'',service_info:'outsourced_massage'};
+  }
   const packageDiscovery=packageDiscoveryRequest(raw,state.package_context,now);
   const roomGuidanceRequest=multiRoomGuidanceRequest(raw);
   if(['prepare','route','confirm'].includes(body.operation)&&(packageDiscovery||roomGuidanceRequest)){

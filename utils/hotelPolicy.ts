@@ -1,5 +1,6 @@
 import { photoSessionInquiry, photoSessionAnswer } from './photoSession.js';
 import { explicitHumanRequest } from './humanIntent.js';
+import { massagePolicy, massageInquiry } from './massageService.js';
 
 /** Business facts explicitly confirmed by the hotel owner on 2026-09-11.
  * This informs the assistant; it does not change tariffs, stock or bookings.
@@ -49,6 +50,7 @@ export const confirmedHotelPolicy = {
     limits: 'Hospedar-se não concede automaticamente autorização para o ensaio. Consultar previamente a recepção não confirma permissão, agendamento, áreas específicas, preço ou exclusividade.',
   },
   guest_guide: 'https://www.hotelsolar.tur.br/guia',
+  massages: massagePolicy,
   limits: 'Políticas confirmadas prevalecem sobre mensagens antigas. Não representam disponibilidade em tempo real, contratação, agendamento, reserva de item nem execução de serviço. Não ampliar benefícios a outros serviços.',
 } as const;
 
@@ -58,7 +60,7 @@ const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, 
 // Callers retain their existing human, photo, event and booking precedence.
 export function hotelPolicyInquiry(message: string): boolean {
   const s = normalize(message);
-  return photoSessionInquiry(message) || hydromassageInquiry(message)
+  return photoSessionInquiry(message) || hydromassageInquiry(message) || massageInquiry(message)
     || /\b(?:quadriciclos?|loc\s?mil|room service|servico de quarto)\b/.test(s)
     || /\bguia\b/.test(s) && /\b(?:hotel|hospede|hospedes|solar)\b/.test(s)
     || /\b(?:cadeira de rodas|rampas?|degraus?|banheiros? adaptados?)\b/.test(s)
