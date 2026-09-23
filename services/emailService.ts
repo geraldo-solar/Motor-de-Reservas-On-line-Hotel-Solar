@@ -521,6 +521,7 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
+            reservationId: reservation.id,
             sender: { name: 'Sistema de Reservas', email: HOTEL_CONFIG.email },
             to: [{ email: HOTEL_CONFIG.adminEmail, name: 'Administração Hotel Solar' }],
             subject: `🔔 Nova Reserva #${shortId} - ${reservation.mainGuest.name}`,
@@ -542,6 +543,7 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
+            reservationId: reservation.id,
             sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
             to: [{ email: reservation.mainGuest.email, name: reservation.mainGuest.name }],
             subject: `Confirmação de Reserva #${shortId} - Hotel Solar`,
@@ -994,6 +996,7 @@ export const sendPreCheckInEmail = async (reservation: Reservation): Promise<{ s
         'content-type': 'application/json',
       },
       body: JSON.stringify({
+            reservationId: reservation.id,
         sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
         to: [{ email: reservation.mainGuest.email, name: reservation.mainGuest.name }],
         subject: `📋 Pré-Check-in Digital - Reserva #${shortId}`,
@@ -1028,6 +1031,7 @@ export const sendPaymentConfirmedEmail = async (reservation: Reservation): Promi
         'content-type': 'application/json',
       },
       body: JSON.stringify({
+            reservationId: reservation.id,
         sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
         to: [{ email: reservation.mainGuest.email, name: reservation.mainGuest.name }],
         subject: `✅ Pagamento Confirmado - Reserva #${shortId}`,
@@ -1061,6 +1065,7 @@ export const sendReservationCanceledEmail = async (reservation: Reservation, rea
         'content-type': 'application/json',
       },
       body: JSON.stringify({
+            reservationId: reservation.id,
         sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
         to: [{ email: reservation.mainGuest.email, name: reservation.mainGuest.name }],
         subject: `❌ Reserva Cancelada - #${shortId}`,
@@ -1318,6 +1323,7 @@ export const sendClientCancellationEmails = async (
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+            reservationId: reservation.id,
         sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
         to: [{ email: reservation.mainGuest.email, name: reservation.mainGuest.name }],
         subject: `❌ Reserva Cancelada - #${shortId}`,
@@ -1341,6 +1347,7 @@ export const sendClientCancellationEmails = async (
         'content-type': 'application/json',
       },
       body: JSON.stringify({
+            reservationId: reservation.id,
         sender: {
           name: HOTEL_CONFIG.name,
           email: HOTEL_CONFIG.email,
@@ -1463,6 +1470,7 @@ export const sendPreCheckinAdminEmail = async (reservation: Reservation, formDat
         'content-type': 'application/json',
       },
       body: JSON.stringify({
+            reservationId: reservation.id,
         sender: { name: 'Sistema de Reservas', email: HOTEL_CONFIG.email },
         to: [{ email: HOTEL_CONFIG.adminEmail, name: 'Recepção Hotel Solar' }],
         subject: `📋 Pré-Check-in: ${formData.nomeCompleto} - Ref #${shortId}`,
