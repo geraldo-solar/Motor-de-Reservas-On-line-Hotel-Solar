@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, Home, Search, AlertTriangle, XCircle, Trash2, CheckCircle, ArrowLeft } from 'lucide-react';
-import { Reservation, ReservationStatus } from '../types';
+import { Reservation } from '../types';
 import { getShortReservationId, sendClientCancellationEmails } from '../services/emailService';
+import { buscarReserva, cancelarReservaDoSite } from '../services/reservaNoServidor';
+import { ehUuid } from '../utils/reservaDoSite';
 
 interface CancellationPageProps {
     reservationId: string | null;
-    reservations: Reservation[];
-    setReservations: React.Dispatch<React.SetStateAction<Reservation[]>>;
-    onSaveReservation: (reservation: Reservation) => Promise<boolean>;
-    onUpdateStatus: (id: string, status: string, reason?: string) => Promise<boolean>;
     onBack: () => void;
 }
 
-export const CancellationPage: React.FC<CancellationPageProps> = ({ reservationId, reservations, setReservations, onSaveReservation, onUpdateStatus, onBack }) => {
+// A reserva é buscada e cancelada pelo servidor: pelo link do e-mail (número
+// completo) ou pelo código de 8 caracteres junto com o e-mail da reserva.
+// Antes o navegador baixava todas as reservas e aceitava qualquer pedaço do
+// número, então dava para achar (e cancelar) a reserva de outra pessoa.
+export const CancellationPage: React.FC<CancellationPageProps> = ({ reservationId, onBack }) => {
     const [searchId, setSearchId] = useState(reservationId || '');
+    const [email, setEmail] = useState('');
     const [reservation, setReservation] = useState<Reservation | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -24,14 +27,17 @@ export const CancellationPage: React.FC<CancellationPageProps> = ({ reservationI
     const [cancelType, setCancelType] = useState<'full' | 'partial' | null>(null);
     const [autoSearchDone, setAutoSearchDone] = useState(false);
 
-    // ... (searchReservation logic remains the same)
-    const searchReservation = (idToSearch: string) => {
-        if (!idToSearch.trim()) {
+    const precisaDoEmail = !ehUuid(searchId);
+
+    const searchReservation = async (idToSearch: string) => {
+        const termo = idToSearch.trim();
+        if (!termo) {
             setError('Por favor, insira o número da reserva.');
             return;
         }
-
-        if (reservations.length === 0) {
+        const porLink = ehUuid(termo);
+        if (!porLink && !email.trim()) {
+            setError('Informe também o e-mail usado na reserva.');
             return;
         }
 
@@ -39,47 +45,33 @@ export const CancellationPage: React.FC<CancellationPageProps> = ({ reservationI
         setError(null);
         setReservation(null);
 
-        const searchTerm = idToSearch.trim().toUpperCase().replace(/-/g, '');
-
-        const found = reservations.find(r => {
-            // Normalizar o ID da reserva - remover hífens e converter para maiúsculas
-            const fullIdNormalized = r.id.toUpperCase().replace(/-/g, '');
-            const shortId = getShortReservationId(r.id);
-
-            // Verificar se o termo de busca está contido no ID completo
-            // ou se corresponde ao ID curto (8 caracteres)
-            return fullIdNormalized === searchTerm ||
-                fullIdNormalized.includes(searchTerm) ||
-                searchTerm.includes(fullIdNormalized) ||
-                shortId === searchTerm ||
-                searchTerm.startsWith(shortId) ||
-                r.id.toUpperCase() === idToSearch.trim().toUpperCase();
-        });
-
-        setTimeout(() => {
-            setLoading(false);
-            if (found) {
-                if (found.status === 'CANCELED') {
-                    setError('Esta reserva já foi cancelada anteriormente.');
-                } else {
-                    setReservation(found);
-                    setSelectedRooms(new Set());
-                    setSelectedExtras(new Set());
-                }
-            } else {
-                setError('Reserva não encontrada. Verifique o número e tente novamente.');
-            }
-        }, 500);
+        const r = await buscarReserva(porLink ? { id: termo } : { codigo: termo, email: email.trim() });
+        setLoading(false);
+        if ('erro' in r) {
+            setError(r.erro);
+            return;
+        }
+        const found = r.reserva;
+        if (!found) {
+            setError('Reserva não encontrada. Verifique o número e tente novamente.');
+        } else if (found.status === 'CANCELED') {
+            setError('Esta reserva já foi cancelada anteriormente.');
+        } else {
+            setReservation(found);
+            setSelectedRooms(new Set());
+            setSelectedExtras(new Set());
+        }
     };
 
-    // ... (useEffect remains the same)
+    // Link do e-mail (?view=cancelamento&reserva=<número>): busca sozinho.
     useEffect(() => {
-        if (reservationId && reservations.length > 0 && !autoSearchDone) {
+        if (reservationId && !autoSearchDone) {
+            setAutoSearchDone(true);
             setSearchId(reservationId);
             searchReservation(reservationId);
-            setAutoSearchDone(true);
         }
-    }, [reservationId, reservations, autoSearchDone]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [reservationId, autoSearchDone]);
 
     const handleSearch = () => {
         searchReservation(searchId);
@@ -110,60 +102,23 @@ export const CancellationPage: React.FC<CancellationPageProps> = ({ reservationI
 
         setCancelling(true);
         setCancelType(type);
+        setError(null);
 
         try {
-            let updatedReservation: Reservation;
-            let cancelledItems: { rooms?: string[], extras?: string[] } | undefined;
-            let persistSuccess = false;
-
-            if (type === 'full') {
-                // Cancelamento total
-                updatedReservation = { ...reservation, status: 'CANCELED' as ReservationStatus };
-                persistSuccess = await onUpdateStatus(reservation.id, 'CANCELED', 'Cancelamento realizado pelo cliente');
-            } else {
-                // Cancelamento parcial
-                const cancelledRoomNames = Array.from(selectedRooms).map(i => reservation.rooms[i].name);
-                const cancelledExtraNames = Array.from(selectedExtras).map(i => reservation.extras[i].name);
-
-                cancelledItems = {
-                    rooms: cancelledRoomNames.length > 0 ? cancelledRoomNames : undefined,
-                    extras: cancelledExtraNames.length > 0 ? cancelledExtraNames : undefined,
-                };
-
-                const remainingRooms = reservation.rooms.filter((_, i) => !selectedRooms.has(i));
-                const remainingExtras = reservation.extras.filter((_, i) => !selectedExtras.has(i));
-
-                const roomsTotal = remainingRooms.reduce((sum, r) => sum + r.priceSnapshot, 0);
-                const extrasTotal = remainingExtras.reduce((sum, e) => sum + (e.priceSnapshot * e.quantity), 0);
-                const newTotal = roomsTotal + extrasTotal;
-
-                if (remainingRooms.length === 0) {
-                    updatedReservation = { ...reservation, status: 'CANCELED' as ReservationStatus };
-                    persistSuccess = await onUpdateStatus(reservation.id, 'CANCELED', 'Cancelamento parcial resultou em cancelamento total');
-                } else {
-                    updatedReservation = {
-                        ...reservation,
-                        rooms: remainingRooms,
-                        extras: remainingExtras,
-                        totalPrice: newTotal,
-                        observations: `${reservation.observations}\n[CANCELAMENTO PARCIAL em ${new Date().toLocaleDateString('pt-BR')}]: Itens cancelados: ${[...cancelledRoomNames, ...cancelledExtraNames].join(', ')}`.trim(),
-                    };
-                    persistSuccess = await onSaveReservation(updatedReservation);
-                }
+            const quartos = type === 'full' ? reservation.rooms.map((_, i) => i) : Array.from(selectedRooms);
+            const extras = type === 'full' ? reservation.extras.map((_, i) => i) : Array.from(selectedExtras);
+            const r = await cancelarReservaDoSite(reservation.id, quartos, extras);
+            if ('erro' in r) {
+                setError(r.erro);
+                return;
             }
 
-            if (persistSuccess) {
-                // Atualizar no estado local
-                setReservations(prev => prev.map(r => r.id === reservation.id ? updatedReservation : r));
+            // Enviar e-mails de cancelamento (cliente e hotel)
+            await sendClientCancellationEmails(reservation, r.cancelados);
 
-                // Enviar e-mails de cancelamento (cliente e hotel)
-                await sendClientCancellationEmails(reservation, cancelledItems);
-
-                setSuccess(true);
-                setReservation(updatedReservation);
-            } else {
-                setError('Não foi possível salvar as alterações no servidor. Verifique sua conexão.');
-            }
+            setCancelType(r.tipo === 'total' ? 'full' : 'partial');
+            setReservation(r.reserva || { ...reservation, status: 'CANCELED' as Reservation['status'] });
+            setSuccess(true);
         } catch (err) {
             console.error('Erro ao cancelar reserva:', err);
             setError('Ocorreu um erro ao processar o cancelamento. Por favor, tente novamente.');
@@ -268,6 +223,18 @@ export const CancellationPage: React.FC<CancellationPageProps> = ({ reservationI
                                     )}
                                 </button>
                             </div>
+
+                            {precisaDoEmail && (
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="E-mail usado na reserva"
+                                    autoComplete="email"
+                                    className="mt-3 w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-solar-green focus:ring-2 focus:ring-solar-green/20 outline-none transition-all"
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                                />
+                            )}
 
                             {error && (
                                 <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">

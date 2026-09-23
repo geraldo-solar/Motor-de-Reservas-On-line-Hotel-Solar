@@ -7,90 +7,7 @@ import { getPublicImageUrl } from '../utils/imageUtils';
 import { toLocalISO, parseISODate } from '../utils/dateUtils';
 import { safeArray, safeObject } from '../utils/dataSafety';
 import { mapReservations } from '../utils/mapReservation';
-import { generateUUID } from '../utils/uuid';
-
-// Transforma uma Reservation "combinada" (todos os quartos numa única lista, total somado)
-// em uma linha por quarto para o banco (mesmo padrão usado pelo ERP e pela API do chatbot),
-// evitando que uma reserva multi-apto chegue ao ERP como se fosse 1 apto só com diária somada.
-const buildReservationRowsPerRoom = (reservation: Reservation, createdBy: string) => {
-  const rooms = safeArray<any>(reservation.rooms);
-
-  const baseFields = {
-    check_in: reservation.checkIn,
-    check_out: reservation.checkOut,
-    nights: reservation.nights,
-    main_guest: reservation.mainGuest,
-    observations: reservation.observations || '',
-    discount_applied: reservation.discountApplied || null,
-    package_discount_applied: reservation.packageDiscountApplied || null,
-    payment_method: reservation.paymentMethod,
-    // Nunca número, validade ou CVV: o cartão é digitado na Cielo. Guarda só
-    // o que a cobrança precisa (limite de parcelas do pacote).
-    card_details: reservation.cardDetails
-      ? { viaCielo: true, maxInstallments: reservation.cardDetails.maxInstallments ?? reservation.cardDetails.installments ?? 1 }
-      : null,
-    status: reservation.status,
-    cancellation_reason: reservation.cancellationReason || null,
-    created_by: createdBy,
-  };
-
-  if (rooms.length <= 1) {
-    return [{
-      id: reservation.id,
-      created_at: reservation.createdAt instanceof Date ? reservation.createdAt.toISOString() : reservation.createdAt,
-      ...baseFields,
-      additional_guests: reservation.additionalGuests,
-      rooms: reservation.rooms,
-      extras: reservation.extras,
-      total_price: reservation.totalPrice,
-      group_id: null,
-    }];
-  }
-
-  const accommodationTotal = rooms.reduce((sum, r: any) => sum + (r.priceSnapshot || 0), 0);
-  const couponDiscount = reservation.discountApplied?.amount || 0;
-  const packageDiscount = reservation.packageDiscountApplied?.amount || 0;
-  // Deriva o total de extras (serviços adicionais, ex: transfer) a partir do total já calculado
-  const extrasTotal = reservation.totalPrice - accommodationTotal + couponDiscount + packageDiscount;
-
-  const combinedBreakdown: any = safeArray<any>(reservation.extras).find((e: any) => e.id === 'daily_breakdown' && e.isBreakdown);
-  const otherExtras = safeArray<any>(reservation.extras).filter((e: any) => e.id !== 'daily_breakdown');
-
-  const groupId = generateUUID();
-
-  return rooms.map((room: any, index: number) => {
-    const roomShare = accommodationTotal > 0 ? (room.priceSnapshot || 0) / accommodationTotal : 1 / rooms.length;
-    const roomDiscount = (couponDiscount + packageDiscount) * roomShare;
-    const roomAccommodation = (room.priceSnapshot || 0) - roomDiscount;
-    const roomTotal = Math.round(roomAccommodation + (index === 0 ? extrasTotal : 0));
-
-    const roomExtras: any[] = index === 0 ? [...otherExtras] : [];
-    if (combinedBreakdown) {
-      roomExtras.push({
-        id: 'daily_breakdown',
-        name: 'daily_breakdown',
-        isBreakdown: true,
-        quantity: 1,
-        priceSnapshot: 0,
-        days: combinedBreakdown.days.map((d: any) => ({ date: d.date, price: Math.round(d.price * roomShare) })),
-      });
-    }
-
-    // Hóspedes adicionais já vêm com roomId associado; cada linha fica só com os seus
-    const roomGuests = safeArray<any>(reservation.additionalGuests).filter((g: any) => g.roomId === room.id);
-
-    return {
-      id: index === 0 ? reservation.id : generateUUID(),
-      created_at: reservation.createdAt instanceof Date ? reservation.createdAt.toISOString() : reservation.createdAt,
-      ...baseFields,
-      additional_guests: roomGuests,
-      rooms: [room],
-      extras: roomExtras,
-      total_price: roomTotal,
-      group_id: groupId,
-    };
-  });
-};
+import { gravarReservaDoSite } from '../services/reservaNoServidor';
 
 // Chaves para localStorage (cache)
 const STORAGE_KEYS = {
@@ -102,6 +19,14 @@ const STORAGE_KEYS = {
   lastUpdate: 'hotel_solar_last_update',
 };
 
+// Reservas (com dados dos hóspedes) e cupons nunca ficam no aparelho: antes
+// ficavam no navegador de qualquer visitante do site. Apaga o que já estava.
+const NUNCA_NO_APARELHO = new Set<string>([STORAGE_KEYS.reservations, STORAGE_KEYS.discounts]);
+try {
+  if (typeof window !== 'undefined') NUNCA_NO_APARELHO.forEach(chave => localStorage.removeItem(chave));
+} catch { /* navegador sem armazenamento */ }
+
+
 // Tempo de cache em milissegundos (2 minutos para ser mais fresco)
 const CACHE_DURATION = 2 * 60 * 1000;
 
@@ -111,7 +36,7 @@ const REQUEST_TIMEOUT = 15000;
 // Função para carregar dados do localStorage (cache)
 const loadFromStorage = <T>(key: string, defaultValue: T): T => {
   try {
-    if (typeof window === 'undefined') return defaultValue;
+    if (typeof window === 'undefined' || NUNCA_NO_APARELHO.has(key)) return defaultValue;
     const stored = localStorage.getItem(key);
     if (stored) {
       return JSON.parse(stored);
@@ -125,7 +50,7 @@ const loadFromStorage = <T>(key: string, defaultValue: T): T => {
 // Função para salvar dados no localStorage (cache)
 const saveToStorage = <T>(key: string, data: T): void => {
   try {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || NUNCA_NO_APARELHO.has(key)) return;
     localStorage.setItem(key, JSON.stringify(data));
   } catch (error) {
     console.error(`[Storage] Erro ao salvar ${key}:`, error);
@@ -253,9 +178,16 @@ export const useSupabaseData = () => {
       // Funções de busca individuais para melhor controle de erro
       const fetchRooms = () => supabase.from('room_types').select('*').order('name');
       const fetchPackages = () => supabase.from('packages').select('*');
-      const fetchReservations = () => supabase.from('reservations').select('*, companies(trade_name)').not('status', 'in', '("maintenance","cleaning")').order('created_at', { ascending: false }).limit(1000);
+      // Reservas e cupons só para o painel (usuário logado). O site público
+      // não precisa deles: a disponibilidade vem das acomodações, e busca,
+      // cancelamento, pré-check-in e cupom passam pelo servidor.
+      const { data: { session: sessaoAtual } } = await supabase.auth.getSession();
+      const nada = () => Promise.resolve({ data: [] as any[], error: null });
+      const fetchReservations = () => sessaoAtual
+        ? supabase.from('reservations').select('*, companies(trade_name)').not('status', 'in', '("maintenance","cleaning")').order('created_at', { ascending: false }).limit(1000)
+        : nada();
       const fetchExtras = () => supabase.from('extras').select('*');
-      const fetchDiscounts = () => supabase.from('discount_codes').select('*');
+      const fetchDiscounts = () => sessaoAtual ? supabase.from('discount_codes').select('*') : nada();
 
       // Executamos em paralelo mas tratamos individualmente se necessário
       // Usamos um timeout global maior (15s)
@@ -360,8 +292,18 @@ export const useSupabaseData = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (user) {
+      loadFromSupabase(true);
+    } else {
+      setReservationsState([]);
+      setDiscountsState([]);
+    }
+  }, [user, loadFromSupabase]);
+
   // Realtime subscription para manter o Painel Admin sincronizado com o ERP e outras mudanças
   useEffect(() => {
+    if (!user) return;
     const channel = supabase
       .channel('db-changes')
       .on(
@@ -387,7 +329,7 @@ export const useSupabaseData = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [loadFromSupabase]);
+  }, [loadFromSupabase, user]);
 
   // --- FUNÇÕES DE SALVAMENTO ---
 
@@ -666,144 +608,14 @@ export const useSupabaseData = () => {
 
   const saveReservationToSupabase = async (reservation: Reservation): Promise<{ success: boolean; error?: string }> => {
     setIsSaving(true);
-    console.log('[Supabase] Tentando salvar reserva:', reservation.id);
-
     try {
-      // Uma linha por quarto (rooms.length > 1 vira N linhas com group_id compartilhado),
-      // para o ERP não receber uma reserva multi-apto como se fosse 1 apto só com diária somada.
-      const dataToSave = buildReservationRowsPerRoom(reservation, 'Motor de Reservas');
-
-      // Tenta salvar no Supabase
-      let insertError = null;
-
-      if (reservation.isSupabaseDraft) {
-        const { error } = await supabase.from('reservations').upsert(dataToSave, { onConflict: 'id' });
-        insertError = error;
-      } else {
-        const { error } = await supabase.from('reservations').insert(dataToSave);
-        insertError = error;
-      }
-
-      if (insertError) {
-        // Se for erro de rede, enfileira e finge sucesso (otimismo)
-        // Adicionado 'Load failed' (Safari/iOS) catch
-        if (insertError.message?.includes('failed to fetch') || insertError.message?.includes('NetworkError') || insertError.message?.includes('Load failed') || !navigator.onLine) {
-          console.warn('[Offline] Rede indisponível (ou erro de Load failed). Enfileirando reserva...');
-          await offlineQueue.enqueue({
-            table: 'reservations',
-            action: reservation.isSupabaseDraft ? 'UPSERT' : 'INSERT',
-            data: dataToSave
-          });
-
-          // Atualiza estado local otimista
-          setReservationsState(prev => [reservation, ...prev.filter(r => r.id !== reservation.id)].slice(0, 1000));
-          saveToStorage(STORAGE_KEYS.reservations, [reservation, ...reservations.filter(r => r.id !== reservation.id)].slice(0, 1000));
-          return { success: true };
-        }
-
-        console.error('[Supabase] Erro no banco:', insertError);
-        return { success: false, error: `Erro no banco de dados: ${insertError.message}` };
-      }
-
-      console.log('[Supabase] Reserva salva com sucesso no banco');
-
-// O ERP Antigo foi desconectado pelo proprietário. Sinais realtime 'erp-sync' desativados.
-
-      // --- SINCRONIZAÇÃO DE INVENTÁRIO (DECREMENTO) ---
-      // Caso a reserva venha do site, decrementamos o estoque imediatamente
-      const syncInventory = async (res: Reservation) => {
-        try {
-          for (const roomSnapshot of res.rooms) {
-            const { data: roomData } = await supabase.from('room_types').select('*').eq('id', roomSnapshot.id).single();
-            if (roomData) {
-              const currentRoom = mapRooms([roomData])[0];
-              const checkInDate = parseISODate(res.checkIn);
-              const checkOutDate = parseISODate(res.checkOut);
-              const updatedOverrides = [...(currentRoom.overrides || [])];
-
-              let current = new Date(checkInDate);
-              while (current < checkOutDate) {
-                const iso = toLocalISO(current);
-                const ovIndex = updatedOverrides.findIndex(o => o.dateIso === iso);
-
-                if (ovIndex >= 0) {
-                  const currentQty = updatedOverrides[ovIndex].availableQuantity ?? currentRoom.totalQuantity;
-                  updatedOverrides[ovIndex] = {
-                    ...updatedOverrides[ovIndex],
-                    availableQuantity: Math.max(0, currentQty - 1)
-                  };
-                } else {
-                  updatedOverrides.push({
-                    dateIso: iso,
-                    price: currentRoom.price,
-                    availableQuantity: Math.max(0, currentRoom.totalQuantity - 1),
-                    isClosed: false
-                  });
-                }
-                current.setDate(current.getDate() + 1);
-              }
-              await supabase.from('room_types').update({ overrides: updatedOverrides }).eq('id', roomSnapshot.id);
-            }
-          }
-        } catch (err) {
-          console.error('[Inventory] Erro ao decrementar estoque:', err);
-          // Tenta recarregar os dados mesmo se falhar para tentar manter sincronia
-          loadFromSupabase(true);
-        }
-      };
-
-      await syncInventory(reservation);
-      // --- FIM DA SINCRONIZAÇÃO ---
-
-      // Recarregar dados para atualizar estoque local e map de disponibilidade
+      // O servidor grava a reserva (uma linha por acomodação) e tira do
+      // estoque. Sem fila offline: o hóspede só vê "reserva feita" quando o
+      // banco confirmou; se a conexão cair, reenviar não duplica (mesmo número).
+      const r = await gravarReservaDoSite(reservation);
+      if ('erro' in r) return { success: false, error: r.erro };
       await loadFromSupabase(true);
-
-      // Adiciona apenas se ainda não estiver na lista (evita duplicação por fetch rápido)
-      setReservationsState(prev => {
-        if (prev.some(r => r.id === reservation.id)) return prev;
-        const updated = [reservation, ...prev].slice(0, 1000);
-        saveToStorage(STORAGE_KEYS.reservations, updated);
-        return updated;
-      });
       return { success: true };
-
-    } catch (err: any) {
-      console.error('[Supabase] Erro de rede ou conexão:', err);
-
-      // Se for erro de rede/conexão no catch (ex: TypeError: Failed to fetch), 
-      // tentamos enfileirar offline para não perder a reserva e permitir que o usuário continue.
-      // Adicionado 'Load failed' para iPhone
-      const isNetworkError = err.name === 'TypeError' || err.message?.includes('failed to fetch') || err.message?.includes('NetworkError') || err.message?.includes('Load failed');
-
-      if (isNetworkError) {
-        console.warn('[Offline] Erro detectado no catch. Enfileirando reserva de segurança...');
-
-        // Dados para salvar (repetindo a estrutura se necessário ou criando uma variável acima)
-        // Como o reservationId agora é persistente no BookingForm, isso evita duplicatas mesmo se o
-        // primeiro request "quase" deu certo.
-        const dataToSave = buildReservationRowsPerRoom(reservation, 'Motor de Reservas');
-
-        await offlineQueue.enqueue({
-          table: 'reservations',
-          action: 'INSERT',
-          data: dataToSave
-        });
-
-        // Adiciona ao estado local apenas se ainda não existir (prevenção contra duplicidade na UI)
-        setReservationsState(prev => {
-          if (prev.some(r => r.id === reservation.id)) return prev;
-          const updated = [reservation, ...prev].slice(0, 1000);
-          saveToStorage(STORAGE_KEYS.reservations, updated);
-          return updated;
-        });
-
-        return { success: true }; // Retornamos sucesso otimista
-      }
-
-      return {
-        success: false,
-        error: err.name === 'TypeError' ? 'Erro de conexão com o servidor. Verifique sua internet ou se há algum bloqueador ativado.' : err.message
-      };
     } finally {
       setIsSaving(false);
     }

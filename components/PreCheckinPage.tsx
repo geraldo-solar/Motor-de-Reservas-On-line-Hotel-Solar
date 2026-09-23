@@ -2,14 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Check, AlertCircle } from 'lucide-react';
 import { Reservation } from '../types';
 import { formatDisplayDate } from '../utils/dateUtils';
-import { mapReservationRow, mapReservations } from '../utils/mapReservation';
-import { sendPreCheckinAdminEmail, getShortReservationId } from '../services/emailService';
-import { supabase } from '../lib/supabase';
+import { ehUuid } from '../utils/reservaDoSite';
+import { sendPreCheckinAdminEmail } from '../services/emailService';
+import { buscarReserva, enviarPreCheckin } from '../services/reservaNoServidor';
 
 interface PreCheckinPageProps {
     reservationId: string;
     onBack: () => void;
-    reservations: Reservation[];
 }
 
 const BRAZIL_STATES = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
@@ -91,7 +90,7 @@ const INITIAL_DATA: FNRHData = {
     proximoDestino: ''
 };
 
-export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, onBack, reservations }) => {
+export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, onBack }) => {
     const [reservation, setReservation] = useState<Reservation | null>(null);
     const [groupRooms, setGroupRooms] = useState<Reservation[]>([]);
     const [roomAssignments, setRoomAssignments] = useState<{ titular: string; acompanhantes: string[] }[]>([]);
@@ -116,7 +115,6 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
 
     useEffect(() => {
         let cancelado = false;
-        let timerDesistencia: ReturnType<typeof setTimeout> | undefined;
 
         const aplicar = (principal: Reservation, doGrupo: Reservation[]) => {
             if (cancelado) return;
@@ -132,89 +130,27 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
             setLoading(false);
         };
 
-        const ordenarPorQuarto = (lista: Reservation[]) =>
-            [...lista].sort((a, b) => (a.rooms[0]?.name || '').localeCompare(b.rooms[0]?.name || ''));
-
-        // 1. Caminho rápido: a reserva já está na lista que o app carregou.
-        const found = reservations.find(r =>
-            r.id === reservationId ||
-            getShortReservationId(r.id) === reservationId.toUpperCase()
-        );
-
-        if (found) {
-            aplicar(found, found.groupId ? reservations.filter(r => r.groupId === found.groupId) : []);
-            return;
-        }
-
-        // Link pode ter sido gerado com o ID do GRUPO (reservas com múltiplos quartos)
-        const matchedGroup = reservations.filter(r =>
-            r.groupId && (r.groupId === reservationId || getShortReservationId(r.groupId).toUpperCase() === reservationId.toUpperCase())
-        );
-
-        if (matchedGroup.length > 0) {
-            const sorted = ordenarPorQuarto(matchedGroup);
-            aplicar(sorted[0], sorted);
-            return;
-        }
-
-        // 2. Fallback: busca direto no banco pelo ID.
-        //
-        // A lista em memória não serve como fonte única: ela chega alguns segundos
-        // depois da primeira renderização e é truncada nas reservas mais recentes,
-        // então links legítimos caíam em "Reserva não encontrada". A consulta por ID
-        // não depende de nenhuma das duas coisas.
+        // O servidor devolve só a reserva do link (e as do mesmo grupo): o
+        // navegador não baixa a lista de reservas.
         setLoading(true);
         (async () => {
-            try {
-                const ehUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reservationId);
-                if (!ehUuid) {
-                    // ID curto (8 primeiros caracteres) não dá para consultar no banco;
-                    // depende da lista, que ainda pode estar carregando. Se a lista já
-                    // chegou (ou nunca chega), desiste em vez de girar para sempre.
-                    if (reservations.length > 0) {
-                        if (!cancelado) setLoading(false);
-                        return;
-                    }
-                    timerDesistencia = setTimeout(() => { if (!cancelado) setLoading(false); }, 12000);
-                    return;
-                }
-
-                // A reserva pode ser a própria linha ou o titular de um grupo.
-                const [porId, porGrupo] = await Promise.all([
-                    supabase.from('reservations').select('*, companies(trade_name)').eq('id', reservationId).maybeSingle(),
-                    supabase.from('reservations').select('*, companies(trade_name)').eq('group_id', reservationId)
-                ]);
-
-                if (cancelado) return;
-
-                const linhaPrincipal = porId.data;
-                const grupoId = linhaPrincipal?.group_id || (porGrupo.data?.length ? reservationId : null);
-
-                let irmas: any[] = porGrupo.data || [];
-                if (linhaPrincipal?.group_id) {
-                    const { data } = await supabase
-                        .from('reservations').select('*, companies(trade_name)').eq('group_id', linhaPrincipal.group_id);
-                    irmas = data || [];
-                }
-                if (cancelado) return;
-
-                const mapeadas = ordenarPorQuarto(mapReservations(irmas));
-
-                if (linhaPrincipal) {
-                    aplicar(mapReservationRow(linhaPrincipal), grupoId ? mapeadas : []);
-                } else if (mapeadas.length > 0) {
-                    aplicar(mapeadas[0], mapeadas);
-                } else {
-                    setLoading(false);
-                }
-            } catch (err) {
-                console.error('[PreCheckin] Falha ao buscar a reserva pelo ID:', err);
+            if (!ehUuid(reservationId)) {
+                // Links antigos com o código curto: sem o e-mail não dá para
+                // confirmar que a reserva é de quem abriu o link.
                 if (!cancelado) setLoading(false);
+                return;
             }
+            const r = await buscarReserva({ id: reservationId });
+            if (cancelado) return;
+            if ('erro' in r || !r.reserva) {
+                setLoading(false);
+                return;
+            }
+            aplicar(r.reserva, r.grupo.length > 1 ? r.grupo : []);
         })();
 
-        return () => { cancelado = true; if (timerDesistencia) clearTimeout(timerDesistencia); };
-    }, [reservationId, reservations]);
+        return () => { cancelado = true; };
+    }, [reservationId]);
 
     // Inicializa a distribuição de hóspedes por quarto (apenas nomes) quando é uma reserva de grupo
     useEffect(() => {
@@ -403,182 +339,64 @@ export const PreCheckinPage: React.FC<PreCheckinPageProps> = ({ reservationId, o
                 city_state: `${formData.endereco.cidade} - ${formData.endereco.estado}`
             };
 
-            const cleanCpf = formData.cpf.replace(/\D/g, '');
-            let guestTargetId = null;
+            // 3. Acompanhantes com CPF (fora do fluxo de grupo, que coleta só nomes por quarto)
+            const acompanhantesComCpf = groupRooms.length > 1 ? [] : formData.acompanhantes
+                .filter(acomp => acomp.nome && (acomp.cpf || '').replace(/\D/g, ''))
+                .map(acomp => {
+                    const acompAddress = acomp.mesmoEndereco ? mainAddress : `${acomp.endereco?.logradouro || ''}, ${acomp.endereco?.numero || ''} ${acomp.endereco?.complemento ? '- ' + acomp.endereco?.complemento : ''} - ${acomp.endereco?.bairro || ''}`.trim();
+                    return {
+                        name: acomp.nome,
+                        full_name: acomp.nome,
+                        email: acomp.email || '',
+                        phone: acomp.telefone || '',
+                        cpf_cnpj: acomp.cpf,
+                        document: acomp.cpf,
+                        birthdate: acomp.dataNascimento || '',
+                        zip_code: acomp.mesmoEndereco ? formData.endereco.cep : acomp.endereco?.cep || '',
+                        address: acompAddress,
+                        city_state: acomp.mesmoEndereco ? `${formData.endereco.cidade} - ${formData.endereco.estado}` : `${acomp.endereco?.cidade || ''} - ${acomp.endereco?.estado || ''}`
+                    };
+                });
 
-            // Tenta buscar o guest_id atrelado à reserva (criado pelo ERP)
-            try {
-                const { data: resDb } = await supabase
-                    .from('reservations')
-                    .select('guest_id')
-                    .eq('id', reservation.id)
-                    .single();
-                
-                if (resDb && resDb.guest_id) {
-                    guestTargetId = resDb.guest_id;
-                }
-            } catch (err) {
-                console.error("Erro ao buscar guest da reserva:", err);
-            }
-
-            // Se a reserva não tiver guest_id vinculado, tenta buscar por CPF
-            if (!guestTargetId && cleanCpf) {
-                const { data: existingGuest } = await supabase
-                    .from('guests')
-                    .select('id')
-                    .or(`document.ilike.%${cleanCpf}%,cpf_cnpj.ilike.%${cleanCpf}%`)
-                    .limit(1)
-                    .maybeSingle();
-
-                if (existingGuest) {
-                    guestTargetId = existingGuest.id;
-                }
-            }
-
-            // Se ainda não achou, tenta buscar pelo nome exato (caso o ERP tenha criado a ficha fantasma sem CPF)
-            if (!guestTargetId && formData.nomeCompleto) {
-                const { data: existingByName } = await supabase
-                    .from('guests')
-                    .select('id')
-                    .ilike('full_name', formData.nomeCompleto.trim())
-                    .limit(1)
-                    .maybeSingle();
-                
-                if (existingByName) {
-                    guestTargetId = existingByName.id;
-                }
-            }
-
-            if (guestTargetId) {
-                // Atualiza o cadastro existente (criado pelo ERP ou achado por CPF)
-                await supabase.from('guests').update(guestPayload).eq('id', guestTargetId);
-            } else {
-                // Cria novo se não achar em nenhum lugar
-                const { data: newGuest } = await supabase.from('guests').insert([guestPayload]).select().single();
-                if (newGuest) {
-                    guestTargetId = newGuest.id;
-                }
-            }
-            
-            // Se achou ou criou um hóspede e ele não estava na reserva, vincula na reserva
-            if (guestTargetId) {
-                try {
-                    await supabase.from('reservations').update({ guest_id: guestTargetId }).eq('id', reservation.id);
-                } catch(e) {}
-            }
-
-            // 3. Salvar Acompanhantes no CRM, se houver (não se aplica ao fluxo de reserva de grupo,
-            // que coleta apenas nomes por quarto, sem CPF, e é persistido no bloco de grupo abaixo)
-            if (groupRooms.length <= 1 && formData.acompanhantes.length > 0) {
-                for (const acomp of formData.acompanhantes) {
-                    const acompCleanCpf = (acomp.cpf || '').replace(/\D/g, '');
-                    if (acomp.nome && acompCleanCpf) {
-                        const acompAddress = acomp.mesmoEndereco ? mainAddress : `${acomp.endereco?.logradouro || ''}, ${acomp.endereco?.numero || ''} ${acomp.endereco?.complemento ? '- ' + acomp.endereco?.complemento : ''} - ${acomp.endereco?.bairro || ''}`.trim();
-                        const acompPayload = {
-                            name: acomp.nome,
-                            full_name: acomp.nome,
-                            email: acomp.email || '',
-                            phone: acomp.telefone || '',
-                            cpf_cnpj: acomp.cpf,
-                            document: acomp.cpf,
-                            birthdate: acomp.dataNascimento || '',
-                            zip_code: acomp.mesmoEndereco ? formData.endereco.cep : acomp.endereco?.cep || '',
-                            address: acompAddress,
-                            city_state: acomp.mesmoEndereco ? `${formData.endereco.cidade} - ${formData.endereco.estado}` : `${acomp.endereco?.cidade || ''} - ${acomp.endereco?.estado || ''}`
-                        };
-
-                        let extAcomp = null;
-                        
-                        const { data: extByCpf } = await supabase.from('guests').select('id').or(`document.ilike.%${acompCleanCpf}%,cpf_cnpj.ilike.%${acompCleanCpf}%`).limit(1).maybeSingle();
-                        if (extByCpf) {
-                            extAcomp = extByCpf;
-                        } else if (acomp.nome) {
-                            const { data: extByName } = await supabase.from('guests').select('id').ilike('full_name', acomp.nome.trim()).limit(1).maybeSingle();
-                            if (extByName) extAcomp = extByName;
-                        }
-
-                        if (extAcomp) {
-                            await supabase.from('guests').update(acompPayload).eq('id', extAcomp.id);
-                        } else {
-                            await supabase.from('guests').insert([acompPayload]);
-                        }
-                    }
-                }
-            }
-
-            // 4. Update the reservation(s) globally so the system knows FNRH was filled
-            if (groupRooms.length > 1) {
+            // 4. O que cada acomodação passa a ter (a FNRH foi preenchida)
+            const dadosDoTitular = {
+                cpf: formData.cpf,
+                email: formData.email,
+                phone: formData.telefone,
+                rg: formData.rg,
+                profession: formData.profissao,
+                nationality: formData.nacionalidade,
+                address: mainAddress
+            };
+            const quartos = groupRooms.length > 1
                 // Reserva de grupo: persiste apenas nomes (titular + acompanhantes) por quarto.
                 // O quarto do preenchedor do formulário (o "primary") recebe também os dados completos da FNRH.
-                try {
-                    for (let i = 0; i < groupRooms.length; i++) {
-                        const room = groupRooms[i];
-                        const assignment = roomAssignments[i] || { titular: '', acompanhantes: [] };
-                        const isPrimaryRoom = room.id === reservation.id;
-
-                        const roomAdditionalGuests = (room.additionalGuests || []).map((g, gIdx) => ({
-                            ...g,
-                            name: assignment.acompanhantes[gIdx] || g.name
-                        }));
-
-                        const roomMainGuest = isPrimaryRoom
-                            ? {
-                                ...room.mainGuest,
-                                cpf: formData.cpf,
-                                name: assignment.titular || formData.nomeCompleto,
-                                email: formData.email,
-                                phone: formData.telefone,
-                                rg: formData.rg,
-                                profession: formData.profissao,
-                                nationality: formData.nacionalidade,
-                                address: mainAddress
-                            }
-                            : {
-                                ...room.mainGuest,
-                                name: assignment.titular || room.mainGuest.name
-                            };
-
-                        await supabase.from('reservations').update({
-                            pre_checkin_sent: true,
-                            main_guest: roomMainGuest,
-                            additional_guests: roomAdditionalGuests
-                        }).eq('id', room.id);
-                    }
-                } catch (err) {
-                    console.error("Erro secundário ao atualizar reservations do grupo: ", err);
-                }
-            } else {
-                const updatedAdditionalGuests = formData.acompanhantes.map((acomp, index) => {
-                    const existingGuest = reservation.additionalGuests?.[index] || {} as any;
+                ? groupRooms.map((room, i) => {
+                    const assignment = roomAssignments[i] || { titular: '', acompanhantes: [] };
+                    const isPrimaryRoom = room.id === reservation.id;
                     return {
-                        ...existingGuest,
+                        id: room.id,
+                        main_guest: isPrimaryRoom
+                            ? { ...room.mainGuest, ...dadosDoTitular, name: assignment.titular || formData.nomeCompleto }
+                            : { ...room.mainGuest, name: assignment.titular || room.mainGuest.name },
+                        additional_guests: (room.additionalGuests || []).map((g, gIdx) => ({ ...g, name: assignment.acompanhantes[gIdx] || g.name })),
+                    };
+                })
+                : [{
+                    id: reservation.id,
+                    main_guest: { ...reservation.mainGuest, ...dadosDoTitular, name: formData.nomeCompleto },
+                    additional_guests: formData.acompanhantes.map((acomp, index) => ({
+                        ...(reservation.additionalGuests?.[index] || {}),
                         name: acomp.nome,
                         cpf: acomp.cpf,
                         email: acomp.email,
                         phone: acomp.telefone
-                    };
-                });
+                    })),
+                }];
 
-                try {
-                   await supabase.from('reservations').update({
-                       pre_checkin_sent: true,
-                       main_guest: {
-                           ...reservation.mainGuest,
-                           cpf: formData.cpf,
-                           name: formData.nomeCompleto,
-                           email: formData.email,
-                           phone: formData.telefone,
-                           rg: formData.rg,
-                           profession: formData.profissao,
-                           nationality: formData.nacionalidade,
-                           address: mainAddress
-                       },
-                       additional_guests: updatedAdditionalGuests
-                   }).eq('id', reservation.id);
-                } catch (err) {
-                   console.error("Erro secundário ao atualizar reservation: ", err);
-                }
-            }
+            // O servidor grava a ficha do hóspede, os acompanhantes e a reserva.
+            const gravado = await enviarPreCheckin({ id: reservation.id, hospede: guestPayload, acompanhantes: acompanhantesComCpf, quartos });
+            if ('erro' in gravado) throw new Error(gravado.erro);
 
             setSuccess(true);
         } catch (err: any) {

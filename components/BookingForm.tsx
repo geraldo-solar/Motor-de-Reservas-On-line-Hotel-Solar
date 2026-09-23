@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { consultarCupom } from '../services/reservaNoServidor';
 import { Calendar, Users, ArrowRight, CheckCircle, Tag, Lock, ShoppingBag, CreditCard, MessageSquare, QrCode, Copy, User, Mail, Phone, FileText, ChevronLeft, ShieldCheck, BedDouble, Trash2, Plus, Minus, AlertCircle, ChevronDown, ChevronUp, Layers, Loader2 } from 'lucide-react';
 import { Room, DiscountCode, ExtraService, Reservation, HolidayPackage, DEFAULT_MAX_INSTALLMENTS } from '../types';
 import { toLocalISO } from '../utils/dateUtils';
@@ -135,10 +136,12 @@ const BookingForm: React.FC<BookingFormProps> = ({
   const subtotal = accommodationTotal + extrasTotal;
   const total = subtotal - (appliedDiscount?.amount || 0) - packageDiscountAmount;
 
-  const handleApplyDiscount = () => {
+  const handleApplyDiscount = async () => {
     const code = discountCode.toUpperCase().trim();
     if (!code) return;
-    const discount = discountCodes.find(d => d.code === code && d.active);
+    // O painel já tem a lista de cupons; o site pergunta ao servidor só pelo
+    // código digitado (a lista de cupons não vai mais para o navegador).
+    const discount = discountCodes.find(d => d.code === code && d.active) || await consultarCupom(code);
 
     if (!discount) {
       alert('Cupom inválido ou expirado.');

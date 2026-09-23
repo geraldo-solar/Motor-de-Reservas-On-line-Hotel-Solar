@@ -27,7 +27,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
   const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+  // Chave do servidor quando cadastrada: a chave pública deixa de gravar reservas (VEN-10, fase 3).
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
   if (!supabaseUrl || !supabaseKey) return res.status(500).json({ error: "Missing Supabase credentials" });
 
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -133,33 +134,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 
 
-    // Inventory Decrement
-    try {
-      if (rooms && rooms.length > 0) {
-        for (const roomSnapshot of rooms) {
-          const { data: roomTypes } = await supabase.from('room_types').select('*').ilike('name', `%${roomSnapshot.name}%`);
-          if (roomTypes && roomTypes.length > 0) {
-            const currentRoom = roomTypes[0];
-            const updatedOverrides = [...(currentRoom.overrides || [])];
-            let current = new Date(checkIn);
-            let loopGuard = 0;
-            
-            while (current < new Date(checkOut) && loopGuard < 100) {
-              const iso = current.toISOString().split('T')[0];
-              const ovIndex = updatedOverrides.findIndex(o => o.dateIso === iso);
-              if (ovIndex >= 0) {
-                updatedOverrides[ovIndex].availableQuantity = Math.max(0, (updatedOverrides[ovIndex].availableQuantity ?? currentRoom.total_quantity) - 1);
-              } else {
-                updatedOverrides.push({ dateIso: iso, price: currentRoom.base_price, availableQuantity: Math.max(0, (currentRoom.total_quantity || 1) - 1), isClosed: false });
-              }
-              current.setUTCDate(current.getUTCDate() + 1); // DST Safe Iterator
-              loopGuard++;
-            }
-            await supabase.from('room_types').update({ overrides: updatedOverrides }).eq('id', currentRoom.id);
-          }
-        }
-      }
-    } catch (invErr) { console.error('Inventory error:', invErr); }
+    // Estoque: o próprio banco tira 1 por dia quando a reserva entra
+    // (conferido em 23/09). Esta rota tirava de novo, e cada reserva do
+    // chatbot consumia 2 por dia.
 
     // FAST INLINE EMAIL PIPELINE (NO EXTERNAL FILE IMPORTS ALLOWED)
     let emailDebugInfo: any = { attempted: false };

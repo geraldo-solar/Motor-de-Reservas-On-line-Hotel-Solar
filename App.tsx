@@ -22,7 +22,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { DateSelectorBar } from './components/DateSelectorBar';
 import { RoomGallery } from './components/RoomGallery';
 import { PreCheckinPage } from './components/PreCheckinPage';
-import { supabase } from './lib/supabase';
+import { buscarReserva } from './services/reservaNoServidor';
 
 const ERP_URL = 'https://erp-hotel-solar.vercel.app';
 
@@ -157,9 +157,11 @@ export default function App() {
     if (paymentId) {
       const loadDraftFromSupabase = async () => {
         try {
-          const { data, error } = await supabase.from('reservations').select('*').eq('id', paymentId).single();
-          if (error || !data) throw error;
-          
+          // Pelo servidor: o navegador não lê reservas no banco.
+          const busca = await buscarReserva({ id: paymentId });
+          if ('erro' in busca || !busca.reserva) throw new Error('Reserva do link não encontrada');
+          const data = busca.reserva;
+
           const mappedRooms = (data.rooms || []).map((draftRoom: any) => {
             const actualRoom = rooms.find((r) => r.name === draftRoom.name || r.id === draftRoom.id);
             return {
@@ -167,17 +169,17 @@ export default function App() {
               priceSnapshot: draftRoom.priceSnapshot || (actualRoom ? actualRoom.price : 0)
             };
           }).filter((r: any) => !!r);
-          
+
           const parsed = {
             id: data.id,
-            checkIn: data.check_in,
-            checkOut: data.check_out,
-            mainGuest: data.main_guest,
-            additionalGuests: data.additional_guests || [],
+            checkIn: data.checkIn,
+            checkOut: data.checkOut,
+            mainGuest: data.mainGuest,
+            additionalGuests: data.additionalGuests || [],
             observations: (data.observations || '').replace('[ORIGEM: AI CHATBOT] ', ''),
             extraServices: data.extras || [],
             rooms: mappedRooms,
-            totalPrice: data.total_price,
+            totalPrice: data.totalPrice,
             isSupabaseDraft: true
           };
           
@@ -889,10 +891,6 @@ export default function App() {
           currentView === ViewState.CANCELAMENTO && (
             <CancellationPage
               reservationId={cancellationReservationId}
-              reservations={reservations}
-              setReservations={setReservations}
-              onSaveReservation={saveReservationToSupabase}
-              onUpdateStatus={updateReservationStatus}
               onBack={() => setCurrentView(ViewState.HOME)}
             />
           )
@@ -949,7 +947,6 @@ export default function App() {
           currentView === ViewState.PRE_CHECKIN && (
             <PreCheckinPage
               reservationId={preCheckinReservationId}
-              reservations={reservations}
               onBack={() => {
                 window.history.pushState({}, '', '/');
                 setCurrentView(ViewState.HOME);
