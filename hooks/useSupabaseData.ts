@@ -24,7 +24,11 @@ const buildReservationRowsPerRoom = (reservation: Reservation, createdBy: string
     discount_applied: reservation.discountApplied || null,
     package_discount_applied: reservation.packageDiscountApplied || null,
     payment_method: reservation.paymentMethod,
-    card_details: reservation.cardDetails || null,
+    // Nunca número, validade ou CVV: o cartão é digitado na Cielo. Guarda só
+    // o que a cobrança precisa (limite de parcelas do pacote).
+    card_details: reservation.cardDetails
+      ? { viaCielo: true, maxInstallments: reservation.cardDetails.maxInstallments ?? reservation.cardDetails.installments ?? 1 }
+      : null,
     status: reservation.status,
     cancellation_reason: reservation.cancellationReason || null,
     created_by: createdBy,

@@ -24,6 +24,8 @@ import { RoomGallery } from './components/RoomGallery';
 import { PreCheckinPage } from './components/PreCheckinPage';
 import { supabase } from './lib/supabase';
 
+const ERP_URL = 'https://erp-hotel-solar.vercel.app';
+
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.HOME);
   const [checkIn, setCheckIn] = useState<Date | null>(null);
@@ -377,13 +379,35 @@ export default function App() {
     }, 100);
   };
 
+  // Página de pagamento da Cielo, criada pelo ERP a partir da reserva já
+  // gravada (o valor vem do banco, não daqui). Se falhar, a reserva continua
+  // valendo e a equipe envia o link.
+  const pedirPagamentoNaCielo = async (reservationId: string): Promise<string | null> => {
+    try {
+      const r = await fetch(`${ERP_URL}/api/reservas/pagamento-cartao`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reservationId }),
+      });
+      const dados = await r.json().catch(() => ({}));
+      const url = typeof dados?.checkoutUrl === 'string' ? dados.checkoutUrl : null;
+      // Só segue endereço da própria Cielo: é lá que o hóspede digita o cartão.
+      return url && /^https:\/\/cieloecommerce\.cielo\.com\.br\//.test(url) ? url : null;
+    } catch {
+      return null;
+    }
+  };
+
   const handleAddReservation = async (reservation: Reservation) => {
     setSubmissionError(null);
     const result = await saveReservationToSupabase(reservation);
     if (result.success) {
-      setLastReservation(reservation);
+      const comPagamento = reservation.paymentMethod === 'CREDIT_CARD'
+        ? { ...reservation, checkoutUrl: await pedirPagamentoNaCielo(reservation.id) }
+        : reservation;
+      setLastReservation(comPagamento);
       setCurrentView(ViewState.SUCCESS);
-      sendReservationEmails(reservation);
+      sendReservationEmails(comPagamento);
       return true;
     } else {
       const errorMsg = result.error || 'Erro inesperado';

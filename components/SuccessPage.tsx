@@ -86,13 +86,23 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({ reservation, onGoHome,
                 )}
 
                 {/* Seção de Pagamento Cartão */}
-                {reservation.paymentMethod === 'CREDIT_CARD' && reservation.cardDetails && (
-                    <div className="bg-solar-green/5 p-6 rounded-2xl border border-solar-green/10 text-left space-y-3">
+                {reservation.paymentMethod === 'CREDIT_CARD' && (
+                    <div className="bg-solar-green/5 p-6 rounded-2xl border border-solar-green/10 text-left space-y-4">
                         <div className="flex items-center gap-2 text-solar-green">
                             <CreditCard size={20} className="text-solar-gold" />
                             <span className="text-xs font-bold uppercase tracking-widest">Pagamento via Cartão de Crédito</span>
                         </div>
-                        <p className="text-sm text-slate-600">Seu pagamento será processado em até <strong>{reservation.cardDetails.installments}x</strong> no cartão final <strong>****{reservation.cardDetails.number.slice(-4)}</strong>.</p>
+                        {reservation.checkoutUrl ? (
+                            <>
+                                <p className="text-sm text-slate-600">Sua reserva está registrada. Para garanti-la, pague na página segura da Cielo, à vista ou em até <strong>{reservation.cardDetails?.maxInstallments || 1}x sem juros</strong>.</p>
+                                <a href={reservation.checkoutUrl} className="block w-full text-center bg-solar-gold text-solar-green py-4 rounded-2xl font-bold uppercase tracking-widest hover:bg-solar-green hover:text-white transition-all text-sm">
+                                    Pagar agora no cartão pela Cielo
+                                </a>
+                                <p className="text-[11px] text-slate-400">O hotel não recebe os dados do seu cartão. O mesmo botão está no e-mail de confirmação.</p>
+                            </>
+                        ) : (
+                            <p className="text-sm text-slate-600">Sua reserva está registrada. Nossa equipe vai enviar o link para pagar no cartão pelo WhatsApp e pelo e-mail.</p>
+                        )}
                     </div>
                 )}
 

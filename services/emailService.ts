@@ -157,20 +157,30 @@ export const generateClientEmailHTML = (reservation: Reservation): string => {
       </div>
     `;
   } else {
-    const installmentsText = reservation.cardDetails?.installments && reservation.cardDetails.installments > 1
-      ? `em ${reservation.cardDetails.installments} x`
-      : 'à vista';
+    // Cartão pago na página da Cielo: o e-mail leva o botão, para quem fechou
+    // a aba antes de pagar. Sem o link (Cielo fora do ar), a equipe envia.
+    const parcelasMax = reservation.cardDetails?.maxInstallments || reservation.cardDetails?.installments || 1;
+    const linkSeguro = reservation.checkoutUrl && /^https:\/\/cieloecommerce\.cielo\.com\.br\//.test(reservation.checkoutUrl)
+      ? reservation.checkoutUrl.replace(/"/g, '%22').replace(/</g, '%3C')
+      : null;
     paymentSection = `
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px 0;">
         <h3 style="color: #1a3c34; margin: 0 0 16px 0; font-size: 18px;">
           💳 Pagamento via Cartão de Crédito
         </h3>
         <p style="color: #475569; margin: 0;">
-          Pagamento ${installmentsText} no valor de <strong style="color: #1a3c34;">${formatCurrency(reservation.totalPrice)}</strong>
+          Valor: <strong style="color: #1a3c34;">${formatCurrency(reservation.totalPrice)}</strong>, à vista ou em até ${parcelasMax}x sem juros.
         </p>
+        ${linkSeguro ? `
+        <div style="text-align: center; margin: 20px 0 8px 0;">
+          <a href="${linkSeguro}" style="display: inline-block; background: #1a3c34; color: #d4a853; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; letter-spacing: 1px;">PAGAR NO CARTÃO PELA CIELO</a>
+        </div>
+        <p style="color: #64748b; margin: 8px 0 0 0; font-size: 12px; text-align: center;">
+          Página segura da Cielo: o hotel não recebe os dados do seu cartão. Se já pagou, desconsidere.
+        </p>` : `
         <p style="color: #64748b; margin: 12px 0 0 0; font-size: 13px;">
-          Aguarde a confirmação do processamento do pagamento.
-        </p>
+          Nossa equipe vai enviar o link para pagar no cartão pelo WhatsApp.
+        </p>`}
       </div>
     `;
   }

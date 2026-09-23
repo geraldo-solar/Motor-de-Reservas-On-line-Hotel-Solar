@@ -24,45 +24,6 @@ interface BookingFormProps {
 const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 const validateCPF = (cpf: string) => cpf.replace(/\D/g, '').length === 11;
 
-const isValidLuhn = (number: string) => {
-  const digits = number.replace(/\s/g, '').split('').map(Number);
-  let sum = 0;
-  let isEven = false;
-
-  for (let i = digits.length - 1; i >= 0; i--) {
-    let digit = digits[i];
-    if (isEven) {
-      digit *= 2;
-      if (digit > 9) digit -= 9;
-    }
-    sum += digit;
-    isEven = !isEven;
-  }
-  return sum % 10 === 0;
-};
-
-const isValidExpiry = (expiry: string) => {
-  if (!/^\d{2}\/\d{2}$/.test(expiry)) return false;
-  const [month, year] = expiry.split('/').map(Number);
-  if (month < 1 || month > 12) return false;
-
-  const now = new Date();
-  const currentYear = now.getFullYear() % 100;
-  const currentMonth = now.getMonth() + 1;
-
-  if (year < currentYear) return false;
-  if (year === currentYear && month < currentMonth) return false;
-  return true;
-};
-
-const maskCardNumber = (value: string) => {
-  return value.replace(/\D/g, '').replace(/(\d{4})(?=\d)/g, '$1 ').substring(0, 19);
-};
-
-const maskExpiry = (value: string) => {
-  return value.replace(/\D/g, '').replace(/(\d{2})(?=\d)/g, '$1/').substring(0, 5);
-};
-
 const BookingForm: React.FC<BookingFormProps> = ({
   selectedRooms,
   discountCodes,
@@ -92,11 +53,6 @@ const BookingForm: React.FC<BookingFormProps> = ({
   // Controle de Hóspedes Adicionais (Por Quarto)
   const [additionalGuests, setAdditionalGuests] = useState<{name: string, age: string, roomId: string, roomName: string}[]>([]);
 
-  const [cardHolder, setCardHolder] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
-  const [installments, setInstallments] = useState(1);
 
   const [showPolicies, setShowPolicies] = useState(false);
   const [agreedToPolicies, setAgreedToPolicies] = useState(false);
@@ -221,22 +177,8 @@ const BookingForm: React.FC<BookingFormProps> = ({
       if (!validateCPF(cpf)) newErrors.cpf = 'CPF inválido (11 dígitos)';
       if (!phone.trim()) newErrors.phone = 'O WhatsApp é obrigatório';
 
-      if (paymentMethod === 'CREDIT_CARD') {
-        const cleanCard = cardNumber.replace(/\s/g, '');
-        if (!cardHolder.trim()) newErrors.cardHolder = 'Nome impresso é obrigatório';
-
-        if (cleanCard.length < 13 || !isValidLuhn(cleanCard)) {
-          newErrors.cardNumber = 'Número de cartão inválido';
-        }
-
-        if (!isValidExpiry(cardExpiry)) {
-          newErrors.cardExpiry = 'Data de expiração inválida ou vencida';
-        }
-
-        if (cardCvv.length < 3) {
-          newErrors.cardCvv = 'CVV inválido';
-        }
-      }
+      // Cartão: nada a validar aqui. O hóspede digita o cartão na página da
+      // Cielo, depois de a reserva ser gravada.
 
       // Validação dos Hóspedes Extras
       additionalGuests.forEach((guest, index) => {
@@ -326,13 +268,8 @@ const BookingForm: React.FC<BookingFormProps> = ({
         discountApplied: appliedDiscount || undefined,
         packageDiscountApplied: packageDiscountAmount > 0 ? { percentage: activePackage!.fullPeriodDiscountPct!, amount: packageDiscountAmount } : undefined,
         paymentMethod,
-        cardDetails: paymentMethod === 'CREDIT_CARD' ? {
-          holderName: cardHolder,
-          number: cardNumber,
-          expiry: cardExpiry,
-          cvv: cardCvv,
-          installments: installments
-        } : undefined,
+        // Só o limite de parcelas do pacote: o cartão é digitado na Cielo.
+        cardDetails: paymentMethod === 'CREDIT_CARD' ? { viaCielo: true, maxInstallments } : undefined,
         status: 'PENDING',
         isSupabaseDraft: draftPayload?.isSupabaseDraft
       };
@@ -664,80 +601,16 @@ const BookingForm: React.FC<BookingFormProps> = ({
           </div>
 
           {paymentMethod === 'CREDIT_CARD' && (
-            <div className="space-y-6 bg-slate-50 p-6 rounded-xl border border-slate-200 animate-in slide-in-from-top-4">
-              <div className="flex items-center gap-2 text-solar-green border-b border-slate-200 pb-2 mb-4">
+            <div className="space-y-3 bg-slate-50 p-6 rounded-xl border border-slate-200 animate-in slide-in-from-top-4">
+              <div className="flex items-center gap-2 text-solar-green border-b border-slate-200 pb-2">
                 <ShieldCheck size={18} className="text-solar-gold" />
-                <span className="font-bold uppercase tracking-widest text-[10px]">Ambiente Seguro</span>
+                <span className="font-bold uppercase tracking-widest text-[10px]">Pagamento na página segura da Cielo</span>
               </div>
-
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <label className={`text-[9px] font-bold uppercase tracking-widest block ${errors.cardNumber ? 'text-red-500' : 'text-slate-400'}`}>Número do Cartão</label>
-                  <input
-                    value={cardNumber}
-                    onChange={e => { setCardNumber(maskCardNumber(e.target.value)); if (errors.cardNumber) setErrors(prev => ({ ...prev, cardNumber: '' })) }}
-                    className={`w-full p-4 bg-white border rounded-lg outline-none text-sm ${errors.cardNumber ? 'border-red-500 ring-1 ring-red-100 bg-red-50/10' : 'focus:border-solar-gold border-slate-200'}`}
-                    placeholder="0000 0000 0000 0000"
-                    maxLength={19}
-                  />
-                  {errors.cardNumber && <span className="text-[9px] text-red-500 font-bold uppercase">{errors.cardNumber}</span>}
-                </div>
-
-                <div className="space-y-1">
-                  <label className={`text-[9px] font-bold uppercase tracking-widest block ${errors.cardHolder ? 'text-red-500' : 'text-slate-400'}`}>Nome Impresso no Cartão</label>
-                  <input
-                    value={cardHolder}
-                    onChange={e => { setCardHolder(e.target.value.toUpperCase()); if (errors.cardHolder) setErrors(prev => ({ ...prev, cardHolder: '' })) }}
-                    className={`w-full p-4 bg-white border rounded-lg outline-none text-sm uppercase ${errors.cardHolder ? 'border-red-500 ring-1 ring-red-100 bg-red-50/10' : 'focus:border-solar-gold border-slate-200'}`}
-                    placeholder="COMO ESTÁ NO CARTÃO"
-                  />
-                  {errors.cardHolder && <span className="text-[9px] text-red-500 font-bold uppercase">{errors.cardHolder}</span>}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className={`text-[9px] font-bold uppercase tracking-widest block ${errors.cardExpiry ? 'text-red-500' : 'text-slate-400'}`}>Validade (MM/AA)</label>
-                    <input
-                      value={cardExpiry}
-                      onChange={e => { setCardExpiry(maskExpiry(e.target.value)); if (errors.cardExpiry) setErrors(prev => ({ ...prev, cardExpiry: '' })) }}
-                      className={`w-full p-4 bg-white border rounded-lg outline-none text-sm ${errors.cardExpiry ? 'border-red-500 ring-1 ring-red-100 bg-red-50/10' : 'focus:border-solar-gold border-slate-200'}`}
-                      placeholder="MM/AA"
-                      maxLength={5}
-                    />
-                    {errors.cardExpiry && <span className="text-[9px] text-red-500 font-bold uppercase">{errors.cardExpiry}</span>}
-                  </div>
-                  <div className="space-y-1">
-                    <label className={`text-[9px] font-bold uppercase tracking-widest block ${errors.cardCvv ? 'text-red-500' : 'text-slate-400'}`}>CVV</label>
-                    <input
-                      value={cardCvv}
-                      onChange={e => { setCardCvv(e.target.value.replace(/\D/g, '').substring(0, 4)); if (errors.cardCvv) setErrors(prev => ({ ...prev, cardCvv: '' })) }}
-                      className={`w-full p-4 bg-white border rounded-lg outline-none text-sm ${errors.cardCvv ? 'border-red-500 ring-1 ring-red-100 bg-red-50/10' : 'focus:border-solar-gold border-slate-200'}`}
-                      placeholder="000"
-                      maxLength={4}
-                    />
-                    {errors.cardCvv && <span className="text-[9px] text-red-500 font-bold uppercase">{errors.cardCvv}</span>}
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[9px] font-bold uppercase tracking-widest block text-slate-400">Parcelamento</label>
-                  <div className="relative">
-                    <Layers size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-solar-gold pointer-events-none" />
-                    <select
-                      value={installments}
-                      onChange={e => setInstallments(Number(e.target.value))}
-                      className="w-full p-4 pl-12 bg-white border border-slate-200 rounded-lg outline-none text-sm focus:border-solar-gold appearance-none cursor-pointer"
-                    >
-                      {installmentOptions.map(num => (
-                        <option key={num} value={num}>
-                          {num}x de R$ {(total / num).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sem juros
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-              </div>
+              <p className="text-sm text-slate-600">
+                Ao confirmar, sua reserva é registrada e você recebe o botão para pagar <strong>R$ {total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> no cartão,
+                à vista ou em até <strong>{maxInstallments}x de R$ {(total / maxInstallments).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sem juros</strong>.
+              </p>
+              <p className="text-[11px] text-slate-400">O hotel não recebe os dados do seu cartão: você os digita direto na Cielo.</p>
             </div>
           )}
         </div>

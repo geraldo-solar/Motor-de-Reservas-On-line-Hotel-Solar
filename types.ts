@@ -141,13 +141,20 @@ export interface Reservation {
   discountApplied?: { code: string; amount: number };
   packageDiscountApplied?: { percentage: number; amount: number };
   paymentMethod: 'PIX' | 'CREDIT_CARD';
+  // Desde 22/09 o cartão é pago na página da Cielo: o site não recebe mais
+  // número, validade nem CVV. Os campos antigos só existem em reservas
+  // anteriores (e já foram limpos nas encerradas).
   cardDetails?: {
-    holderName: string;
-    number: string;
-    expiry: string;
-    cvv: string;
-    installments: number;
+    viaCielo?: boolean;
+    maxInstallments?: number;
+    installments?: number;
+    holderName?: string;
+    number?: string;
+    expiry?: string;
+    cvv?: string;
   };
+  /** Página de pagamento da Cielo desta reserva (não é gravada na reserva). */
+  checkoutUrl?: string | null;
   status: ReservationStatus;
   cancellationReason?: string;
   amountPaid?: number;

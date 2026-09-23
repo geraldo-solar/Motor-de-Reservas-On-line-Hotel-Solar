@@ -388,9 +388,11 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                 {reservation.paymentMethod === 'PIX' ? <QrCode size={24} className="text-solar-gold" /> : <CreditCard size={24} className="text-solar-gold" />}
                                 <span className="text-xs font-bold uppercase tracking-[0.2em]">{reservation.paymentMethod}</span>
                             </div>
-                            {reservation.cardDetails && (
+                            {reservation.paymentMethod === 'CREDIT_CARD' && <PagamentoNaCielo reservationId={reservation.id} />}
+                            {/* Só reservas anteriores a 22/09 ainda têm cartão gravado; apagar depois de cobrar. */}
+                            {reservation.cardDetails?.number && /\d{4}/.test(reservation.cardDetails.number) && !reservation.cardDetails.number.includes('•') && (
                                 <div className="mt-4 pt-4 border-t border-slate-200 space-y-2">
-                                    <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-2">Dados do Cartão</p>
+                                    <p className="text-[9px] font-black uppercase text-red-500 tracking-widest mb-2">Dados antigos do cartão — apagar depois de cobrar</p>
                                     <div className="grid grid-cols-1 gap-1 text-[11px] text-slate-600">
                                         <p><span className="font-bold">Titular:</span> {reservation.cardDetails.holderName}</p>
                                         <p><span className="font-bold">Número:</span> {reservation.cardDetails.number}</p>
@@ -463,3 +465,36 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
         </div>
     );
 };
+
+const ERP_URL = 'https://erp-hotel-solar.vercel.app';
+
+type SituacaoCielo = {
+    texto: string; situacao: string; divergencia: string | null; parcelas: number | null;
+    bandeira: string | null; final: string | null; pagoCentavos: number | null; esperadoCentavos: number;
+    linkDePagamento: string | null;
+};
+
+// Situação do pagamento na Cielo, confirmada pelo ERP consultando a Cielo.
+function PagamentoNaCielo({ reservationId }: { reservationId: string }) {
+    const [p, setP] = React.useState<SituacaoCielo | null | undefined>(undefined);
+    React.useEffect(() => {
+        let ativo = true;
+        fetch(`${ERP_URL}/api/reservas/pagamento-cartao?reservationId=${encodeURIComponent(reservationId)}`)
+            .then((r) => r.json()).then((d) => { if (ativo) setP(d?.pagamento ?? null); })
+            .catch(() => { if (ativo) setP(null); });
+        return () => { ativo = false; };
+    }, [reservationId]);
+    if (p === undefined) return <p className="mt-4 text-[11px] text-slate-400">Consultando a Cielo…</p>;
+    if (p === null) return <p className="mt-4 text-[11px] text-slate-500">Sem página de pagamento na Cielo para esta reserva.</p>;
+    const reais = (c: number | null) => c == null ? '' : (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const pago = p.situacao === 'pago' && !p.divergencia;
+    return (
+        <div className="mt-4 pt-4 border-t border-slate-200 space-y-1 text-[11px]">
+            <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-1">Cartão pela Cielo</p>
+            <p className={`font-bold ${pago ? 'text-emerald-700' : 'text-amber-700'}`}>{p.texto}</p>
+            {pago && <p className="text-slate-600">{reais(p.pagoCentavos)} · {p.parcelas}x · {p.bandeira} final {p.final}</p>}
+            {!pago && <p className="text-slate-500">Valor da cobrança: {reais(p.esperadoCentavos)}</p>}
+            {p.divergencia && <p className="font-bold text-red-600">Atenção: a Cielo mostra um pagamento de valor diferente.</p>}
+        </div>
+    );
+}
