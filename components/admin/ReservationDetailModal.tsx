@@ -508,17 +508,41 @@ function PagamentoNaCielo({ reservationId, pendente, cartaoDescartado }: { reser
             {erroLink && <p className="text-[11px] text-red-600">{erroLink}</p>}
         </div>
     ) : null;
-    React.useEffect(() => {
-        let ativo = true;
-        fetch(`${ERP_URL}/api/reservas/pagamento-cartao?reservationId=${encodeURIComponent(reservationId)}`)
-            .then((r) => r.json()).then((d) => { if (ativo) setP(d?.pagamento ?? null); })
-            .catch(() => { if (ativo) setP(null); });
-        return () => { ativo = false; };
+    const [consultando, setConsultando] = React.useState(false);
+    const consultar = React.useCallback(async () => {
+        setConsultando(true);
+        try {
+            const r = await fetch(`${ERP_URL}/api/reservas/pagamento-cartao?reservationId=${encodeURIComponent(reservationId)}`);
+            const d = await r.json();
+            setP(d?.pagamento ?? null);
+        } catch {
+            setP((atual) => atual ?? null);
+        }
+        setConsultando(false);
     }, [reservationId]);
+
+    // Enquanto o pagamento está em aberto, confere de novo a cada 15 s (por até
+    // 10 min): o aviso da Cielo pode chegar depois de a reserva ser aberta.
+    const emAberto = p === null || (p !== undefined && ['aguardando', 'pendente', 'autorizado', 'desconhecido'].includes(p.situacao));
+    React.useEffect(() => { void consultar(); }, [consultar]);
+    React.useEffect(() => {
+        if (!emAberto || !pendente) return;
+        const inicio = Date.now();
+        const t = setInterval(() => {
+            if (Date.now() - inicio > 10 * 60_000) { clearInterval(t); return; }
+            void consultar();
+        }, 15_000);
+        return () => clearInterval(t);
+    }, [emAberto, pendente, consultar]);
+    const botaoAtualizar = (
+        <button type="button" onClick={() => void consultar()} disabled={consultando} className="text-[10px] font-bold uppercase tracking-widest text-solar-green underline disabled:opacity-50">
+            {consultando ? 'Consultando…' : 'Atualizar'}
+        </button>
+    );
     if (p === undefined) return <p className="mt-4 text-[11px] text-slate-400">Consultando a Cielo…</p>;
     if (p === null) return (
         <div className="mt-4 pt-4 border-t border-slate-200 text-[11px]">
-            <p className="text-slate-500">Sem página de pagamento na Cielo para esta reserva.</p>
+            <p className="text-slate-500">Sem página de pagamento na Cielo para esta reserva. {botaoAtualizar}</p>
             {blocoDoLink}
         </div>
     );
@@ -526,8 +550,17 @@ function PagamentoNaCielo({ reservationId, pendente, cartaoDescartado }: { reser
     const pago = p.situacao === 'pago' && !p.divergencia;
     return (
         <div className="mt-4 pt-4 border-t border-slate-200 space-y-1 text-[11px]">
-            <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-1">Cartão pela Cielo</p>
-            <p className={`font-bold ${pago ? 'text-emerald-700' : 'text-amber-700'}`}>{p.texto}</p>
+            <div className="flex items-center justify-between mb-1">
+                <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Cartão pela Cielo</p>
+                {botaoAtualizar}
+            </div>
+            {pago ? (
+                <p className="rounded-lg bg-emerald-50 p-2 font-bold text-emerald-700 border border-emerald-200">
+                    ✓ Pago na Cielo{pendente ? ' — confira e confirme a reserva' : ''}
+                </p>
+            ) : (
+                <p className="font-bold text-amber-700">{p.texto}{emAberto && pendente ? ' (atualiza sozinho)' : ''}</p>
+            )}
             {pago && <p className="text-slate-600">{reais(p.pagoCentavos)} · {p.parcelas}x · {p.bandeira} final {p.final}</p>}
             {!pago && <p className="text-slate-500">Valor da cobrança: {reais(p.esperadoCentavos)}</p>}
             {!pago && p.linkDePagamento && <input readOnly value={p.linkDePagamento} onFocus={(e) => e.currentTarget.select()} className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-[11px]" />}
