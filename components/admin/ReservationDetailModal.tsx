@@ -38,6 +38,84 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
 
     const currentPaid = optimisticPaid ?? reservation?.amountPaid ?? 0;
 
+    // Situação do cartão na Cielo, informada pelo bloco "Cartão pela Cielo".
+    // O dinheiro que a Cielo confirmou só entra no histórico quando a recepção
+    // lança: até lá a tela diz "pago na Cielo, falta lançar", e não "pendente".
+    const [cielo, setCielo] = React.useState<SituacaoCielo | null>(null);
+    React.useEffect(() => { setCielo(null); }, [reservation?.id]);
+    const cieloJaLancado = Boolean(reservation?.paymentHistory?.some((pg: any) => String(pg?.transaction_info || '').startsWith('Cielo')));
+    const cieloPagoNaoLancado = Boolean(cielo && cielo.situacao === 'pago' && !cielo.divergencia && !cieloJaLancado
+        && reservation && currentPaid < reservation.totalPrice);
+    const [lancandoCielo, setLancandoCielo] = React.useState(false);
+    const lancarPagamentoDaCielo = async () => {
+        if (!cielo?.pagoCentavos) return;
+        setLancandoCielo(true);
+        const info = ['Cielo', cielo.parcelas ? `${cielo.parcelas}x` : null, cielo.bandeira && cielo.final ? `${cielo.bandeira} final ${cielo.final}` : null,
+            cielo.tid ? `TID ${cielo.tid}` : null, cielo.nsu ? `NSU ${cielo.nsu}` : null].filter(Boolean).join(' · ');
+        await registrarPagamento(cielo.pagoCentavos / 100, 'Cartão de Crédito (Cielo)', info);
+        setLancandoCielo(false);
+    };
+
+    // Lança um pagamento na reserva, manda ao hóspede o e-mail de pagamento
+    // confirmado e confirma a reserva. Usado pelo "Registrar & Enviar" manual e
+    // pelo "Lançar pagamento da Cielo" (mesmo caminho, dados já preenchidos).
+    const registrarPagamento = async (val: number, metodo: string, info: string) => {
+        if (!reservation) return;
+        const newTotal = currentPaid + val;
+        const newHistory = [
+            ...(reservation.paymentHistory || []),
+            {
+                date: new Date().toISOString(),
+                amount: val,
+                method: metodo,
+                transaction_info: info
+            }
+        ];
+
+        // Se não tinha histórico mas tinha valor, adiciona o valor antigo como entrada inicial
+        if ((!reservation.paymentHistory || reservation.paymentHistory.length === 0) && currentPaid > 0) {
+            newHistory.unshift({ 
+                date: reservation.createdAt.toISOString(), 
+                amount: currentPaid,
+                method: reservation.paymentMethod === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX',
+                transaction_info: 'Pagamento Inicial'
+            });
+        }
+
+        // 1. Update Amount & History
+        const success = await onUpdateReservation(reservation.id, {
+            amountPaid: newTotal,
+            paymentHistory: newHistory
+        });
+
+        if (success) {
+            try {
+                // 2. Send Email
+                const effectiveReservation = {
+                    ...reservation,
+                    amountPaid: newTotal,
+                    paymentHistory: newHistory
+                };
+                await sendPaymentConfirmedEmail(effectiveReservation);
+
+                // 3. Confirm Status (se ainda não estiver)
+                if (reservation.status !== 'CONFIRMED') {
+                    await onUpdateStatus(reservation.id, 'CONFIRMED');
+                }
+
+                setSuccessMessage("Novo pagamento registrado e notificado!");
+                setIsEditingPrice(false);
+                setOptimisticPaid(newTotal);
+                setTimeout(() => setSuccessMessage(null), 4000);
+            } catch (err) {
+                console.error("Erro no fluxo de novo pagamento:", err);
+                setLocalError("Pagamento salvo, mas erro ao enviar e-mail.");
+            }
+        } else {
+            setLocalError("Erro ao salvar pagamento. Tente novamente.");
+        }
+    };
+
     const [confirmType, setConfirmType] = React.useState<'CONFIRM' | 'CANCEL' | null>(null);
     const [cancelReason, setCancelReason] = React.useState<string>('');
 
@@ -238,6 +316,19 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                     )}
                                 </div>
 
+                                {cieloPagoNaoLancado && cielo && (
+                                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs space-y-2">
+                                        <p className="font-bold text-emerald-800">
+                                            Pago na Cielo: {(cielo.pagoCentavos! / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                            {cielo.parcelas ? ` · ${cielo.parcelas}x` : ''}{cielo.bandeira ? ` · ${cielo.bandeira} final ${cielo.final}` : ''}
+                                        </p>
+                                        <p className="text-emerald-700">Ainda não lançado na reserva. Confira e lance: registra o pagamento, envia o e-mail ao hóspede e confirma a reserva.</p>
+                                        <button type="button" disabled={lancandoCielo} onClick={lancarPagamentoDaCielo}
+                                            className="w-full rounded-lg bg-emerald-600 py-2 text-[10px] font-bold uppercase tracking-widest text-white hover:bg-emerald-700 disabled:opacity-50">
+                                            {lancandoCielo ? 'Lançando…' : 'Lançar pagamento da Cielo e confirmar'}
+                                        </button>
+                                    </div>
+                                )}
                                 {/* Total Pago */}
                                 <div className="flex justify-between items-center border-t border-slate-100 pt-2">
                                     <span className="font-bold text-xs text-slate-600">Total Pago</span>
@@ -290,59 +381,11 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                                 onClick={async () => {
                                                     const val = parseFloat(priceInput);
                                                     if (!isNaN(val) && val > 0) {
-                                                        const newTotal = currentPaid + val;
-                                                        const newHistory = [
-                                                            ...(reservation.paymentHistory || []),
-                                                            { 
-                                                                date: new Date().toISOString(), 
-                                                                amount: val,
-                                                                method: reservation.paymentMethod === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX',
-                                                                transaction_info: reservation.paymentMethod === 'CREDIT_CARD' && reservation.cardDetails ? `Aprovado via Motor de Reservas (${reservation.cardDetails.installments}x)` : 'Confirmado via Motor de Reservas'
-                                                            }
-                                                        ];
-
-                                                        // Se não tinha histórico mas tinha valor, adiciona o valor antigo como entrada inicial
-                                                        if ((!reservation.paymentHistory || reservation.paymentHistory.length === 0) && currentPaid > 0) {
-                                                            newHistory.unshift({ 
-                                                                date: reservation.createdAt.toISOString(), 
-                                                                amount: currentPaid,
-                                                                method: reservation.paymentMethod === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX',
-                                                                transaction_info: 'Pagamento Inicial'
-                                                            });
-                                                        }
-
-                                                        // 1. Update Amount & History
-                                                        const success = await onUpdateReservation(reservation.id, {
-                                                            amountPaid: newTotal,
-                                                            paymentHistory: newHistory
-                                                        });
-
-                                                        if (success) {
-                                                            try {
-                                                                // 2. Send Email
-                                                                const effectiveReservation = {
-                                                                    ...reservation,
-                                                                    amountPaid: newTotal,
-                                                                    paymentHistory: newHistory
-                                                                };
-                                                                await sendPaymentConfirmedEmail(effectiveReservation);
-
-                                                                // 3. Confirm Status (se ainda não estiver)
-                                                                if (reservation.status !== 'CONFIRMED') {
-                                                                    await onUpdateStatus(reservation.id, 'CONFIRMED');
-                                                                }
-
-                                                                setSuccessMessage("Novo pagamento registrado e notificado!");
-                                                                setIsEditingPrice(false);
-                                                                setOptimisticPaid(newTotal);
-                                                                setTimeout(() => setSuccessMessage(null), 4000);
-                                                            } catch (err) {
-                                                                console.error("Erro no fluxo de novo pagamento:", err);
-                                                                setLocalError("Pagamento salvo, mas erro ao enviar e-mail.");
-                                                            }
-                                                        } else {
-                                                            setLocalError("Erro ao salvar pagamento. Tente novamente.");
-                                                        }
+                                                        await registrarPagamento(
+                                                            val,
+                                                            reservation.paymentMethod === 'CREDIT_CARD' ? 'Cartão de Crédito' : 'PIX',
+                                                            reservation.paymentMethod === 'CREDIT_CARD' ? 'Registrado pela recepção' : 'Confirmado via Motor de Reservas',
+                                                        );
                                                     }
                                                 }}
                                                 className="bg-green-600 text-white px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-green-700 shadow-lg active:scale-95 transition-all flex items-center gap-2"
@@ -363,9 +406,15 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
 
                                 return pending > 0 ? (
                                     <div className="flex justify-end pt-1">
-                                        <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest">
-                                            Pendente: R$ {pending.toLocaleString()}
-                                        </span>
+                                        {cieloPagoNaoLancado ? (
+                                            <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">
+                                                Pago na Cielo — falta lançar na reserva
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest">
+                                                Pendente: R$ {pending.toLocaleString()}
+                                            </span>
+                                        )}
                                     </div>
                                 ) : null;
                             })()}
@@ -388,7 +437,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                 {reservation.paymentMethod === 'PIX' ? <QrCode size={24} className="text-solar-gold" /> : <CreditCard size={24} className="text-solar-gold" />}
                                 <span className="text-xs font-bold uppercase tracking-[0.2em]">{reservation.paymentMethod}</span>
                             </div>
-                            {reservation.paymentMethod === 'CREDIT_CARD' && <PagamentoNaCielo reservationId={reservation.id} pendente={reservation.status === 'PENDING'} cartaoDescartado={Boolean((reservation.cardDetails as any)?.cartaoDescartado)} />}
+                            {reservation.paymentMethod === 'CREDIT_CARD' && <PagamentoNaCielo reservationId={reservation.id} pendente={String(reservation.status).toUpperCase() === 'PENDING'} onSituacao={setCielo} jaLancado={cieloJaLancado} cartaoDescartado={Boolean((reservation.cardDetails as any)?.cartaoDescartado)} />}
                             {/* Só reservas anteriores a 22/09 ainda têm cartão gravado; apagar depois de cobrar. */}
                             {reservation.cardDetails?.number && /\d{4}/.test(reservation.cardDetails.number) && !reservation.cardDetails.number.includes('•') && (
                                 <div className="mt-4 pt-4 border-t border-slate-200 space-y-2">
@@ -471,11 +520,11 @@ const ERP_URL = 'https://erp-hotel-solar.vercel.app';
 type SituacaoCielo = {
     texto: string; situacao: string; divergencia: string | null; parcelas: number | null;
     bandeira: string | null; final: string | null; pagoCentavos: number | null; esperadoCentavos: number;
-    linkDePagamento: string | null;
+    linkDePagamento: string | null; tid?: string | null; nsu?: string | null;
 };
 
 // Situação do pagamento na Cielo, confirmada pelo ERP consultando a Cielo.
-function PagamentoNaCielo({ reservationId, pendente, cartaoDescartado }: { reservationId: string; pendente: boolean; cartaoDescartado: boolean }) {
+function PagamentoNaCielo({ reservationId, pendente, cartaoDescartado, onSituacao, jaLancado }: { reservationId: string; pendente: boolean; cartaoDescartado: boolean; onSituacao?: (p: SituacaoCielo | null) => void; jaLancado?: boolean }) {
     const [p, setP] = React.useState<SituacaoCielo | null | undefined>(undefined);
     const [gerando, setGerando] = React.useState(false);
     const [linkGerado, setLinkGerado] = React.useState<string | null>(null);
@@ -515,11 +564,12 @@ function PagamentoNaCielo({ reservationId, pendente, cartaoDescartado }: { reser
             const r = await fetch(`${ERP_URL}/api/reservas/pagamento-cartao?reservationId=${encodeURIComponent(reservationId)}`);
             const d = await r.json();
             setP(d?.pagamento ?? null);
+            onSituacao?.(d?.pagamento ?? null);
         } catch {
             setP((atual) => atual ?? null);
         }
         setConsultando(false);
-    }, [reservationId]);
+    }, [reservationId, onSituacao]);
 
     // Enquanto o pagamento está em aberto, confere de novo a cada 15 s (por até
     // 10 min): o aviso da Cielo pode chegar depois de a reserva ser aberta.
@@ -556,7 +606,7 @@ function PagamentoNaCielo({ reservationId, pendente, cartaoDescartado }: { reser
             </div>
             {pago ? (
                 <p className="rounded-lg bg-emerald-50 p-2 font-bold text-emerald-700 border border-emerald-200">
-                    ✓ Pago na Cielo{pendente ? ' — confira e confirme a reserva' : ''}
+                    ✓ Pago na Cielo{jaLancado ? ' e lançado na reserva' : pendente ? ' — lance no histórico de pagamentos acima' : ''}
                 </p>
             ) : (
                 <p className="font-bold text-amber-700">{p.texto}{emAberto && pendente ? ' (atualiza sozinho)' : ''}</p>
