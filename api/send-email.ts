@@ -32,7 +32,7 @@ async function emailDoHospede(reservationId: string): Promise<string | null> {
     const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
     // Chave do servidor quando existir; a pública ainda lê reservas hoje e
     // deixa de ler na fase 3 do VEN-10 (aí a do servidor passa a ser exigida).
-    const chave = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+    const chave = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
     if (!url || !chave) return null;
     const r = await fetch(`${url}/rest/v1/reservations?id=eq.${reservationId}&select=main_guest`, {
         headers: { apikey: chave, Authorization: `Bearer ${chave}` },

@@ -4,7 +4,7 @@ import { eventMac, eventSummary, EVENT_FLOW, EVENT_TEST_CONTACT, ledgerToken, LU
 
 export async function eventLedger(id:string,action:string) {
   const url=process.env.VITE_SUPABASE_URL||process.env.SUPABASE_URL;
-  const key=process.env.SUPABASE_SERVICE_ROLE_KEY||process.env.VITE_SUPABASE_ANON_KEY||process.env.SUPABASE_ANON_KEY;
+  const key=process.env.SUPABASE_SERVICE_ROLE_KEY||process.env.SUPABASE_SECRET_KEY||process.env.VITE_SUPABASE_ANON_KEY||process.env.SUPABASE_ANON_KEY;
   if(!url||!key||!ledgerToken())throw Error('Event storage unavailable');
   const {data,error}=await createClient(url,key).rpc('solar_event_delivery_rpc',{p_token:ledgerToken(),p_id:id,p_action:action});
   if(error)throw Error('Event storage unavailable');

@@ -28,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   // Chave do servidor quando cadastrada: a chave pública deixa de gravar reservas (VEN-10, fase 3).
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
   if (!supabaseUrl || !supabaseKey) return res.status(500).json({ error: "Missing Supabase credentials" });
 
   const supabase = createClient(supabaseUrl, supabaseKey);
