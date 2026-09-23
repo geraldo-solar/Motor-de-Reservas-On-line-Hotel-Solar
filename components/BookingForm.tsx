@@ -333,7 +333,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {extras.filter(e => e.active).map(extra => (
+              {extras.filter(e => e.active && String(e.name || '').trim()).map(extra => (
                 <div key={extra.id} className="bg-white rounded-xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-md transition-all group flex h-32 md:h-40 relative">
                   <div className="w-1/3 md:w-2/5 relative overflow-hidden shrink-0">
                     <img src={getPublicImageUrl(extra.imageUrl, 300)} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={extra.name} loading="lazy" decoding="async" />

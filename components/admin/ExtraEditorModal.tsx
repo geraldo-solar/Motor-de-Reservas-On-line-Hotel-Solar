@@ -141,7 +141,14 @@ export const ExtraEditorModal: React.FC<ExtraEditorModalProps> = ({ isOpen, onCl
                     </div>
 
                     <div className="pt-4 flex flex-col gap-2">
-                        <button onClick={() => onSave(formData)} className="w-full bg-[#0F2820] text-[#D4AF37] py-5 rounded-2xl font-bold uppercase tracking-[0.3em] hover:bg-[#1a3c30] transition-all shadow-2xl active:scale-95">Salvar Serviço</button>
+                        {/* Sem nome o serviço aparecia em branco no site (4 casos em 23/09). */}
+                        <button
+                            onClick={() => formData.name.trim() && onSave({ ...formData, name: formData.name.trim() })}
+                            disabled={!formData.name.trim()}
+                            className="w-full bg-[#0F2820] text-[#D4AF37] py-5 rounded-2xl font-bold uppercase tracking-[0.3em] hover:bg-[#1a3c30] transition-all shadow-2xl active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            {formData.name.trim() ? 'Salvar Serviço' : 'Dê um nome ao serviço'}
+                        </button>
                         <button onClick={onClose} className="w-full text-slate-400 py-2 text-[10px] font-bold uppercase tracking-widest hover:text-slate-600">Cancelar</button>
                     </div>
                 </div>
