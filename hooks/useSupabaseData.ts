@@ -889,6 +889,15 @@ export const useSupabaseData = () => {
         }
       }
 
+      // A tela muda assim que o banco confirma. Recalcular a disponibilidade
+      // dos quartos e recarregar tudo leva segundos, e antes disso a recepção
+      // ficava sem saber se o cancelamento tinha entrado.
+      setReservationsState(prev => {
+        const updated = prev.map(r => r.id === id ? { ...r, status, cancellationReason: reason, cardDetails: undefined } as Reservation : r);
+        saveToStorage(STORAGE_KEYS.reservations, updated);
+        return updated;
+      });
+
       // --- SINCRONIZAÇÃO DE INVENTÁRIO ---
       const syncInventory = async (res: Reservation, operation: 'increase' | 'decrease') => {
         try {

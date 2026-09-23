@@ -14,11 +14,16 @@ const getShortReservationId = (id: string): string => {
 };
 
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
-    switch (status) {
+    switch (String(status).toUpperCase()) {
         case 'CONFIRMED':
             return <span className="flex items-center gap-1.5 px-3 py-1 bg-green-100 text-green-700 rounded-full text-[9px] font-bold uppercase tracking-widest border border-green-200"><CheckCircle2 size={12} /> Confirmada</span>;
         case 'CANCELED':
+        case 'CANCELLED':
             return <span className="flex items-center gap-1.5 px-3 py-1 bg-red-100 text-red-700 rounded-full text-[9px] font-bold uppercase tracking-widest border border-red-200"><XCircle size={12} /> Cancelada</span>;
+        case 'CHECKED_IN':
+            return <span className="flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-[9px] font-bold uppercase tracking-widest border border-blue-200"><CheckCircle2 size={12} /> Hospedado</span>;
+        case 'CHECKED_OUT':
+            return <span className="flex items-center gap-1.5 px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[9px] font-bold uppercase tracking-widest border border-slate-200"><CheckCircle2 size={12} /> Finalizada</span>;
         default:
             return <span className="flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-[9px] font-bold uppercase tracking-widest border border-amber-200"><Clock size={12} /> Pendente</span>;
     }

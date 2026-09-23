@@ -36,7 +36,10 @@ export const mapReservationRow = (r: any): Reservation => {
       } : undefined,
       paymentMethod: (r.payment_method || r.paymentMethod || 'PIX') as 'PIX' | 'CREDIT_CARD',
       cardDetails: r.card_details || r.cardDetails ? safeObject(r.card_details || r.cardDetails, undefined) : undefined,
-      status: (r.status === 'CANCELLED' ? 'CANCELED' : (r.status || 'PENDING')) as any,
+      // O banco guarda a situação em minúsculas ("canceled", "confirmed"); as
+      // telas comparam em maiúsculas. Sem normalizar, toda reserva cancelada ou
+      // confirmada aparecia como "Pendente" no painel (visto em 22/09).
+      status: normalizarSituacao(r.status) as any,
       cancellationReason: r.cancellation_reason || r.cancellationReason || '',
       packageDiscountApplied: (r.package_discount_applied || r.packageDiscountApplied) ? {
         percentage: Number((r.package_discount_applied || r.packageDiscountApplied).percentage || 0),
@@ -56,3 +59,8 @@ export const mapReservationRow = (r: any): Reservation => {
 };
 
 export const mapReservations = (data: any[]): Reservation[] => safeArray(data).map(mapReservationRow);
+
+export function normalizarSituacao(situacao: unknown): string {
+  const s = String(situacao || 'PENDING').trim().toUpperCase();
+  return s === 'CANCELLED' ? 'CANCELED' : s;
+}

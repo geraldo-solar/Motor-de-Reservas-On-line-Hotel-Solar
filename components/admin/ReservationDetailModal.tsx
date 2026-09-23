@@ -146,12 +146,20 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                     setLocalError('Erro ao atualizar no banco de dados.');
                 }
             } else {
-                await sendReservationCanceledEmail(reservation, cancelReason);
+                // Grava primeiro: se o banco recusar, o hóspede não recebe um
+                // e-mail de cancelamento de uma reserva que continua ativa.
                 const statusRes = await onUpdateStatus(reservation.id, 'CANCELED', cancelReason);
                 if (statusRes) {
-                    setSuccessMessage('Reserva cancelada e e-mail enviado.');
+                    setSuccessMessage('Reserva cancelada. Enviando e-mail ao hóspede…');
+                    const emailRes = await sendReservationCanceledEmail(reservation, cancelReason);
+                    if (emailRes && (emailRes as any).success === false) {
+                        setSuccessMessage('Reserva cancelada.');
+                        setLocalError('Cancelada no banco, mas o e-mail ao hóspede falhou.');
+                    } else {
+                        setSuccessMessage('Reserva cancelada e e-mail enviado ao hóspede.');
+                    }
                 } else {
-                    setLocalError('Erro ao cancelar no banco de dados.');
+                    setLocalError('Erro ao cancelar no banco de dados. Nada foi alterado.');
                 }
             }
             setConfirmType(null);
@@ -462,11 +470,14 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                             <button
                                                 type="button"
                                                 onClick={() => setConfirmType('CANCEL')}
-                                                className={`w-full py-3.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${reservation.status === 'CANCELED' ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-700 active:scale-95'}`}
-                                                disabled={reservation.status === 'CANCELED' || !!successMessage}
+                                                className={`w-full py-3.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 ${String(reservation.status).toUpperCase() === 'CANCELED' ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-700 active:scale-95'}`}
+                                                disabled={String(reservation.status).toUpperCase() === 'CANCELED' || !!successMessage}
                                             >
-                                                Cancelar Reserva
+                                                {String(reservation.status).toUpperCase() === 'CANCELED' ? 'Reserva cancelada' : 'Cancelar Reserva'}
                                             </button>
+                                            {/* Resultado ao lado do botão, onde a recepção está olhando. */}
+                                            {successMessage && <p className="rounded-lg bg-green-50 border border-green-200 p-2 text-center text-[11px] font-bold text-green-700">✅ {successMessage}</p>}
+                                            {localError && <p className="rounded-lg bg-red-50 border border-red-200 p-2 text-center text-[11px] font-bold text-red-700">{localError}</p>}
                                         </>
                                     ) : (
                                         <div className="bg-white p-4 rounded-xl border-2 border-solar-gold/30 animate-in zoom-in-95">
