@@ -57,8 +57,10 @@ export default async function handler(request: VercelRequest, response: VercelRe
             return response.status(brevoResponse.status).json({ error: 'Failed to sync contact', details: errorText });
         }
 
-        const data = await brevoResponse.json();
-        return response.status(200).json(data);
+        // Contato que já existia volta 204, sem corpo: é sucesso (antes dava
+        // erro 500 aqui, com o contato já atualizado no Brevo).
+        const texto = await brevoResponse.text();
+        return response.status(200).json(texto ? JSON.parse(texto) : { atualizado: true });
     } catch (error: any) {
         console.error('Internal Server Error:', error);
         return response.status(500).json({ error: 'Internal Server Error', details: error.message });
