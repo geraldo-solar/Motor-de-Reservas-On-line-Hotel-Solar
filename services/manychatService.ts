@@ -39,8 +39,9 @@ export const findOsCreateSubscriber = async (user: { name: string, phone: string
                 body: {
                     first_name: user.name.split(' ')[0],
                     last_name: user.name.split(' ').slice(1).join(' '),
-                    phone: phone,
-                    email: user.email,
+                    // Hotel Solar uses WhatsApp only. The generic phone/email
+                    // fields can enroll other channels and must not be sent.
+                    whatsapp_phone: phone,
                     consent_phrase: "Reserva Hotel Solar"
                 }
             })
