@@ -5,6 +5,7 @@ import {
   ehRascunhoDoChatbot, ehUuid, estoqueAjustado, fichaDoHospede, fichaQuePodeSerCompletada, linhasPorQuarto,
   reservaLimpa, soDigitos,
 } from '../utils/reservaDoSite.js';
+import { type ContextoDaCompra, enviarCompraParaMeta } from '../utils/metaConversoesServidor.js';
 
 // Reservas do site público, pelo servidor (VEN-10, fase 2).
 //
@@ -60,7 +61,7 @@ async function mexerNoEstoque(db: Banco, quartos: Array<{ id?: string }>, entrad
   }
 }
 
-async function criar(db: Banco, corpo: any) {
+async function criar(db: Banco, corpo: any, contexto: ContextoDaCompra) {
   const motivo = conferirReservaDoSite(corpo?.reserva);
   if (motivo) return { status: 400, json: { error: motivo } };
   const reserva = reservaLimpa(corpo.reserva);
@@ -74,6 +75,7 @@ async function criar(db: Banco, corpo: any) {
       // O chatbot já gravou a reserva e já tirou do estoque: só completa.
       const r = await db.from('reservations').upsert(linhas, { onConflict: 'id' });
       if (r.error) throw r.error;
+      await enviarCompraParaMeta(reserva, contexto);
       return { status: 200, json: { ok: true } };
     }
     // Mesmo pedido reenviado (a conexão caiu depois de gravar): já está salvo.
@@ -88,6 +90,8 @@ async function criar(db: Banco, corpo: any) {
   // devolve, por isso `cancelar` devolve.
   const r = await db.from('reservations').insert(linhas);
   if (r.error) throw r.error;
+  // Reenvio da mesma reserva (acima) não chega aqui: a compra vai uma vez.
+  await enviarCompraParaMeta(reserva, contexto);
   return { status: 200, json: { ok: true } };
 }
 
@@ -218,9 +222,23 @@ async function cupom(db: Banco, corpo: any) {
   return { status: 200, json: { cupom: cupomParaOSite(data) } };
 }
 
-const ACOES: Record<string, (db: Banco, corpo: any) => Promise<{ status: number; json: unknown }>> = {
+const ACOES: Record<string, (db: Banco, corpo: any, contexto: ContextoDaCompra) => Promise<{ status: number; json: unknown }>> = {
   buscar, criar, cancelar, 'pre-checkin': preCheckin, cupom,
 };
+
+const cabecalho = (valor: string | string[] | undefined) => (Array.isArray(valor) ? valor[0] : valor) || '';
+
+/** O que a Meta usa para ligar a reserva ao clique no anúncio. */
+function contextoDaCompra(req: VercelRequest): ContextoDaCompra {
+  return {
+    cookies: cabecalho(req.headers.cookie),
+    ip: cabecalho(req.headers['x-forwarded-for']).split(',')[0].trim() || cabecalho(req.headers['x-real-ip']),
+    navegador: cabecalho(req.headers['user-agent']).slice(0, 500),
+    host: cabecalho(req.headers['x-forwarded-host']) || cabecalho(req.headers.host),
+    pagina: cabecalho(req.headers.referer).slice(0, 1000),
+    agoraMs: Date.now(),
+  };
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store');
@@ -253,7 +271,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const acao = ACOES[String(corpo.acao || '')];
   if (!acao) return res.status(400).json({ error: 'Ação desconhecida.' });
   try {
-    const r = await acao(db, corpo);
+    const r = await acao(db, corpo, contextoDaCompra(req));
     return res.status(r.status).json(r.json);
   } catch (err) {
     console.error(`[reserva-site] ${corpo.acao}:`, err);

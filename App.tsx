@@ -23,6 +23,8 @@ import { DateSelectorBar } from './components/DateSelectorBar';
 import { RoomGallery } from './components/RoomGallery';
 import { PreCheckinPage } from './components/PreCheckinPage';
 import { buscarReserva } from './services/reservaNoServidor';
+import { rastrearNaMeta } from './services/metaPixel';
+import { dadosDaCompra, idDoEventoDeCompra } from './utils/metaEventos';
 
 const ERP_URL = 'https://erp-hotel-solar.vercel.app';
 
@@ -369,6 +371,14 @@ export default function App() {
   };
 
   const handleSelectPackage = (pkg: HolidayPackage) => {
+    // Quem abriu o pacote (ex.: Réveillon) vira público de remarketing na Meta.
+    rastrearNaMeta('ViewContent', {
+      content_name: pkg.name,
+      content_ids: [pkg.id],
+      content_category: 'pacote',
+      checkin_date: pkg.startIsoDate,
+      checkout_date: pkg.endIsoDate,
+    });
     const startDate = parseISODate(pkg.startIsoDate);
     const endDate = parseISODate(pkg.endIsoDate);
     setCheckIn(startDate);
@@ -404,6 +414,9 @@ export default function App() {
     setSubmissionError(null);
     const result = await saveReservationToSupabase(reservation);
     if (result.success) {
+      // Mesmo event_id que o servidor manda (api/check-reservation): a Meta
+      // conta uma compra só, venha pelos dois lados ou por um deles.
+      rastrearNaMeta('Purchase', dadosDaCompra(reservation), idDoEventoDeCompra(reservation.id));
       const comPagamento = reservation.paymentMethod === 'CREDIT_CARD'
         ? { ...reservation, checkoutUrl: await pedirPagamentoNaCielo(reservation.id) }
         : reservation;
@@ -472,6 +485,21 @@ export default function App() {
       .filter(p => p.active && (!p.endIsoDate || p.endIsoDate >= hoje))
       .sort((a, b) => a.startIsoDate.localeCompare(b.startIsoDate));
   }, [packages]);
+
+  // Início da reserva: uma vez a cada entrada no formulário. Com poucas vendas
+  // por semana, é o evento que dá volume para a Meta otimizar a campanha.
+  useEffect(() => {
+    if (currentView !== ViewState.BOOKING) return;
+    rastrearNaMeta('InitiateCheckout', {
+      content_ids: selectedRooms.map(r => r.id),
+      num_items: selectedRooms.length,
+      content_category: activePackage ? 'pacote' : 'hospedagem',
+      ...(activePackage ? { content_name: activePackage.name } : {}),
+      ...(checkIn ? { checkin_date: toLocalISO(checkIn) } : {}),
+      ...(checkOut ? { checkout_date: toLocalISO(checkOut) } : {}),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentView]);
 
   // Leva o visitante direto ao pacote que o link pediu. Roda a cada render até
   // o card aparecer: enquanto a lista não chega, não há o que rolar. Se o
