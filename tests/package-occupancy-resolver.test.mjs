@@ -73,7 +73,7 @@ test('pedido de exceção fica separado de datas confirmadas e não aciona catá
   assert.equal(result.result.quote_request,'ROOM_LIST');
   assert.equal(result.result.match_type,'package_date_request');
   assert.match(result.result.conversation_text,/31\/12 a 03\/01/);
-  assert.match(result.result.conversation_text,/sem confirmar as datas, valores ou uma reserva/);
+  assert.match(result.result.conversation_text,/Nenhuma data ou reserva foi confirmada/);
   assert.equal(result.state.package_date_request.text,message);
   assert.equal(result.state.package_context.id,'reveillon');
   assert.equal(result.state.facts.check_in,undefined);

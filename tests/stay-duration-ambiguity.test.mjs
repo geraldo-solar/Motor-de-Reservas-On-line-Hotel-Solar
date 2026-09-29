@@ -219,9 +219,10 @@ test('duração de Day Use e refeições não cria datas de quarto', () => {
 
 test('pacote e atendimento humano mantêm prioridade sobre a duração da estadia', () => {
   const packageResult = turn('Quero pacote de Réveillon por 2 noites, 30/12 e 31/12');
-  // Owner-confirmed regular New Year dates are 31/12–03/01; another period
-  // requires reception consultation rather than an ordinary duration quote.
-  assert.equal(packageResult.routed.quote_request, 'HUMANO');
+  // Owner-confirmed regular New Year dates are 31/12–03/01. Since 29/09/2026
+  // a partial period is declined clearly instead of an ordinary duration quote.
+  assert.equal(packageResult.routed.quote_request, 'NOQUOTE');
+  assert.match(packageResult.routed.answer, /somente no pacote completo/);
   assert.equal(packageResult.routed.can_collect, 'NAO');
   assert.match(packageResult.routed.answer, /pacote/);
   const human = turn('Quero falar com a recepção sobre 2 noites de 11/10 a 12/10');

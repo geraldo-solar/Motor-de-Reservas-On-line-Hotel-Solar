@@ -15,8 +15,9 @@ import { isAudioInput } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage } from '../utils/audioInput.js';
 import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
 import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
-import { namedPackageInquiry, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup,packageDiscoveryRequest,packageRoomDetailFollowup } from '../utils/packageContext.js';
+import { namedPackageInquiry, packageGeneralInclusionQuestion, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup,packageDiscoveryRequest,packageRoomDetailFollowup } from '../utils/packageContext.js';
 import {packageInclusionReply} from '../utils/packageInclusions.js';
+import {newYearSalesReply} from '../utils/newYearSales.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
 import {packageStayDates,readPackageStayQuery,packageStayPriceRequest} from '../utils/packageStayQuery.js';
@@ -254,7 +255,7 @@ const formatPackageDetails = (
   const fullPeriodRequired = !storedFreePeriodRule
     && (pkg.full_period_required === true || storedFullPeriodRule || legacyNewYearRule);
   if (fullPeriodRequired) {
-    text.push('', `📌 *Regra de permanência:* é necessário incluir o período completo de ${period}. Também posso calcular diárias adicionais antes ou depois, conforme tarifas e restrições do motor, sem confirmar disponibilidade.`);
+    text.push('', `📌 *Regra de permanência:* é necessário incluir o período completo de ${period}. Também posso calcular diárias adicionais antes ou depois, conforme as tarifas de cada data, sem confirmar disponibilidade.`);
   } else {
     text.push('', '📌 *Regra de permanência:* pode ser solicitado por uma ou mais diárias dentro do período, conforme as tarifas cadastradas para as datas escolhidas.');
   }
@@ -278,6 +279,30 @@ const formatPackageDetails = (
   );
   return fitWhatsApp(text.join('\n'), conversational);
 };
+
+// "O que vem no pacote?": programme and conditions only, without re-sending
+// the whole price table the customer has already received.
+const formatPackageInclusions = (pkg: PackageRecord, guests?: number) => {
+  pkg = safeBoatPackageCopy(pkg);
+  const period = pkg.start_iso_date && pkg.end_iso_date ? `${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}` : '';
+  const items = [...(pkg.includes || []), ...(pkg.benefits || [])].map(item => String(item).trim())
+    .filter((item, index, all) => item && all.indexOf(item) === index);
+  const text: string[] = [`🎉 *${pkg.name || 'Pacote especial'}*${period ? ` — ${period}` : ''}`];
+  const description = String(pkg.description || '').split(/(?<=[.!?])\s+/).filter(sentence =>
+    !/cupom|cupon|vagas? limitad|apenas \d+ reservas|ultimas? (vagas?|unidades?)|parcel/i.test(normalize(sentence))).join(' ');
+  if (description) text.push('', description);
+  if (items.length) text.push('', '✨ *Programação e itens inclusos:*', ...items.map(item => `• ${item}`));
+  text.push('', '☕ Café da manhã incluso todos os dias, como em toda hospedagem.');
+  if (Number(pkg.max_installments || 0) > 0) text.push(`💳 Parcelamento em até ${Number(pkg.max_installments)}x no cartão.`);
+  text.push('', guests ? 'Se quiser, já calculo o valor para o seu grupo.' : 'Quantas pessoas vão, contando adultos e crianças? Assim calculo o valor para vocês.');
+  return fitWhatsApp(text.join('\n'), true);
+};
+
+const packageInstallmentQuestion = (message: string) =>
+  /\b(?:parcel(?:ar|a|as|amento|ado|ada)|em quantas vezes|quantas vezes|dividir no cartao)\b/.test(normalize(message));
+const formatPackageInstallments = (pkg: PackageRecord) => Number(pkg.max_installments || 0) > 0
+  ? `Sim! No ${pkg.name || 'pacote'}, o pagamento pode ser parcelado em até ${Number(pkg.max_installments)}x no cartão de crédito. A recepção confirma a forma de pagamento ao finalizar a reserva.`
+  : `Para o ${pkg.name || 'pacote'}, não há parcelamento específico cadastrado. Nas reservas comuns, o cartão pode ser parcelado em até 3x sem juros; a recepção confirma a condição desse pacote.`;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only the first response of a user turn: carousel pages / suggested media
@@ -378,6 +403,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({...routed,quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
       can_collect:'NAO',confirmation_text:'',matched:false,match_type:deferred?'booking_deferral':'hotel_call_difficulty',availability_checked:false});
   }
+  const newYearSale=!req.query?.operation?newYearSalesReply(serviceMessage,earlyState?.package_context||earlyState?.recent_package):undefined;
+  if(newYearSale){
+    // Owner-confirmed Réveillon answers: the controller owns the handoff and
+    // the remembered turn; never replace them with the package card or a quote.
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    const answer='answer' in routed&&routed.answer?routed.answer:newYearSale.answer;
+    const handoff='quote_request' in routed&&routed.quote_request==='HUMANO';
+    return res.status(200).json({...routed,quote_request:handoff?'HUMANO':'ROOM_LIST',quote_text:answer,conversation_text:answer,
+      can_collect:'NAO',confirmation_text:'',matched:false,match_type:`new_year_${newYearSale.kind}`,availability_checked:false});
+  }
   let expiredSource=false;
   try{const source=typeof req.body?.state==='string'?JSON.parse(req.body.state):req.body?.state;expiredSource=packageEnded(source?.package_context);}catch{ /* No valid old focus. */ }
   if(!req.query?.operation&&(retiredIndependence(serviceMessage)||expiredSource||earlyState?.resolved_message===endedPackageMarker)){
@@ -410,7 +445,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const period=`${formatDate(query.check_in)} a ${formatDate(query.check_out)}`;
     const regular=pkg?`${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}`:'';
     const answer=!pkg?'O cadastro desse pacote mudou. Preciso consultar o pacote atual antes de calcular essas datas. Qual pacote deseja consultar?'
-      :!permitted.length?`${blockedExit?'A saída em '+formatDate(query.check_out):blockedEntry?'A entrada em '+formatDate(query.check_in):'O período '+period} está bloquead${blockedExit||blockedEntry?'a':'o'} no motor. O período regular do pacote é ${regular}; posso calcular diárias adicionais antes ou depois, respeitando essas restrições. Qual período você gostaria de simular? Não confirmei disponibilidade nem uma exceção.`
+      :!permitted.length?`${blockedExit?'Não temos saída em '+formatDate(query.check_out):blockedEntry?'Não temos entrada em '+formatDate(query.check_in):'Não temos hospedagem no período '+period} nesse pacote. O pacote é de ${regular}; se quiserem, dá para somar diárias antes ou depois dele. Qual período vocês preferem?`
       :!covered&&requiresFullPackagePeriod(pkg)&&query.check_in<pkg.end_iso_date&&query.check_out>pkg.start_iso_date
       ?`O pacote regular é de ${regular}. O período ${period} não inclui todas as noites do pacote. Posso calcular o período completo com diárias adicionais; para uma exceção, a recepção precisa avaliar. Quais datas deseja simular?`
       :currentStay?.price_requested&&'answer' in routed?routed.answer
@@ -742,11 +777,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const pkg = safeBoatPackageCopy(catalogPackage);
     const facts = conversationState?.facts || {};
     const family = familyAccommodation(conversationState, facts.guests || 0);
-    const differentDates = (facts.check_in && facts.check_in !== pkg.start_iso_date) || (facts.check_out && facts.check_out !== pkg.end_iso_date);
+    // Extra nights around the full package (31/12–04/01) are the same package.
+    const differentDates = (facts.check_in && facts.check_in !== pkg.start_iso_date && !(facts.check_in < String(pkg.start_iso_date) && (!facts.check_out || facts.check_out >= String(pkg.end_iso_date))))
+      || (facts.check_out && facts.check_out !== pkg.end_iso_date && !(facts.check_out > String(pkg.end_iso_date) && (!facts.check_in || facts.check_in <= String(pkg.start_iso_date))));
     const answer = packageAcknowledgment(userMessage)
       ? `Certo! Continuamos falando do pacote ${pkg.name}. Pode me dizer qual outra informação gostaria de esclarecer.`
+      : packageGeneralInclusionQuestion(userMessage)
+      ? formatPackageInclusions(pkg,facts.guests)
       : packageInclusionFollowup(userMessage,focusedPackage)
       ? packageInclusionReply(pkg,userMessage,conversationState?.history||[])
+      : packageInstallmentQuestion(userMessage) && !childPolicyQuestion(userMessage)
+      ? formatPackageInstallments(pkg)
       : differentDates
       ? `O pacote ${pkg.name} tem período de ${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}. As datas que você informou são diferentes${pkg.full_period_required ? ', e esse pacote exige o período completo' : ''}. Você quer continuar consultando esse pacote ou deseja outra estadia? Não alterei suas datas nem confirmei uma reserva.`
       : family.pending && !childPolicyQuestion(userMessage)

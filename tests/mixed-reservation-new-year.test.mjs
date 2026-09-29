@@ -62,9 +62,11 @@ test('cruzamento explícito dezembro-janeiro reconhece consulta de exceção sem
   ]) {
     assert.equal(newYearDateException(message,undefined,now),true,message);
     const answer=packageConsultationReply(message,undefined,now);
-    assert.equal(answer.handoff,true,message);
-    assert.match(answer.answer,/31\/12 a 03\/01/);
-    assert.match(answer.answer,/sem confirmar a exceção, disponibilidade ou alteração de reserva/);
+    // Owner decision of 29/09/2026: partial periods are declined, not consulted.
+    assert.equal(answer.handoff,false,message);
+    assert.match(answer.answer,/31\/12\/2026 a 03\/01\/2027/);
+    assert.match(answer.answer,/Não temos estadia parcial/);
+    assert.match(answer.answer,/diárias antes de 31\/12 ou depois de 03\/01/);
     assert.doesNotMatch(answer.answer,/R\$|nome completo|CPF|exceção aprovada/);
   }
 });

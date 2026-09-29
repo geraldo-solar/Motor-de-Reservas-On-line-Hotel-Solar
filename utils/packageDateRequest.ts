@@ -27,4 +27,5 @@ export function readPackageDateRequest(value:any,context:unknown,now=Date.now())
   return request&&request.package_id===value.package_id?{...request,at:value.at}:undefined;
 }
 
-export const packageDateRequestAnswer='O pacote regular de Réveillon é de 31/12 a 03/01. Podemos consultar a recepção sobre o período diferente que você pediu; essa exceção depende de avaliação e disponibilidade. O pedido fica registrado nesta conversa, sem confirmar as datas, valores ou uma reserva.';
+// Owner decision of 29/09/2026: no exception for partial New Year stays.
+export const packageDateRequestAnswer='O Réveillon é vendido somente no pacote completo, de 31/12 a 03/01, e não abrimos exceção para estadia parcial nesse período. Se quiserem, dá para somar diárias antes de 31/12 ou depois de 03/01 ao pacote completo. Nenhuma data ou reserva foi confirmada por aqui.';

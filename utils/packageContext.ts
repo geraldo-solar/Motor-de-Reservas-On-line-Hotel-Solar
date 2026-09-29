@@ -85,7 +85,35 @@ export function packageInclusionFollowup(message:string,value:unknown,now=Date.n
     if(group(named)==='new-year'?!/\b(?:reveillon|virada|ano novo)\b/.test(norm(focus.name)):!norm(focus.name).includes(named))return false;
   }
   return /\b(?:inclui|incluid[oa]s?|inclus[oa]s?|inclusoes|separad[oa]s?|a parte)\b/.test(s)
-    && /\b(?:pacote|cafe(?: da manha)?|ceia|festa|virada|open bar|almoco|jantar)\b/.test(s);
+    && /\b(?:pacote|cafe(?: da manha)?|ceia|festa|virada|open bar|almoco|jantar)\b/.test(s)
+    || packageGeneralInclusionQuestion(message);
+}
+
+/** "O que vem no pacote?" asks for the whole programme, not one item. */
+export function packageGeneralInclusionQuestion(message:string):boolean {
+  const s=norm(message);
+  if(/\b(?:cafe|ceia|festa|open bar|almoco|jantar|barco|catamara|bebidas?)\b/.test(s))return false;
+  return /\bo que (?:vem|tem|esta incluso|esta incluido|inclui|o pacote (?:inclui|oferece|tem))\b/.test(s)&&/\b(?:pacote|nele|incluso|incluido|inclui)\b/.test(s)
+    || /\b(?:tem|da|temos|teremos) direito (?:a|ao) (?:que|o que)\b|\bo que (?:esta|ta) incluso\b|\b(?:quais sao os|quais os) (?:itens )?inclusos\b/.test(s);
+}
+
+/** A side question (meal plan, pets, a partner) does not end the package
+ * being negotiated. These commercial follow-ups resume the recent package. */
+export function packageResumeRequest(message:string,value:unknown,now=Date.now()):boolean {
+  const focus=readPackageContext(value,now),s=norm(message);
+  if(!focus||!s||s.length>600||newTripRequest(message))return false;
+  if(/\b(?:fotos?|imagens?|videos?|galeria|cardapio|menu|reserva solar|solar 73|restaurante|day[ -]?use|visitantes?|avuls[oa]s?|hoje|amanha|comprovante|paguei|reembolso|cancelar)\b/.test(s))return false;
+  // Explicit dates belong to the stay parsers, never to a resumed package.
+  if(/\b\d{1,2}\s*\/\s*\d{1,2}\b|\b\d{1,2}\s+(?:de\s+)?(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*\b/.test(s))return false;
+  const names=s.match(/\b(?:reveillon|ano novo|virada|natal|carnaval|pascoa|finados|corpus christi|dia das criancas|dia das maes|dia dos pais|dia dos namorados|ostrabeach|independencia)\b/g)||[];
+  const current=norm(focus.name);
+  if(names.some(name=>/^(?:reveillon|ano novo|virada)$/.test(name)?!/\b(?:reveillon|ano novo|virada)\b/.test(current):!current.includes(name)))return false;
+  return packageGeneralInclusionQuestion(message)
+    || /\b(?:parcel(?:ar|a|as|amento|ado|ada)|em quantas vezes|quantas vezes|dividir no cartao)\b/.test(s)
+    || childPolicyQuestion(message)
+    || /\b(?:quero|queremos|vou querer|vamos querer|gostaria de|gostariamos de) (?:reservar|fechar|garantir)\b/.test(s)
+    || /\b(?:qual|que) (?:suite|quarto|apartamento|acomodacao|categoria)\b.{0,30}\b(?:indica|recomenda|sugere|melhor)\b/.test(s)
+    || packageOccupancyFollowup(message,focus,now);
 }
 
 export function focusedPackageNameReference(message:string,value:unknown,now=Date.now()):boolean {
@@ -186,6 +214,7 @@ export function packageFollowup(message: string) {
   if (/\b(outro assunto|esquece|esqueca|mudar de assunto|nao quero esse|nao quero o pacote)\b/.test(s)) return false;
   if(/\b(?:incluid[oa]s?|separad[oa]s?|a parte)\b/.test(s)
     && /\b(?:pacote|cafe|ceia|festa|virada|open bar|almoco|jantar)\b/.test(s))return true;
+  if(packageGeneralInclusionQuestion(message))return true;
   if (weekdayReference === 'package') return true;
   if (childPolicyQuestion(message) || childAgeFollowup(message)) return true;
   if (/\b(?:chegar|chegando|sair|saindo)\b/.test(s)&&/\bdia\b/.test(s))return true;

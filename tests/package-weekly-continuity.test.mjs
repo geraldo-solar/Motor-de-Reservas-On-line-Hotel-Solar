@@ -73,20 +73,21 @@ test('festa não é inferida da ceia, ausência não vira cobrança separada e c
   assert.doesNotMatch(unsafe,/segredo|ignore/);assert.match(unsafe,/Não tenho confirmação/);
 });
 
-test('W13 hipótese de filho não é política infantil e a exceção requer consulta, não aprovação',()=>{
+test('W13 hipótese de filho não é política infantil e o período parcial é recusado, não aprovado',()=>{
   assert.equal(possibleCompanionInquiry(w13),true);assert.equal(childPolicyQuestion(w13),false);
   const reply=packageConsultationReply(w13,focus,now);
-  assert.equal(reply.handoff,true);assert.match(reply.answer,/31\/12 a 03\/01/);assert.match(reply.answer,/precisa ser consultado/);
+  // Owner decision of 29/09/2026: partial New Year stays are not accepted.
+  assert.equal(reply.handoff,false);assert.match(reply.answer,/31\/12\/2026 a 03\/01\/2027/);assert.match(reply.answer,/Não temos estadia parcial/);
   assert.match(reply.answer,/apenas uma possibilidade/);assert.doesNotMatch(reply.answer,/Sobre crianças|0 a 6 anos|exceção aprovada/);
 });
 
 test('W13 controlador e resolvedor não adicionam hipótese nem substituem pedido excepcional por cortesia',async()=>{
   const state={...initial,facts:{guests:2,extras:[]}};
   const r=await turn(w13,state,'QUOTE|2026-12-31|2027-01-03|3|NONE');
-  assert.equal(r.r.quote_request,'HUMANO');assert.equal(r.result.quote_request,'HUMANO');
+  assert.equal(r.r.quote_request,'NOQUOTE');assert.equal(r.result.quote_request,'ROOM_LIST');
   assert.deepEqual(r.state.facts,state.facts);assert.equal(r.state.family_party,undefined);
   assert.equal(r.r.can_collect,'NAO');assert.equal(r.result.availability_checked,false);
-  assert.match(r.result.conversation_text,/período solicitado é diferente/);
+  assert.match(r.result.conversation_text,/Não temos estadia parcial/);
   assert.doesNotMatch(r.result.conversation_text,/Sobre crianças|0 a 6 anos|cama extra gratuita|reserva confirmada/);
 });
 

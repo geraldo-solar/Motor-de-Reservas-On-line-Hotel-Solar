@@ -71,7 +71,9 @@ export function packagePrices(pkg: PackagePricingRecord, rooms: PackageRoomRecor
         id: String(room.id),
         name: room.name || 'Acomodação',
         capacity: room.capacity,
-        price: total,
+        // Nightly rates such as 3.166,67 add up to 9.500,01. Round like the
+        // quote engine (motorStayPricing) so both show the same total.
+        price: Math.round(total),
       };
     }).filter(item => item.price > 0).sort((a, b) => b.price - a.price);
     label = '💰 *Simulação cadastrada para o período completo:*';

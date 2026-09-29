@@ -138,7 +138,8 @@ test('replay 14/09: áudio, correção, escolha, foto, troca de assunto, pacote,
   assertNoSelectedStay(exceptional.state);
   assert.doesNotMatch(exceptional.routed.quote_request,/^(?:QUOTE\||COLETAR)/);
   assert.equal(exceptional.routed.can_collect,'NAO');
-  assert.match(exceptional.text,/recepção/);
+  // Owner decision of 29/09/2026: partial New Year stays are declined clearly.
+  assert.match(exceptional.text,/somente no pacote completo/);assert.doesNotMatch(exceptional.text,/depende de avaliação/);
   const family=await chat.say(FAMILY);
   assertFamily(family.state);assertNoSelectedStay(family.state);
   assert.equal(family.state.multi_room?.status,'offered');

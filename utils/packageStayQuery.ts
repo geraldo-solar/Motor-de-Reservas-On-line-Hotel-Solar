@@ -13,7 +13,9 @@ export function readPackageStayQuery(value:any,context:unknown,now=Date.now()):P
     ||!range(value.check_in,value.check_out))return;
   return {package_id:focus.id,check_in:value.check_in,check_out:value.check_out,at:value.at,...(value.price_requested===true?{price_requested:true}:{})};
 }
-export const packageStayPriceRequest=(text:string)=>/\b(?:quanto|valor|valores|preco|precos|custa|custaria|ficaria|calcular|calcule|simular|simule|simulacao|orcamento|cotacao|mais barato|mais economico)\b/.test(norm(text))
+export const packageStayPriceRequest=(text:string)=>(/\b(?:quanto|valor|valores|preco|precos|custa|custaria|ficaria|calcular|calcule|simular|simule|simulacao|orcamento|cotacao|mais barato|mais economico)\b/.test(norm(text))
+    // "E se a gente ficar até o dia 4?" asks what the longer stay costs.
+    || /^(?:e\s+)?se\s+(?:a gente\s+|nos\s+|eu\s+)?(?:ficar|ficarmos|chegar|chegarmos|sair|sairmos|estender|estendermos|for|formos)\b/.test(norm(text).replace(/[^a-z0-9/ ]/g,' ').replace(/\s+/g,' ').trim()))
   && !/\b(?:fotos?|inclus[oa]|inclui|cafe|ceia|passeio|barco|cama extra|taxa|early|late)\b/.test(norm(text));
 
 /** Fresh customer-established package context supplies omitted month/year.
@@ -44,7 +46,20 @@ export function packageStayDates(text:string,context:unknown,now=Date.now(),prev
     const arrival=s.match(/\b(?:chegar|chegando|entrada|ficar)\s+(?:no\s+)?(?:dia\s+)?(\d{1,2})\b/);
     const exit=s.match(/\b(?:sair|saindo|saida)\s+(?:no\s+)?(?:dia\s+)?(\d{1,2})\b/);
     const pair=s.match(/\b(?:dia|dias|periodo\s+(?:de|do))\s+(\d{1,2})\s*(?:a|ate|ao)\s*(?:o\s+)?(?:dia\s+)?(\d{1,2})\b/);
-    const first=arrival?.[1]||pair?.[1],last=exit?.[1]||pair?.[2];
+    const until=pair?undefined:s.match(/\b(?:ficar|ficarmos|ficando|estender|estendermos|esticar|prolongar)\b[^.?!]{0,25}?\bate\s+(?:o\s+)?(?:dia\s+)?(\d{1,2})\b/);
+    const first=arrival?.[1]||pair?.[1],last=exit?.[1]||pair?.[2]||until?.[1];
+    if(!prior&&!!first!==!!last){
+      // Without an earlier query, the other end is the package's own date:
+      // "ficar até o dia 4" extends the regular package checkout.
+      const day=+(first||last!);
+      const anchor=first?focus.start_date:focus.end_date;
+      for(let delta=-1;delta<=1&&dates.length!==2;delta++){
+        const month=new Date(Date.UTC(+anchor.slice(0,4),+anchor.slice(5,7)-1+delta,1));
+        const value=date(month.getUTCFullYear(),month.getUTCMonth()+1,day);
+        const candidate=first?[value,focus.end_date]:[focus.start_date,value];
+        if(value&&range(candidate[0],candidate[1])&&Math.abs(Date.parse(value)-Date.parse(anchor))<=10*86400000)dates=candidate;
+      }
+    }
     if(prior&&!!first!==!!last){
       const reference=first?prior.check_in:prior.check_out;
       const changed=date(+reference.slice(0,4),+reference.slice(5,7),+(first||last));

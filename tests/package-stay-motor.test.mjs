@@ -36,7 +36,7 @@ test('datas por extenso herdam mês e ano somente do pacote recente',()=>{
 });
 test('teste literal: consulta por áudio explica checkout bloqueado e preço seguinte mantém datas',async()=>{
   const first=await turn('',initial(),'Se eu quiser chegar dia trinta e sair dia dois, é possível?');
-  assert.equal(first.r.quote_request,'NOQUOTE');assert.match(first.text,/saída em 02\/01\/2027 está bloqueada/);
+  assert.equal(first.r.quote_request,'NOQUOTE');assert.match(first.text,/Não temos saída em 02\/01\/2027 nesse pacote/);assert.doesNotMatch(first.text,/motor/);
   assert.doesNotMatch(first.text,/R\$250|é possível, sim|Reserva confirmada/);
   assert.deepEqual(first.state.facts,{extras:[]});assert.equal(first.state.package_stay_query.check_in,'2026-12-30');
   const second=await turn('',first.state,'E quanto fica no apartamento para três pessoas?');

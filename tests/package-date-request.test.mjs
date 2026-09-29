@@ -20,7 +20,7 @@ test('pedido natural de exceção conserva texto, nunca datas aprovadas ou colet
   assert.equal(result.state.package_context.id,focus.id);
   assert.deepEqual(result.state.facts,{extras:[]});
   assert.equal(result.quote_request,'NOQUOTE');assert.equal(result.can_collect,'NAO');
-  assert.equal(result.confirmation_text,'');assert.match(result.answer,/depende de avaliação/);
+  assert.equal(result.confirmation_text,'');assert.match(result.answer,/não abrimos exceção para estadia parcial/);
 });
 
 test('faixas de idade e recusas não são pedidos de período excepcional',()=>{

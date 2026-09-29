@@ -169,6 +169,51 @@ function replacementFamily(s: string, old: FamilyParty | undefined, now: number,
     &&new RegExp(`\\bnao\\s+(?:${verb}\\s+)?${number}\\b`).test(s))return unchanged();
 }
 
+/** A complete list of people that starts with the speaker ("eu, minha esposa
+ * e nosso filho de 5 anos") replaces the party. Only unambiguous relatives are
+ * classified; friends, siblings or unknown words leave it to the other parsers.
+ * Adult relatives never become children, and offspring without ages stay pending. */
+const listNumber='(?:\\d{1,2}|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|quatorze|catorze|quinze|dezesseis|dezessete)';
+const listWords:Record<string,number>={...words,onze:11,doze:12,treze:13,quatorze:14,catorze:14,quinze:15,dezesseis:16,dezessete:17};
+const listQuantity=(value:string)=>/^\d+$/.test(value)?Number(value):listWords[value];
+function memberListDeclaration(s: string): {adults:number;children:number;ages_months:number[];total?:number;offspring:boolean;ages_conflict:boolean}|undefined {
+  const sentence=s.split(/[.!;\n]/)[0].trim();
+  if(!sentence||/\?/.test(sentence)||/\b(?:se|caso|talvez|hipoteticamente|supondo|sera que|ou|nao|poderia|podemos|posso|acho)\b/.test(sentence))return;
+  let head:(string|undefined)[]|null=new RegExp(`^(?:(?:na verdade|corrigindo|agora|entao|bom|certo|ok|oi|ola)\\s*[,:;-]?\\s*)*(?:(?:vamos|iremos|vao|irao|somos|seremos|sera|serao|vai ser|vao ser|viajaremos|ficaremos)(?:\\s+em)?(?:\\s+(${listNumber}))?(?:\\s+pessoas)?\\s*[:,;-]?\\s*)?(eu\\b.*)$`).exec(sentence);
+  if(!head&&/^(?:vou|irei)\s+com\s+/.test(sentence))head=[sentence,undefined,'eu, '+sentence.replace(/^(?:vou|irei)\s+com\s+/,'')];
+  if(!head?.[2])return;
+  const total=head[1]?listQuantity(head[1]):undefined;
+  const ages:{values:number[];months:boolean}[]=[];
+  const ageRe=new RegExp(`\\s*,?\\s*\\(?\\s*(?:\\b(?:de|com)\\s+)?\\b(${listNumber}(?:\\s*(?:,|e)\\s*${listNumber})*)\\s*(anos?|meses?)\\b\\s*\\)?`,'g');
+  const body=head[2]!.replace(/\s+(?:no|na|para o|para a|pro|pra|nesse|neste|desse|deste)\s+(?:reveillon|pacote|virada|ano novo|feriado|natal|periodo)\b.*$/,'')
+    .replace(ageRe,(_m,list:string,unit:string)=>{
+      ages.push({values:list.split(/\s*(?:,|e)\s*/).map(listQuantity),months:/^mes/.test(unit)});
+      return ` #${ages.length-1}#`;
+    }).trim();
+  const members=body.split(/\s*,\s*|\s+e\s+/).map(item=>item.trim()).filter(Boolean);
+  if(members.length<2)return;
+  let adults=0,children=0,offspring=false,agesConflict=false;
+  const agesMonths:number[]=[];
+  for(const member of members) {
+    const tokens=[...member.matchAll(/#(\d+)#/g)].map(match=>ages[Number(match[1])]);
+    const who=member.replace(/#\d+#/g,'').trim().replace(/^(?:(?:a|o|as|os|minha|meu|minhas|meus|nossa|nosso|nossas|nossos|tambem|mais)\s+)+/,'');
+    if(/^eu$/.test(who)||/^(?:esposa|esposo|marido|mulher|companheira|companheiro|namorada|namorado|noiva|noivo|mae|pai|sogra|sogro|avo|madrasta|padrasto)$/.test(who)){adults++;continue;}
+    if(/^(?:pais|sogros|avos)$/.test(who)){adults+=2;continue;}
+    const group=new RegExp(`^(?:(${listNumber})\\s+)?(filh[oa]s|criancas|bebes|net[oa]s|entead[oa]s)$`).exec(who);
+    const single=/^(filh[oa]|crianca|bebe|net[oa]|entead[oa])$/.exec(who);
+    if(!group&&!single)return;
+    const values=tokens.flatMap(token=>token.values.map(value=>token.months?value:value*12));
+    const count=single?1:group![1]?listQuantity(group![1]):values.length;
+    if(!count||count>20)return;
+    if(values.length&&values.length!==count)agesConflict=true;
+    else agesMonths.push(...values);
+    children+=count;
+    offspring||=/^(?:filh|entead)/.test(single?.[1]||group![2]);
+  }
+  if(!adults)return;
+  return {adults,children,ages_months:agesMonths,...(total===undefined?{}:{total}),offspring,ages_conflict:agesConflict};
+}
+
 /**
  * Call only in a lodging/family fact-collection context. It neither chooses
  * that context nor changes booking facts. The caller owns topic/TTL resets.
@@ -190,6 +235,13 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   if(childPolicyQuestion(s))return {handled:false,...(old?{party:old}:{})};
   const replacement=replacementFamily(s,old,now,messageHash);
   if(replacement)return replacement;
+  const listed=memberListDeclaration(s);
+  if(listed){
+    const party:FamilyParty={adults:listed.adults,children:listed.children,total:listed.total??listed.adults+listed.children,
+      ages_months:listed.ages_conflict?[]:listed.ages_months,updated_at:now,last_message_hash:messageHash,
+      ...(listed.offspring&&listed.children?{age_subject:'offspring' as const}:{})};
+    return result(party,listed.ages_conflict?'child_ages':undefined);
+  }
   const contrast=contrastingComposition(s);
   if(!contrast.message)return result({ages_months:[],updated_at:now,last_message_hash:messageHash},'party_composition');
   s=contrast.message;
