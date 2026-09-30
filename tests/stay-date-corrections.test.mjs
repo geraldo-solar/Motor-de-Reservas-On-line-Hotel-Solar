@@ -91,7 +91,9 @@ test('intervalo abreviado inválido ou ambíguo bloqueia cotação sem inferir o
 test('limites reais de mês, ano e ano explícito são preservados',()=>{
   for(const [message,start,end] of [
     ['Na verdade de 30/09 a 02/10','2026-09-30','2026-10-02'],
-    ['Na verdade de 30/12 a 02/01','2026-12-30','2027-01-02'],
+    // Crossing the year is kept; the Réveillon rule (full package only) then
+    // extends the checkout to the package end, 03/01.
+    ['Na verdade de 30/12 a 02/01','2026-12-30','2027-01-03'],
     ['Na verdade de 19 a 21/09/2027','2027-09-19','2027-09-21'],
     ['Na verdade de 19 a 21/09/27','2027-09-19','2027-09-21'],
   ]){

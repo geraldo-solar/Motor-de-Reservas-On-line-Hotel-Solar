@@ -7,6 +7,7 @@ import {motorStayPrice,motorStayRestriction,requiresFullPackagePeriod} from '../
 import {readPackageStayQuery} from '../utils/packageStayQuery.js';
 import {packageToday} from '../utils/packageAvailability.js';
 import {readStayDatePending,stayDateClarification} from '../utils/stayDuration.js';
+import {newYearFullPeriodNote,readNewYearStayRequest} from '../utils/newYearSales.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -192,12 +193,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       fullPeriodPackage &&
       (checkIn > fullPeriodPackage.start_iso_date || checkOut < fullPeriodPackage.end_iso_date)
     ) {
-      const fullPeriodText = `🎆 O pacote ${fullPeriodPackage.name} exige incluir o período completo, de ${formatDate(fullPeriodPackage.start_iso_date)} a ${formatDate(fullPeriodPackage.end_iso_date)} (${Math.round((new Date(`${fullPeriodPackage.end_iso_date}T12:00:00Z`).getTime() - new Date(`${fullPeriodPackage.start_iso_date}T12:00:00Z`).getTime()) / (1000 * 60 * 60 * 24))} diárias). É possível simular diárias adicionais antes ou depois, respeitando as restrições do motor. O período pedido não inclui todas as noites obrigatórias; não confirmei essas datas. Para calcular o pacote completo ou esclarecer alguma condição, fale com a recepção: (91) 98100-0800.`;
+      const fullPeriodText = `🎆 O pacote ${fullPeriodPackage.name} exige incluir o período completo, de ${formatDate(fullPeriodPackage.start_iso_date)} a ${formatDate(fullPeriodPackage.end_iso_date)} (${Math.round((new Date(`${fullPeriodPackage.end_iso_date}T12:00:00Z`).getTime() - new Date(`${fullPeriodPackage.start_iso_date}T12:00:00Z`).getTime()) / (1000 * 60 * 60 * 24))} diárias). Dá para somar diárias antes ou depois, mas não reservar só uma parte desse período; não confirmei essas datas. Para calcular o pacote completo ou esclarecer alguma condição, fale com a recepção: (91) 98100-0800.`;
 
       return res.status(200).json({
         message: 'Restricted package period',
         whatsapp_text: fullPeriodText,
-        conversation_text: fullPeriodText.replace('Para calcular o pacote completo ou esclarecer alguma condição, fale com a recepção: (91) 98100-0800.', 'Quer que eu apresente as acomodações e os valores para esse período completo?'),
+        conversation_text: fullPeriodText.replace('Para calcular o pacote completo ou esclarecer alguma condição, fale com a recepção: (91) 98100-0800.', 'Quer que eu calcule as acomodações e os valores do período completo?'),
         prices_summary: fullPeriodText,
         availability_checked: false,
         requires_human_confirmation: true,
@@ -434,8 +435,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // The new conversational flow stays in the same WhatsApp conversation.
     // Preserve legacy response fields for integrations that still use them.
+    // conversation-control widened a partial Réveillon stay to the package.
+    const asked = state?.version === 2 && state.facts?.check_in === checkIn && state.facts?.check_out === checkOut
+      ? readNewYearStayRequest(state.full_period_extended, state.facts) : undefined;
+    const fullPeriodNote = activePackage && asked ? newYearFullPeriodNote(asked) : '';
     const conversationText = `☀️ Simulação: ${formatDate(checkIn)} a ${formatDate(checkOut)} · ${nights} ${nights === 1 ? 'diária' : 'diárias'} · ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}.\n\n`
       + (activePackage ? `🎉 Pacote especial: ${activePackage.name}\n\n` : '')
+      + (fullPeriodNote ? fullPeriodNote + '\n\n' : '')
       + compactRoomText + compactFamilyText + whatsappText.slice(familyTextEnd)
       + 'Simulação sem confirmação de disponibilidade.\n\n'
       + 'Qual acomodação você prefere? Primeiro confirmaremos sua escolha; só depois pediremos os dados para a recepção continuar por aqui.';

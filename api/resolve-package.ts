@@ -17,7 +17,7 @@ import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
 import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
 import { namedPackageInquiry, packageGeneralInclusionQuestion, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup,packageDiscoveryRequest,packageRoomDetailFollowup } from '../utils/packageContext.js';
 import {packageInclusionReply} from '../utils/packageInclusions.js';
-import {newYearSalesReply} from '../utils/newYearSales.js';
+import {newYearSalesTurn,newYearStayRange,newYearFullPeriodNote,readNewYearStayRequest} from '../utils/newYearSales.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
 import {packageStayDates,readPackageStayQuery,packageStayPriceRequest} from '../utils/packageStayQuery.js';
@@ -274,7 +274,9 @@ const formatPackageDetails = (
   text.push(
     '',
     conversational
-      ? 'Os valores acima são informativos e não confirmam disponibilidade. Podemos personalizar a simulação conforme os hóspedes e as datas da sua viagem, aproveitando o que você já informou. Se desejar prosseguir com uma opção, a recepção continuará o atendimento aqui na conversa.'
+      // End on the question that moves the lead forward (most stop replying
+      // after a closing statement).
+      ? 'Os valores acima são informativos e não confirmam disponibilidade. Para quantas pessoas seria? Me diga quantos adultos e a idade das crianças que eu indico a melhor opção para vocês.'
       : 'Os valores acima são informativos e não confirmam disponibilidade. Para uma simulação personalizada, informe entrada, saída e quantidade de hóspedes. A recepção confirma as vagas e finaliza a reserva pelo WhatsApp (91) 98100-0800.',
   );
   return fitWhatsApp(text.join('\n'), conversational);
@@ -296,6 +298,13 @@ const formatPackageInclusions = (pkg: PackageRecord, guests?: number) => {
   if (Number(pkg.max_installments || 0) > 0) text.push(`💳 Parcelamento em até ${Number(pkg.max_installments)}x no cartão.`);
   text.push('', guests ? 'Se quiser, já calculo o valor para o seu grupo.' : 'Quantas pessoas vão, contando adultos e crianças? Assim calculo o valor para vocês.');
   return fitWhatsApp(text.join('\n'), true);
+};
+
+// Dates just widened to the full Réveillon package ("31/12 a 01/01"): the
+// turn that gave them says why the answer uses the whole package.
+const withFullPeriodNote = (answer: string, message: string, state: any) => {
+  const asked = newYearStayRange(message) ? readNewYearStayRequest(state?.full_period_extended, state?.facts) : undefined;
+  return asked ? `${newYearFullPeriodNote(asked)}\n\n${answer}` : answer;
 };
 
 const packageHowToBook = (message: string) =>
@@ -414,7 +423,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({...routed,quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
       can_collect:'NAO',confirmation_text:'',matched:false,match_type:deferred?'booking_deferral':'hotel_call_difficulty',availability_checked:false});
   }
-  const newYearSale=!req.query?.operation?newYearSalesReply(serviceMessage,earlyState?.package_context||earlyState?.recent_package):undefined;
+  const newYearSale=!req.query?.operation?newYearSalesTurn(serviceMessage,earlyState?.package_context||earlyState?.recent_package,earlyState?.facts?.guests):undefined;
   if(newYearSale){
     // Owner-confirmed Réveillon answers: the controller owns the handoff and
     // the remembered turn; never replace them with the package card or a quote.
@@ -566,10 +575,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         matched:false,match_type:'package_followup',availability_checked:false});
     }
     const guests=state?.facts?.guests||0,family=familyAccommodation(state,guests);
-    const answer=family.pending?familyAgeQuestionFor(state)
+    const answer=withFullPeriodNote(family.pending?familyAgeQuestionFor(state)
       :guests===5&&!family.key?'Para conferir se as 5 pessoas cabem em um apartamento, quantos são adultos e quantos são crianças? Informe a idade de cada criança; só podemos considerar a ocupação adicional com uma criança de até 6 anos.'
       :family.key&&guests<=5?familyRoomExplanation(guests,family.eligible)+' A categoria compatível e a disponibilidade ainda precisam ser conferidas; não há preço, período ou reserva confirmados por esta orientação.'
-      :familyRoomRule+' A categoria compatível e a disponibilidade ainda precisam ser conferidas; esta orientação não confirma preço, período ou reserva.';
+      :familyRoomRule+' A categoria compatível e a disponibilidade ainda precisam ser conferidas; esta orientação não confirma preço, período ou reserva.',
+      serviceMessage,state);
     return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
       can_collect:'NAO',confirmation_text:'',matched:false,match_type:'package_followup',availability_checked:false,
       package_id:earlyState.package_context.id,package_name:earlyState.package_context.name,
@@ -659,7 +669,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     && latest?.role === 'assistant' && latest.text?.trim()
     && !photoClarificationQuestion(latest.text) ? latest.text : '';
   const informationResult = (fallback: string, match_type: string, authoritative=false) => {
-    const answer = authoritative ? fallback : currentAnswer || fallback;
+    const answer = withFullPeriodNote(authoritative ? fallback : currentAnswer || fallback, userMessage, conversationState);
     return {quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
       matched:false,match_type,availability_checked:false,
       ...control({operation:'remember_response',state:safeState,response_text:answer})};
@@ -791,7 +801,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Extra nights around the full package (31/12–04/01) are the same package.
     const differentDates = (facts.check_in && facts.check_in !== pkg.start_iso_date && !(facts.check_in < String(pkg.start_iso_date) && (!facts.check_out || facts.check_out >= String(pkg.end_iso_date))))
       || (facts.check_out && facts.check_out !== pkg.end_iso_date && !(facts.check_out > String(pkg.end_iso_date) && (!facts.check_in || facts.check_in <= String(pkg.start_iso_date))));
-    const answer = packageAcknowledgment(userMessage)
+    const reply = packageAcknowledgment(userMessage)
       ? `Certo! Continuamos falando do pacote ${pkg.name}. Pode me dizer qual outra informação gostaria de esclarecer.`
       : packageGeneralInclusionQuestion(userMessage)
       ? formatPackageInclusions(pkg,facts.guests)
@@ -803,6 +813,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? formatPackageHowToBook(pkg,facts.guests)
       : differentDates
       ? `O pacote ${pkg.name} tem período de ${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}. As datas que você informou são diferentes${pkg.full_period_required ? ', e esse pacote exige o período completo' : ''}. Você quer continuar consultando esse pacote ou deseja outra estadia? Não alterei suas datas nem confirmei uma reserva.`
+      : !facts.guests && newYearStayRange(userMessage) && readNewYearStayRequest(conversationState?.full_period_extended,facts)
+      ? 'Para quantas pessoas seria? Me diga quantos adultos e a idade das crianças que eu calculo o pacote completo para vocês.'
       : family.pending && !childPolicyQuestion(userMessage)
       ? familyAgeQuestionFor(conversationState)
       : childPolicyQuestion(userMessage) || childAgeFollowup(userMessage) && !family.key
@@ -814,6 +826,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : packageRecommendationInquiry(userMessage)
       ? packageRecommendation(pkg,rooms || [],conversationState?.facts?.guests,conversationState)
       : formatPackageDetails(pkg,rooms || [],true);
+    const answer=withFullPeriodNote(reply,userMessage,conversationState);
     return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
       package_id:pkg.id,package_name:pkg.name,match_type:'package_followup',availability_checked:false,
       ...control({operation:'remember_response',state:req.body?.state,response_text:answer,

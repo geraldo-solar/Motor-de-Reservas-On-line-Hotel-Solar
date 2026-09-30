@@ -322,7 +322,8 @@ test('ocupação filtra apartamentos e Réveillon parcial propõe cotação comp
   const restricted = await request(handler, { checkIn: '2027-01-01', checkOut: '2027-01-03', guests: 2 });
   assert.equal(restricted.policy_restriction, 'package_full_period_only');
   assert.match(restricted.conversation_text, /31\/12\/2026 a 03\/01\/2027/);
-  assert.match(restricted.conversation_text, /Quer que eu apresente/);
+  assert.match(restricted.conversation_text, /Quer que eu calcule/);
+  assert.doesNotMatch(restricted.conversation_text, /motor|noites obrigatórias/);
   assert.doesNotMatch(restricted.conversation_text, /98100/);
 });
 
@@ -332,7 +333,9 @@ test('pacote dinâmico preserva preços e imagem, mas continua qualificação na
   assert.equal(result.package_id, 'independencia');
   assertSameAmounts(result.quote_text, result.conversation_text);
   assert.match(result.quote_text, /98100-0800/);
-  assert.match(result.conversation_text, /aproveitando o que você já informou/);
+  // The first package reply ends on the qualifying question (30/09 leads stopped
+  // replying after a closing statement).
+  assert.match(result.conversation_text, /Para quantas pessoas seria\? Me diga quantos adultos e a idade das crianças/);
   assert.match(result.conversation_text, /não confirmam disponibilidade/);
 });
 

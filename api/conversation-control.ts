@@ -17,7 +17,7 @@ import { isAttachmentInput, analyzeAttachment, type AttachmentKind } from '../ut
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
 import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, packageResumeRequest, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
-import {newYearSalesReply,newYearCampaignSeed,newYearCampaignPackage} from '../utils/newYearSales.js';
+import {newYearSalesTurn,newYearCampaignSeed,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,type NewYearStayRequest} from '../utils/newYearSales.js';
 import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
 import {packageToday,packageEnded,retiredIndependence,endedPackageAnswer,endedPackageMarker} from '../utils/packageAvailability.js';
 import {packageStayDates,readPackageStayQuery,packageStayPriceRequest,type PackageStayQuery} from '../utils/packageStayQuery.js';
@@ -55,7 +55,7 @@ type Quote = { version: number; id: string; created_at: number; check_in: string
 type GuestInquiryState = { kind: GuestInquiry; at: number };
 type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPartyResult['clarification'];package_stay_query?:PackageStayQuery;party_confirmed_at?:number };
 type ExistingReservationState = { flexible_stay?:FlexibleStay;existing_reservation?: {at: number};payment_support?:{at:number;topics?:PaymentSupportSupplementaryTopic[]};assistant_disclosure?:AssistantDisclosure;multi_room?:MultiRoomHandoff;checkout_question?:{at:number;key:string};arrival_time?:ArrivalTimePending;package_date_request?:PackageDateRequest };
-type State = ExistingReservationState & FamilyState & { massage_context?: {at:number}; programming_pending?: {question: string; at: number}; recent_package?: PackageContext; campaign?: 'RV27' } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
+type State = ExistingReservationState & FamilyState & { massage_context?: {at:number}; programming_pending?: {question: string; at: number}; recent_package?: PackageContext; campaign?: 'RV27'; full_period_extended?: NewYearStayRequest } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
 const json = (v: unknown): any => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
 const months = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -243,6 +243,7 @@ function loadState(value: unknown, now = Date.now()): State {
     ...(readPackageContext(parsed.package_context, now) ? {package_context:readPackageContext(parsed.package_context, now)} : {}),
     ...(readPackageContext(parsed.recent_package, now) ? {recent_package:readPackageContext(parsed.recent_package, now)} : {}),
     ...(parsed.campaign === 'RV27' ? {campaign:'RV27' as const} : {}),
+    ...(readNewYearStayRequest(parsed.full_period_extended, facts, now) ? {full_period_extended:readNewYearStayRequest(parsed.full_period_extended, facts, now)} : {}),
     ...(readPackageStayQuery(parsed.package_stay_query,parsed.package_context,now)?{package_stay_query:readPackageStayQuery(parsed.package_stay_query,parsed.package_context,now)}:{}),
     ...(readPackageDateRequest(parsed.package_date_request,parsed.package_context,now)?{package_date_request:readPackageDateRequest(parsed.package_date_request,parsed.package_context,now)}:{}),
     ...(Number.isFinite(parsed.existing_reservation?.at) && parsed.existing_reservation.at > 0
@@ -595,6 +596,7 @@ function updateFacts(state: State, message: string, now: number) {
     if (/sem crianca|so adultos|apenas adultos/.test(s)) state.facts.children_pending = false;
   }
   updateStayDates(state, s, now);
+  widenNewYearStay(state, now);
   for (const {code,action} of extraActions) {
     if(action==='remove')state.facts.extras=state.facts.extras.filter(x=>x!==code);
     else if(!state.facts.extras.includes(code))state.facts.extras.push(code);
@@ -611,6 +613,15 @@ function updateFacts(state: State, message: string, now: number) {
       delete state.multi_room;
     }
   }
+}
+
+// The Réveillon is sold only as the full package: dates that touch it without
+// covering it (31/12–01/01) become the package period, remembering what was
+// asked so the answer can say why.
+function widenNewYearStay(state: State, now: number) {
+  const f = state.facts, full = newYearFullPeriod(f.check_in, f.check_out, now);
+  if (full) { state.full_period_extended = {requested_check_in: f.check_in!, requested_check_out: f.check_out!}; Object.assign(f, full); return; }
+  if (!readNewYearStayRequest(state.full_period_extended, f, now)) delete state.full_period_extended;
 }
 
 function validQuote(value: unknown, state: State, now: number): Quote | null {
@@ -732,7 +743,7 @@ function controlTurn(body: any, now = Date.now()) {
   }
   const newYearSale=['prepare','route','confirm'].includes(body.operation)&&!human(s)&&!guestServiceRequest(raw)
     &&!paymentStatusInquiry(raw,state.history.at(-1)||'')&&!existingReservationInquiry(raw,!!state.existing_reservation)
-    ?newYearSalesReply(raw,state.package_context||state.recent_package,now):undefined;
+    ?newYearSalesTurn(raw,state.package_context||state.recent_package,state.facts.guests,now):undefined;
   if(newYearSale){
     // Owner-confirmed campaign answers (29/09/2026). They never create stay
     // facts: a partial period is declined, party/partner questions go to the team.
@@ -1487,7 +1498,13 @@ function controlTurn(body: any, now = Date.now()) {
     // declared in this conversation (not an older trip's count): price the
     // package period so the choice can be confirmed next.
     const f=state.facts,focus=state.package_context,family=familyAccommodation(state,f.guests||0,now);
-    if(focus&&!quote&&packageBookingRequest(publicMessage)&&!childPolicyQuestion(publicMessage)&&state.party_confirmed_at
+    const readyParty=!!f.guests&&!f.children_pending&&!family.pending&&!state.family_clarification;
+    // "31/12 a 01/01 para 5 pessoas" while the Réveillon is in focus: the
+    // facts were already widened to the full package (widenNewYearStay).
+    if(focus&&!quote&&readyParty&&state.full_period_extended&&newYearStayRange(publicMessage)){
+      decision=`QUOTE|${f.check_in}|${f.check_out}|${f.guests}|${f.extras.join(',')||'NONE'}`;
+    }
+    else if(focus&&!quote&&packageBookingRequest(publicMessage)&&!childPolicyQuestion(publicMessage)&&state.party_confirmed_at
       &&f.guests&&!f.children_pending&&!family.pending&&!state.family_clarification){
       const covers=!!f.check_in&&!!f.check_out&&f.check_in<=focus.start_date&&f.check_out>=focus.end_date;
       if(!covers){f.check_in=focus.start_date;f.check_out=focus.end_date;}

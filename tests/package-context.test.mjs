@@ -264,7 +264,13 @@ test('escolha explícita com cotação válida do pacote preserva o cartão e a 
 
 test('datas numéricas diferentes continuam no pacote e pedem esclarecimento sem cotar outro período',async()=>{
   const opened=await openPackage();
-  for (const message of ['de 01/01/2027 a 03/01/2027','Qual valor de 04/09/2026 a 06/09/2026?']) {
+  // Part of the Réveillon with a known party is priced as the full package
+  // (owner rule 29/09/2026), never as the partial dates.
+  const partial=route('de 01/01/2027 a 03/01/2027',prepare('de 01/01/2027 a 03/01/2027',opened.state).state);
+  assert.equal(partial.quote_request,'QUOTE|2026-12-31|2027-01-03|3|NONE');
+  assert.deepEqual(JSON.parse(partial.state).full_period_extended,{requested_check_in:'2027-01-01',requested_check_out:'2027-01-03'});
+  noConsent(partial);
+  for (const message of ['Qual valor de 04/09/2026 a 06/09/2026?']) {
     const p=prepare(message,opened.state);
     const r=route(message,p.state);
     assert.equal(r.quote_request,'NOQUOTE');
@@ -274,7 +280,7 @@ test('datas numéricas diferentes continuam no pacote e pedem esclarecimento sem
     assert.match(result.conversation_text,/Réveillon.*31\/12\/2026.*03\/01\/2027/s);
     assert.match(result.conversation_text,/datas.*diferentes.*exige o período completo/s);
     assert.doesNotMatch(result.conversation_text,/R\$|8\.400|6\.300/);
-    assert.equal(facts.check_in,message.includes('04/09') ? '2026-09-04' : '2027-01-01');
+    assert.equal(facts.check_in,'2026-09-04');
     noConsent(r);
     noConsent(result);
   }

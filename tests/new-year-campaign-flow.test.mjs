@@ -203,3 +203,37 @@ test('campanha não força o Réveillon em outra viagem, fora do período ou sem
   assert.equal(ended.state.package_context,undefined);
   now=start;
 });
+
+// Real WhatsApp leads of 30/09/2026 (first day with the AI on the campaign).
+test('leads de 30/09: diária comum, estadia parcial com grupo e primeira resposta com pergunta',async()=>{
+  now=Date.parse('2026-09-30T13:00:00-03:00');
+  const first=await conversation(CAMPAIGN_SEED)('Quais os valores do Réveillon?');
+  assert.match(first.text,/Para quantas pessoas seria\? Me diga quantos adultos e a idade das crianças/);
+  assert.doesNotMatch(first.text,/Se desejar prosseguir|aproveitando o que/);
+
+  // "casal" tags the lead in ManyChat, but the ordinary rate is not the package.
+  const daily=await conversation(CAMPAIGN_SEED)('Qual o valor da diária para casal');
+  assert.notEqual(daily.state.topic,'package_info');assert.equal(daily.state.package_context,undefined);
+  assert.doesNotMatch(daily.text,/Réveillon|R\$ 5\.600/);
+
+  const partial=await conversation(CAMPAIGN_SEED)('Boa tarde, gostaria de saber se possui disponibilidade para os dias 31/12 a 01/01 para 5 pessoas');
+  assert.equal(partial.r.quote_request,'QUOTE|2026-12-31|2027-01-03|5|NONE');
+  assert.match(partial.text,/Você pediu 31\/12\/2026 a 01\/01\/2027, mas no Réveillon a hospedagem é vendida somente no pacote completo/);
+  assert.match(partial.text,/31\/12\/2026 a 03\/01\/2027 · 3 diárias · 5 hóspedes/);
+  assert.doesNotMatch(partial.text,/motor|noites obrigatórias/);
+
+  const say=conversation(CAMPAIGN_SEED);
+  await say('Quais os valores do Réveillon?');
+  const child=await say('31/12 a 01/01 para 2 adultos e 1 criança');
+  assert.match(child.text,/Você pediu 31\/12\/2026 a 01\/01\/2027.*idades das crianças/s);
+  assert.equal(child.state.facts.check_out,'2027-01-03');
+  const age=await say('5 anos');
+  assert.match(age.text,/Categoria Casal, com a criança em cortesia: \*Suíte Casal\* — R\$ 5\.600,00/);
+  assert.doesNotMatch(age.text,/datas que você informou são diferentes/);
+
+  // Declining the party night itself still gets the rule, not a quote.
+  const decline=await say('Posso ficar só de 1 a 3 de janeiro? Não quero passar a virada aí');
+  assert.equal(decline.r.quote_request,'NOQUOTE');assert.match(decline.text,/somente no pacote completo/);
+  assert.doesNotMatch(decline.text,/Para quantas pessoas/);
+  now=start;
+});
