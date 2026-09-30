@@ -13,6 +13,13 @@ export const newYearSalesPolicy = {
   package_end: '2027-01-03',
   party_wristband_price: 800,
   party_payment: 'Pix ou cartão de crédito em até 3x',
+  // Confirmed by the owner on 30/09/2026.
+  party_details_confirmed_at: '2026-09-30',
+  party_hours: 'das 21h às 2h',
+  party_venue: 'na pérgola da piscina do hotel',
+  party_seating: 'não há lugar marcado: os lugares são por ordem de chegada',
+  party_min_age: 'não há idade mínima',
+  rdc_bookings: 'as reservas da RDC Viagens são feitas somente pelo canal de atendimento da própria RDC',
 };
 
 export type NewYearSalesReply = {kind: 'party_only' | 'party_detail' | 'partial_stay' | 'unknown_partner'; answer: string; handoff: boolean};
@@ -24,10 +31,26 @@ const privateEvent = /\b(?:aniversario|casamento|formatura|confraternizacao|even
 const newYearWords = /\b(?:reveillon|revellion|reveilon|revelion|ano novo|virada|festa da virada|31\/12)\b/;
 
 export const newYearPartyOnlyAnswer = 'A Festa da Virada no Hotel Solar também pode ser comprada sem hospedagem, com pulseira: R$ 800 por pessoa, com ceia, open bar, Banda Zona Rural e DJ. O pagamento é no Pix ou no cartão de crédito em até 3x. Vou chamar nossa equipe para enviar o pagamento por aqui.';
-export const newYearPartyDetailAnswer = 'Ainda não tenho essa informação da Festa da Virada confirmada aqui. Vou chamar nossa equipe para te responder por aqui.';
+const partyIncluded = 'a festa tem ceia, open bar, Banda Zona Rural e DJ, e está incluída no pacote de hospedagem';
+export const newYearPartyDetailAnswer = `Esse detalhe da Festa da Virada ainda não está confirmado por aqui, e prefiro não te passar nada impreciso. O que já está confirmado: ${partyIncluded}. Se esse detalhe for decisivo para você, escreva “recepção” que a nossa equipe confirma.`;
+
+/** Party details the owner confirmed (30/09); anything else stays unconfirmed. */
+export function newYearPartyDetailReply(message: string): string {
+  const s = norm(message);
+  const p = newYearSalesPolicy;
+  const known: string[] = [];
+  if (/\b(?:que horas|horario|comeca|termina|ate que horas)\b/.test(s)) known.push(`A Festa da Virada vai ${p.party_hours}.`);
+  if (/\b(?:onde (?:vai ser|sera|fica|e|acontece)|local)\b/.test(s)) known.push(`Ela acontece ${p.party_venue}.`);
+  if (/\b(?:lugar(?:es)? marcad[oa]s?|assentos?|cadeiras?|sentar|mesas?)\b/.test(s)) known.push(`Na festa, ${p.party_seating}.`);
+  if (/\b(?:idade minima|menores?)\b/.test(s)) known.push(`Para a festa, ${p.party_min_age}.`);
+  const unknown = /\b(?:traje|roupa|dress|cardapio|o que tem na ceia|bebidas?)\b/.test(s);
+  if (!known.length) return newYearPartyDetailAnswer;
+  if (unknown) known.push(`O traje e o cardápio ainda não estão confirmados por aqui; se forem decisivos, escreva “recepção” que a nossa equipe confirma.`);
+  return known.join(' ');
+}
 const newYearPartialStayRule = 'No Réveillon, a hospedagem é vendida somente no pacote completo, de 31/12/2026 a 03/01/2027 (3 diárias), com a Festa da Virada incluída. Não temos estadia parcial nesse período, como só de 01 a 03/01. Se quiserem, dá para somar diárias antes de 31/12 ou depois de 03/01 ao pacote completo.';
 export const newYearPartialStayAnswer = newYearPartialStayRule + ' Para quantas pessoas seria? Contando adultos e crianças, já te passo o valor do pacote completo.';
-export const unknownPartnerAnswer = (label?: string) => `Não tenho essa condição${label ? ` (${label})` : ''} confirmada aqui. Vou chamar nossa equipe para te responder por aqui.`;
+export const unknownPartnerAnswer = (label?: string) => `Não tenho condição especial${label ? ` com ${label}` : ''} confirmada aqui: os valores que passo são os do próprio hotel, com reserva direto conosco. Se quiser que a nossa equipe confira, escreva “recepção”.`;
 
 function focusedOnNewYear(context: unknown, now: number) {
   const focus = readPackageContext(context, now);
@@ -56,7 +79,8 @@ export function newYearPartyDetailInquiry(message: string, context?: unknown, no
   const party = /\bfesta\b/.test(s) || /\b(?:virada|reveillon|ano novo)\b/.test(s) && /\bnoite\b/.test(s);
   if (!party || privateEvent.test(s) || !newYearWords.test(s) && !focusedOnNewYear(context, now)) return false;
   if (/\b(?:inclu(?:i|so|sa|sos|sas|ido|ida)|incluid[oa]s?|fotos?|imagens?|videos?)\b/.test(s)) return false;
-  return /\b(?:lugar(?:es)? marcad[oa]s?|assentos?|cadeiras?|sentar|mesas?|onde (?:vai ser|sera|fica|e|acontece)|local|traje|roupa|dress|que horas|horario|comeca|termina|ate que horas|idade minima|menores?|cardapio|o que tem na ceia|bebidas?|estacionamento)\b/.test(s);
+  // Parking is general hotel knowledge (free for guests), not a party detail.
+  return /\b(?:lugar(?:es)? marcad[oa]s?|assentos?|cadeiras?|sentar|mesas?|onde (?:vai ser|sera|fica|e|acontece)|local|traje|roupa|dress|que horas|horario|comeca|termina|ate que horas|idade minima|menores?|cardapio|o que tem na ceia|bebidas?)\b/.test(s);
 }
 
 type Range = {start: string; end: string};
@@ -186,11 +210,35 @@ export function newYearSalesTurn(message: string, context: unknown, guests: numb
   return guests ? {...reply, answer: newYearPartialStayRule} : reply;
 }
 
+/** Confirmed Réveillon rules for the AI context while the campaign runs. The
+ * prompt gives the most recent owner confirmation priority over older rules
+ * (e.g. "30/12 a 02/01 precisa de consulta à recepção", replaced on 29/09). */
+export function newYearPolicyContext(message: string, context: unknown, campaignLead: boolean, now = Date.now()) {
+  if (!campaignActive(now) || !(campaignLead || focusedOnNewYear(context, now) || newYearWords.test(norm(message)))) return undefined;
+  return {
+    confirmado_pelo_responsavel_em: newYearSalesPolicy.confirmed_at,
+    prevalece_sobre: 'Regras antigas que mandavam consultar a recepção para outras datas do Réveillon.',
+    hospedagem: 'Vendida somente no pacote completo de 31/12/2026 a 03/01/2027 (3 diárias). Não há estadia parcial dentro desse período (como 30/12 a 02/01 ou 01 a 03/01). Diárias antes de 31/12 ou depois de 03/01 podem ser somadas ao pacote completo. Explique a regra e ofereça calcular o pacote completo para o grupo; não mande consultar a recepção por isso.',
+    festa_da_virada: `Incluída no pacote: ceia, open bar, Banda Zona Rural e DJ. Horário: ${newYearSalesPolicy.party_hours}. Local: ${newYearSalesPolicy.party_venue}. Lugares: ${newYearSalesPolicy.party_seating}. Idade: ${newYearSalesPolicy.party_min_age}. (Confirmado em 30/09/2026.)`,
+    rdc_viagens: `${newYearSalesPolicy.rdc_bookings[0].toUpperCase()}${newYearSalesPolicy.rdc_bookings.slice(1)}. Por aqui, somente reservas diretas com o hotel.`,
+    festa_sem_hospedagem: `Pulseira R$ ${newYearSalesPolicy.party_wristband_price} por pessoa, ${newYearSalesPolicy.party_payment}, com ceia, open bar, Banda Zona Rural e DJ. A equipe envia o pagamento nesta conversa.`,
+    detalhes_nao_confirmados: 'Traje, cardápio da ceia e bebidas do open bar ainda não foram confirmados. Diga que esse detalhe ainda não está confirmado, sem inventar, e continue ajudando; se o cliente quiser, ele pode escrever “recepção”.',
+    como_reservar: `Escolher a acomodação na simulação e confirmar a opção; a recepção finaliza nesta conversa. Também é possível reservar pelo site: https://reservas.hotelsolar.tur.br/?pacote=${newYearCampaignPackage.id}`,
+  };
+}
+
 /** Deterministic Réveillon sales answers, in priority order. */
 export function newYearSalesReply(message: string, context?: unknown, now = Date.now()): NewYearSalesReply | undefined {
   if (newYearPartyOnlyInquiry(message, context, now)) return {kind: 'party_only', answer: newYearPartyOnlyAnswer, handoff: true};
   if (partialNewYearStay(message, context, now)) return {kind: 'partial_stay', answer: newYearPartialStayAnswer, handoff: false};
-  if (newYearPartyDetailInquiry(message, context, now)) return {kind: 'party_detail', answer: newYearPartyDetailAnswer, handoff: true};
-  if (unknownPartnerRequest(message)) return {kind: 'unknown_partner', answer: unknownPartnerAnswer(unknownPartnerInquiry(message)), handoff: true};
+  // Unconfirmed details are answered as such and the AI keeps selling; the
+  // customer can still ask for the team (owner, 30/09: the AI should answer).
+  if (newYearPartyDetailInquiry(message, context, now)) return {kind: 'party_detail', answer: newYearPartyDetailReply(message), handoff: false};
+  if (unknownPartnerRequest(message)) {
+    const label = unknownPartnerInquiry(message);
+    return {kind: 'unknown_partner', handoff: false, answer: /^rdc/i.test(label || '')
+      ? `Por aqui não fazemos reservas da RDC: ${newYearSalesPolicy.rdc_bookings}. Se quiser reservar direto com o hotel, os valores que passo são os nossos e posso seguir com você por aqui.`
+      : unknownPartnerAnswer(label)};
+  }
   return undefined;
 }

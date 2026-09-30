@@ -126,11 +126,15 @@ test('teste do WhatsApp 29/09: contexto do Réveillon, família, criança, parce
   assert.equal(party.r.quote_request,'HUMANO');assert.match(party.text,/R\$ 800 por pessoa/);assert.match(party.text,/até 3x/);
   assert.doesNotMatch(party.text,/bloquead|motor/);
 
+  // Owner, 30/09: unconfirmed details are answered as such and the AI keeps
+  // the conversation; the customer may still ask for the team.
   const seats=await say('Na festa tem lugar marcado pra sentar?');
-  assert.equal(seats.r.quote_request,'HUMANO');assert.doesNotMatch(seats.text,/Reserva Solar|ordem de chegada/);
+  assert.equal(seats.r.quote_request,'NOQUOTE');assert.doesNotMatch(seats.text,/Reserva Solar/);
+  assert.match(seats.text,/não há lugar marcado: os lugares são por ordem de chegada/);
 
   const partner=await say('Vocês aceitam RDC?');
-  assert.equal(partner.r.quote_request,'HUMANO');assert.match(partner.text,/RDC/);assert.doesNotMatch(partner.text,/pets?/i);
+  assert.equal(partner.r.quote_request,'NOQUOTE');assert.match(partner.text,/RDC/);assert.doesNotMatch(partner.text,/pets?/i);
+  assert.match(partner.text,/somente pelo canal de atendimento da própria RDC/);
 
   const child=await say('Criança de 7 anos paga?');
   assert.equal(child.result.match_type,'package_followup');
@@ -230,6 +234,24 @@ test('leads de 30/09: diária comum, estadia parcial com grupo e primeira respos
   const age=await say('5 anos');
   assert.match(age.text,/Categoria Casal, com a criança em cortesia: \*Suíte Casal\* — R\$ 5\.600,00/);
   assert.doesNotMatch(age.text,/datas que você informou são diferentes/);
+
+  // "Poderia verificar as 3 diárias" confirms the quoted period; the option is
+  // then chosen by its quoted total.
+  const joyce=conversation(CAMPAIGN_SEED);
+  await joyce('Boa tarde, gostaria de saber se possui disponibilidade para os dias 31/12 a 01/01 para 5 pessoas');
+  const nights=await joyce('Poderia verificar as 3 diarias');
+  assert.equal(nights.state.facts.check_out,'2027-01-03');assert.doesNotMatch(nights.text,/datas de entrada e saída/);
+  const chosen=await joyce('Quero a opção de 12.000');
+  assert.equal(chosen.r.quote_request,'COLETAR');assert.match(chosen.text,/Confira sua escolha/);
+
+  // Party details confirmed by the owner on 30/09; dress code is not.
+  const hours=await say('Que horas começa a festa da virada e onde vai ser?');
+  assert.equal(hours.r.quote_request,'NOQUOTE');
+  assert.match(hours.text,/das 21h às 2h.*pérgola da piscina do hotel/s);
+  const minAge=await say('Tem idade mínima pra festa?');
+  assert.match(minAge.text,/não há idade mínima/);
+  const dress=await say('Qual o traje da festa?');
+  assert.match(dress.text,/ainda não está confirmado/);assert.equal(dress.r.quote_request,'NOQUOTE');
 
   // Declining the party night itself still gets the rule, not a quote.
   const decline=await say('Posso ficar só de 1 a 3 de janeiro? Não quero passar a virada aí');

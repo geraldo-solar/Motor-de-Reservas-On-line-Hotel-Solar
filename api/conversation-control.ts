@@ -17,7 +17,7 @@ import { isAttachmentInput, analyzeAttachment, type AttachmentKind } from '../ut
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
 import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, packageResumeRequest, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
-import {newYearSalesTurn,newYearCampaignSeed,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,type NewYearStayRequest} from '../utils/newYearSales.js';
+import {newYearSalesTurn,newYearCampaignSeed,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,newYearPolicyContext,type NewYearStayRequest} from '../utils/newYearSales.js';
 import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
 import {packageToday,packageEnded,retiredIndependence,endedPackageAnswer,endedPackageMarker} from '../utils/packageAvailability.js';
 import {packageStayDates,readPackageStayQuery,packageStayPriceRequest,type PackageStayQuery} from '../utils/packageStayQuery.js';
@@ -518,8 +518,12 @@ function updateStayDates(state: State, s: string, now: number) {
   if (requested) {
     state.duration_request = requested;
     // A new requested duration without dates cannot silently use an older
-    // checkout. Keep only the entry already explicitly supplied by the user.
-    if (!dates.length) delete state.facts.check_out;
+    // checkout. Keep only the entry already explicitly supplied by the user,
+    // unless the duration just confirms the current period ("as 3 diárias").
+    const confirmsPeriod = !dates.length && requested.unit === 'nights' && !!state.facts.check_in && !!state.facts.check_out
+      && (Date.parse(`${state.facts.check_out}T12:00:00Z`) - Date.parse(`${state.facts.check_in}T12:00:00Z`)) / 86400000 === requested.count;
+    if (confirmsPeriod) delete state.duration_request;
+    else if (!dates.length) delete state.facts.check_out;
   }
   if (previousPending && dates.length) {
     const suppliedExit = dates.length === 1 && !newEntry && !!state.facts.check_in;
@@ -659,7 +663,15 @@ function selection(s: string, quote: Quote): Quote['options'][number] | undefine
   });
   if (matches.length === 1) return matches[0];
   if (/\b(primeira opcao|opcao 1|recomendacao premium)\b/.test(s)) return quote.options[0];
-  return undefined;
+  if (/\b(segunda opcao|opcao 2)\b/.test(s)) return quote.options[1];
+  if (/\b(terceira opcao|opcao 3)\b/.test(s)) return quote.options[2];
+  if (/\b(?:a )?mais (?:barata|economica|em conta)\b/.test(s) && quote.options.length > 1)
+    return [...quote.options].sort((a, b) => a.total - b.total)[0];
+  // "Quero a opção de 12.000" / "a de 12 mil": the quoted total, when unique.
+  const said = [...s.matchAll(/\b(\d{1,3}(?:\.\d{3})+|\d{4,6})(?:,\d{2})?\b|\b(\d{1,3}(?:,\d)?) mil\b/g)]
+    .map(m => m[1] ? Number(m[1].replace(/\./g, '')) : Math.round(Number(m[2].replace(',', '.')) * 1000));
+  const byTotal = quote.options.filter(option => said.some(value => value === Math.round(option.total)));
+  return byTotal.length === 1 ? byTotal[0] : undefined;
 }
 
 // A bare category can answer the current quote's accommodation question.
@@ -1331,6 +1343,7 @@ function controlTurn(body: any, now = Date.now()) {
       politica_gastronomia_confirmada: confirmedDiningPolicy,
       politica_instalacoes_confirmada: confirmedGuestFacilitiesPolicy,
       politicas_hotel_confirmadas: confirmedHotelPolicy,
+      politica_reveillon_confirmada: newYearPolicyContext(raw, state.package_context || state.recent_package, state.campaign === 'RV27', now) || null,
       regra_ensaios_e_hidromassagem:'Ensaio ou sessão de fotos não é pedido para receber imagens do hotel: exige consulta prévia à recepção, sem autorização automática. As duas piscinas de hidromassagem são compartilhadas pelos hóspedes, não privativas; aquecimento e temperatura não estão confirmados.',
       regra_instalacoes: 'A copa baby e seu micro-ondas são de uso dos hóspedes para aquecer alimentos, sem horário específico. Isso não confirma equipamento dentro de quartos, acesso de visitantes, outros eletrodomésticos ou serviço prestado por funcionários. Não transformar uma dúvida sobre comida de bebê em nova criança na ocupação. Pedido efetivo para a equipe aquecer ou entregar deve seguir ao humano, sem afirmar execução.',
       regra_politica_gastronomia: 'A política de gastronomia confirmada mais recentemente pelo responsável prevalece sobre respostas antigas do histórico ou instruções sazonais anteriores. Não aplicar cobrança de entrada automaticamente em feriados, férias ou datas de grande movimento: somente datas previamente autorizadas e informadas pelo responsável podem ter cobrança. Não inventar tarifa nem converter preço de entrada em preço de café, refeições ou couvert. Os horários gerais não comprovam funcionamento em tempo real.',
