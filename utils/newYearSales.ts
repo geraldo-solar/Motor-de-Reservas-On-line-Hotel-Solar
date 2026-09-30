@@ -227,6 +227,13 @@ export function newYearPolicyContext(message: string, context: unknown, campaign
   };
 }
 
+/** Self-service checkout for the exact package period (the site checks
+ * availability and takes payment online). */
+export function newYearSiteLink(checkIn: string, checkOut: string, now = Date.now()) {
+  if (!campaignActive(now) || checkIn !== newYearSalesPolicy.package_start || checkOut !== newYearSalesPolicy.package_end) return;
+  return `https://reservas.hotelsolar.tur.br/?pacote=${newYearCampaignPackage.id}&utm_source=whatsapp&utm_medium=ia&utm_campaign=reveillon2027`;
+}
+
 /** Deterministic Réveillon sales answers, in priority order. */
 export function newYearSalesReply(message: string, context?: unknown, now = Date.now()): NewYearSalesReply | undefined {
   if (newYearPartyOnlyInquiry(message, context, now)) return {kind: 'party_only', answer: newYearPartyOnlyAnswer, handoff: true};

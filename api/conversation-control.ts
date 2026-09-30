@@ -17,7 +17,7 @@ import { isAttachmentInput, analyzeAttachment, type AttachmentKind } from '../ut
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
 import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, packageResumeRequest, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
-import {newYearSalesTurn,newYearCampaignSeed,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,newYearPolicyContext,type NewYearStayRequest} from '../utils/newYearSales.js';
+import {newYearSalesTurn,newYearCampaignSeed,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,newYearPolicyContext,newYearSiteLink,type NewYearStayRequest} from '../utils/newYearSales.js';
 import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
 import {packageToday,packageEnded,retiredIndependence,endedPackageAnswer,endedPackageMarker} from '../utils/packageAvailability.js';
 import {packageStayDates,readPackageStayQuery,packageStayPriceRequest,type PackageStayQuery} from '../utils/packageStayQuery.js';
@@ -662,6 +662,12 @@ function selection(s: string, quote: Quote): Quote['options'][number] | undefine
     return unique.length > 3 && s.includes(unique);
   });
   if (matches.length === 1) return matches[0];
+  return quotedChoice(s, quote);
+}
+
+// "A segunda opção", "a mais barata", "a de 12.000": an explicit choice among
+// the quoted options, by position or by quoted total (when unique).
+function quotedChoice(s: string, quote: Quote): Quote['options'][number] | undefined {
   if (/\b(primeira opcao|opcao 1|recomendacao premium)\b/.test(s)) return quote.options[0];
   if (/\b(segunda opcao|opcao 2)\b/.test(s)) return quote.options[1];
   if (/\b(terceira opcao|opcao 3)\b/.test(s)) return quote.options[2];
@@ -689,7 +695,12 @@ const amount = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', cur
 function confirmation(q: Quote, name: string) {
   const option = q.options.find(o => o.name === name)!;
   const childNote = option.child_allowance ? `\nA simulação considera ${option.child_allowance} criança(s) de até 6 anos em cortesia, no máximo 1 por apartamento, conforme as idades informadas. Todos continuam incluídos no total de hóspedes. Há cama extra gratuita para essa criança e berço gratuito, mediante solicitação e disponibilidade; esta simulação não confirma o item nem sua instalação.` : '';
-  return `Confira sua escolha:\n\n${option.name}\n${dateLabel(q.check_in)} a ${dateLabel(q.check_out)} · ${q.guests} hóspedes\nTotal da simulação: ${amount(option.total)}${q.extras.length ? ' (com os extras escolhidos)' : ''}.${childNote}\n\nAinda não confirma disponibilidade nem reserva. Para solicitar que a recepção verifique as vagas e continue por aqui, toque em “Confirmar opção”. Só então pediremos nome completo, e-mail e CPF.`;
+  // Réveillon: the customer can also close alone on the site, any time.
+  const site = newYearSiteLink(q.check_in, q.check_out);
+  const siteNote = site ? `\n\nSe preferir, garanta direto pelo site, que confere a disponibilidade na hora e aceita pagamento online: ${site}` : '';
+  const card = `Confira sua escolha:\n\n${option.name}\n${dateLabel(q.check_in)} a ${dateLabel(q.check_out)} · ${q.guests} hóspedes\nTotal da simulação: ${amount(option.total)}${q.extras.length ? ' (com os extras escolhidos)' : ''}.${childNote}\n\nAinda não confirma disponibilidade nem reserva. Para solicitar que a recepção verifique as vagas e continue por aqui, toque em “Confirmar opção”. Só então pediremos nome completo, e-mail e CPF.`;
+  // The card travels with a WhatsApp button (body limit 1024 characters).
+  return card.length + siteNote.length <= 1000 ? card + siteNote : card;
 }
 
 function controlTurn(body: any, now = Date.now()) {
@@ -1502,6 +1513,8 @@ function controlTurn(body: any, now = Date.now()) {
     if(!state.package_context){delete state.topic;delete state.topic_at;}
   }
   else if (!(quote && packageBookingRequest(publicMessage) && selection(s, quote))
+    // A bare category or a quoted total answers the quote, not the package.
+    && !(quote && !question(s) && (quotedChoice(s, quote) || (()=>{const o=selection(s,quote);return !!o&&shortRoomChoice(s,o.name);})()))
     && ((!restaurantInquiry(s) && !eventInquiry(publicMessage) && !publicEventInquiry(publicMessage) && inquiry !== 'lodging_faq' && packageInquiry(publicMessage))
     || (state.topic === 'package_info' && state.package_context && inquiry !== 'dining' && inquiry !== 'day_use' && packageFollowup(publicMessage)
       && !(quote && packageBookingRequest(publicMessage))))) {
@@ -1578,7 +1591,7 @@ function controlTurn(body: any, now = Date.now()) {
   else {
     const selected = quote ? selection(s, quote) : undefined;
     const selecting = /\b(quero|prefiro|escolho|escolhi|aceito|pode ser|fico com|vou ficar|vou querer)\b/.test(s)
-      || !!selected&&shortRoomChoice(s,selected.name);
+      || !!selected&&shortRoomChoice(s,selected.name) || !!quote&&!!quotedChoice(s,quote);
     if (quote && selected && selecting && !question(s) && !/\b(nao|talvez|pensar|depois|ainda)\b/.test(s)) {
       state.pending = { quote_id: quote.id, option: selected.name };
       confirmationText = confirmation(quote, selected.name);

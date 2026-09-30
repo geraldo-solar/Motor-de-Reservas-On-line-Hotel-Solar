@@ -243,6 +243,16 @@ test('leads de 30/09: diária comum, estadia parcial com grupo e primeira respos
   assert.equal(nights.state.facts.check_out,'2027-01-03');assert.doesNotMatch(nights.text,/datas de entrada e saída/);
   const chosen=await joyce('Quero a opção de 12.000');
   assert.equal(chosen.r.quote_request,'COLETAR');assert.match(chosen.text,/Confira sua escolha/);
+  assert.match(chosen.text,/garanta direto pelo site.*\?pacote=0267abd7-ba19-4492-8894-aea827edea33&utm_source=whatsapp/s);
+  assert.ok(chosen.text.length<=1000);
+
+  // After a quote, a bare category or a quoted total is the choice itself.
+  for(const pick of ['Suíte Casal','a de 5.600','a mais barata']){
+    const say2=conversation(CAMPAIGN_SEED);
+    await say2('Quais os valores do Réveillon?');await say2('2 adultos e 1 criança de 5 anos');await say2('Quero a suíte casal');
+    const picked=await say2(pick);
+    assert.equal(picked.r.quote_request,'COLETAR',pick);assert.match(picked.text,/Suíte Casal\n31\/12\/2026 a 03\/01\/2027/,pick);
+  }
 
   // Party details confirmed by the owner on 30/09; dress code is not.
   const hours=await say('Que horas começa a festa da virada e onde vai ser?');
