@@ -298,6 +298,17 @@ const formatPackageInclusions = (pkg: PackageRecord, guests?: number) => {
   return fitWhatsApp(text.join('\n'), true);
 };
 
+const packageHowToBook = (message: string) =>
+  /\bcomo (?:eu )?(?:faco|faz|fazer|faco a|posso|consigo) (?:para |pra |a )?(?:reservar|reserva|fechar|garantir)\b|\bcomo (?:reservo|fecho|garanto)\b/.test(normalize(message));
+const formatPackageHowToBook = (pkg: PackageRecord, guests?: number) => [
+  `Para reservar o ${pkg.name || 'pacote'}, é por aqui mesmo:`,
+  guests
+    ? '1. Me diga qual acomodação prefere.\n2. Eu te mostro o resumo com o valor para você tocar em "Confirmar opção".\n3. A recepção confere a disponibilidade e finaliza com você nesta conversa.'
+    : '1. Me diga quantos adultos e crianças vão (com a idade das crianças).\n2. Eu calculo o valor e te mostro o resumo para você tocar em "Confirmar opção".\n3. A recepção confere a disponibilidade e finaliza com você nesta conversa.',
+  '',
+  `Se preferir, também dá para reservar pelo site: https://reservas.hotelsolar.tur.br/?pacote=${encodeURIComponent(pkg.id)}${Number(pkg.max_installments || 0) > 0 ? ` (em até ${Number(pkg.max_installments)}x no cartão)` : ''}.`,
+].join('\n');
+
 const packageInstallmentQuestion = (message: string) =>
   /\b(?:parcel(?:ar|a|as|amento|ado|ada)|em quantas vezes|quantas vezes|dividir no cartao)\b/.test(normalize(message));
 const formatPackageInstallments = (pkg: PackageRecord) => Number(pkg.max_installments || 0) > 0
@@ -788,6 +799,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? packageInclusionReply(pkg,userMessage,conversationState?.history||[])
       : packageInstallmentQuestion(userMessage) && !childPolicyQuestion(userMessage)
       ? formatPackageInstallments(pkg)
+      : packageHowToBook(userMessage)
+      ? formatPackageHowToBook(pkg,facts.guests)
       : differentDates
       ? `O pacote ${pkg.name} tem período de ${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}. As datas que você informou são diferentes${pkg.full_period_required ? ', e esse pacote exige o período completo' : ''}. Você quer continuar consultando esse pacote ou deseja outra estadia? Não alterei suas datas nem confirmei uma reserva.`
       : family.pending && !childPolicyQuestion(userMessage)

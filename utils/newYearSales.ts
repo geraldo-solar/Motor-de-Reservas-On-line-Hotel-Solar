@@ -119,6 +119,28 @@ export function unknownPartnerRequest(message: string): boolean {
       && /\b(?:aceit|tem|possu|trabalh|fazem|faz|usar|posso|da pra|desconto)/.test(s);
 }
 
+// Catalogue record of the campaign package (ManyChat tag "RV27 IA"). The
+// resolver re-reads it from the catalogue by id before answering anything.
+export const newYearCampaignPackage = {
+  id: '0267abd7-ba19-4492-8894-aea827edea33',
+  name: 'Réveillon Solar 2027: A Virada em Salinas',
+  start_date: newYearSalesPolicy.package_start,
+  end_date: newYearSalesPolicy.package_end,
+};
+
+/** A campaign lead's conversation starts in the Réveillon package ("2 adultos
+ * e 1 criança" answers the ad's greeting). Another period, holiday or stay
+ * already being quoted is a different trip and is never forced into it. */
+export function newYearCampaignSeed(message: string, facts: {check_in?: string; check_out?: string} | undefined, now = Date.now()) {
+  if (!campaignActive(now)) return;
+  const s = norm(message);
+  if (/\b\d{1,2}\s*\/\s*\d{1,2}\b|\b\d{1,2}\s+(?:de\s+)?(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*\b/.test(s)) return;
+  if (/\b(?:feriados?|natal|carnaval|pascoa|finados|ostrabeach|dia das criancas|independencia|fim de semana|final de semana|hoje|amanha|semana que vem|setembro|outubro|novembro|janeiro|fevereiro|marco|abril|julho)\b/.test(s)) return;
+  if (facts?.check_in && facts?.check_out
+    && !(facts.check_in < newYearCampaignPackage.end_date && facts.check_out > newYearCampaignPackage.start_date)) return;
+  return {...newYearCampaignPackage, updated_at: now};
+}
+
 /** Deterministic Réveillon sales answers, in priority order. */
 export function newYearSalesReply(message: string, context?: unknown, now = Date.now()): NewYearSalesReply | undefined {
   if (newYearPartyOnlyInquiry(message, context, now)) return {kind: 'party_only', answer: newYearPartyOnlyAnswer, handoff: true};

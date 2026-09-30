@@ -18,7 +18,8 @@ const rooms=[['casal','Suíte Casal',2,410,610,1866.67],['triplo','Suíte Triplo
     {dateIso:'2027-01-01',price:night,noCheckIn:true,noCheckOut:true},
     {dateIso:'2027-01-02',price:night,noCheckIn:true,noCheckOut:true},
     {dateIso:'2027-01-03',price:extra}]}));
-const pkg={id:'reveillon',name:'Réveillon Solar 2027: A Virada em Salinas',active:true,start_iso_date:'2026-12-31',end_iso_date:'2027-01-03',
+const RV27_ID='0267abd7-ba19-4492-8894-aea827edea33';
+const pkg={id:RV27_ID,name:'Réveillon Solar 2027: A Virada em Salinas',active:true,start_iso_date:'2026-12-31',end_iso_date:'2027-01-03',
   description:'A virada de 2027 à beira-mar. Três noites com passeio de catamarã, festa da virada, ceia e open bar. Criança até 6 anos não paga. Parcele em até 6x no cartão.',
   includes:['Quinta 31/12 Check-in · Festa da Virada: ceia, open bar, DJ e banda','Sábado 02/01 Passeio de barco'],benefits:[],
   room_prices:[],max_installments:6,full_period_discount_pct:0,no_checkin_dates:[],no_checkout_dates:[]};
@@ -35,8 +36,8 @@ const {control,prices,resolver,updateFamilyParty,packagePrices,newYearSalesReply
 async function request(handler,body){let output;await handler({method:'POST',body,query:{}},{status(code){assert.equal(code,200);return this;},json(v){output=v;return v;},setHeader(){}});return output;}
 // The model answer is deliberately wrong: deterministic branches must replace it.
 const WRONG_AI='Não aceitamos pets, incluindo RDC. Parcelamos em até 3 vezes. A festa é no Reserva Solar, sem lugar marcado.';
-function conversation(){
-  let state,quote;
+function conversation(seed){
+  let state=seed,quote;
   return async function say(message){
     now+=60000;
     const p=control({operation:'prepare',user_message:message,state,quote_state:quote},now);
@@ -114,7 +115,7 @@ test('teste do WhatsApp 29/09: contexto do Réveillon, família, criança, parce
   assert.doesNotMatch(inclusions.text,/Pacotes ativos|Natal em Salinas|Dia das Crianças/);
 
   const meal=await say('Vocês trabalham com meia pensão, café e jantar?');
-  assert.equal(meal.state.recent_package?.id,'reveillon');
+  assert.equal(meal.state.recent_package?.id,RV27_ID);
 
   const partial=await say('Posso ficar só de 1 a 3 de janeiro? Não quero passar a virada aí');
   assert.equal(partial.r.quote_request,'NOQUOTE');assert.equal(partial.result.match_type,'new_year_partial_stay');
@@ -162,10 +163,43 @@ test('outra estadia com datas depois de uma dúvida paralela não retoma o Réve
   const say=conversation();
   await say('Vi o anúncio do réveillon');
   const pets=await say('Vocês aceitam pet?');
-  assert.equal(pets.state.recent_package?.id,'reveillon');
+  assert.equal(pets.state.recent_package?.id,RV27_ID);
   const other=await say('Quero reservar de 10/10 a 12/10 para 2 pessoas');
-  assert.notEqual(other.state.package_context?.id,'reveillon');
+  assert.notEqual(other.state.package_context?.id,RV27_ID);
   assert.equal(other.r.quote_request,'QUOTE|2026-10-10|2026-10-12|2|NONE');
   const resumed=await say('Dá pra parcelar em quantas vezes?');
   assert.doesNotMatch(resumed.text||'',/Réveillon/);
+});
+
+// ManyChat seeds this state for leads tagged "RV27 IA" on their first AI turn.
+const CAMPAIGN_SEED=JSON.stringify({version:2,history:[],facts:{extras:[]},greeted:false,campaign:'RV27'});
+
+test('lead da campanha responde à boas-vindas com o grupo e recebe os valores do Réveillon',async()=>{
+  now=start+3*3600000;
+  const say=conversation(CAMPAIGN_SEED);
+  const family=await say('2 adultos e 1 criança de 5 anos');
+  assert.equal(family.result.match_type,'package_followup');
+  assert.match(family.text,/Réveillon Solar 2027/);assert.match(family.text,/Suíte Casal\* — R\$ 5\.600,00/);
+  assert.doesNotMatch(family.text,/datas de entrada e saída/);
+  assert.equal(family.state.campaign,'RV27');
+  const booking=await say('Quero reservar a suíte casal');
+  assert.equal(booking.r.quote_request,'QUOTE|2026-12-31|2027-01-03|3|NONE');
+  const couple=await conversation(CAMPAIGN_SEED)('Um casal');
+  assert.match(couple.text,/Réveillon Solar 2027/);assert.match(couple.text,/2 hóspedes/);
+  const how=await conversation(CAMPAIGN_SEED)('Como faço para reservar?');
+  assert.match(how.text,/quantos adultos e crianças/);assert.match(how.text,new RegExp('pacote='+RV27_ID));
+});
+
+test('campanha não força o Réveillon em outra viagem, fora do período ou sem a marca',async()=>{
+  now=start+4*3600000;
+  const other=await conversation(CAMPAIGN_SEED)('Quero um quarto para 2 adultos no feriado de outubro');
+  assert.notEqual(other.state.package_context?.id,RV27_ID);
+  const dated=await conversation(CAMPAIGN_SEED)('Quero hospedagem de 10/10 a 12/10 para 2 adultos');
+  assert.equal(dated.r.quote_request,'QUOTE|2026-10-10|2026-10-12|2|NONE');
+  const plain=await conversation()('2 adultos e 1 criança de 5 anos');
+  assert.doesNotMatch(plain.text||'',/Réveillon/);
+  now=Date.parse('2027-01-02T10:00:00-03:00');
+  const ended=await conversation(CAMPAIGN_SEED)('2 adultos');
+  assert.equal(ended.state.package_context,undefined);
+  now=start;
 });
