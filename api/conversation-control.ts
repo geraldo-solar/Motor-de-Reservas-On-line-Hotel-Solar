@@ -17,7 +17,7 @@ import { isAttachmentInput, analyzeAttachment, type AttachmentKind } from '../ut
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
 import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, packageResumeRequest, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
-import {newYearSalesTurn,newYearCampaignSeed,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,newYearPolicyContext,newYearSiteLink,type NewYearStayRequest} from '../utils/newYearSales.js';
+import {newYearSalesTurn,newYearCampaignSeed,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,newYearPolicyContext,newYearSiteLink,newYearCampaignFocus,type NewYearStayRequest} from '../utils/newYearSales.js';
 import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
 import {packageToday,packageEnded,retiredIndependence,endedPackageAnswer,endedPackageMarker} from '../utils/packageAvailability.js';
 import {packageStayDates,readPackageStayQuery,packageStayPriceRequest,type PackageStayQuery} from '../utils/packageStayQuery.js';
@@ -383,6 +383,13 @@ function parseDates(s: string, now: number): { dates: string[]; unclear?: boolea
         if (isExit(labels[0]) === isExit(labels[1])) return {dates:[],unclear:true};
         if (isExit(labels[0])) dates.reverse();
       }
+      // "31/12 a 04/01/2026": the year typed for the exit is the entry's year.
+      // A checkout that only lands after the entry in the next year is meant.
+      if (dates[1] <= dates[0]) {
+        const next = `${Number(dates[1].slice(0, 4)) + 1}${dates[1].slice(4)}`;
+        const nights = (Date.parse(`${next}T12:00:00Z`) - Date.parse(`${dates[0]}T12:00:00Z`)) / 86400000;
+        if (nights > 0 && nights <= 31) dates[1] = next;
+      }
     }
     return {dates};
   };
@@ -392,6 +399,13 @@ function parseDates(s: string, now: number): { dates: string[]; unclear?: boolea
   if (abbreviated.length) {
     const m = abbreviated[0];
     const outside = s.slice(0,m.index) + s.slice(m.index!+m[0].length);
+    // "31 a 04/01" crosses the year: the first day is in December.
+    if (abbreviated.length === 1 && !calendarDateMention(outside) && +m[1] > +m[2] && +m[3] === 1 && +m[1] >= 20) {
+      let year = m[4] ? yearNumber(m[4]) - 1 : currentYear;
+      if ((iso(+m[1],12,year) || '') < today) year++;
+      return finish([{date:iso(+m[1],12,year),index:m.index!,end:m.index!+m[0].length},
+        {date:iso(+m[2],1,year+1),index:m.index!+m[0].length,end:m.index!+m[0].length}]);
+    }
     if (abbreviated.length !== 1 || calendarDateMention(outside) || +m[1] >= +m[2]) return {dates:[],unclear:true};
     let year = yearNumber(m[4]);
     if (!m[4] && (iso(+m[1],+m[3],year) || '') < today) year++;
@@ -619,6 +633,20 @@ function updateFacts(state: State, message: string, now: number) {
   }
 }
 
+// "Ficou em 8.210?" … "Aceito": the customer accepts an offer the AI never
+// made (the team answers in the same chat, out of the AI's sight). The team
+// closes it; the AI must not call the value invalid or quote over it.
+function teamOfferAcceptance(raw: string, state: State, quoteState: unknown, now: number) {
+  const s = norm(raw);
+  if (s.length > 80 || !/^(?:(?:ok|sim|entao|beleza|perfeito)[,!.]?\s+)?(?:aceito|fechado|fechamos|fecho|pode fechar|vamos fechar|quero fechar|bora fechar|pode reservar|aceitamos)\b/.test(s)) return;
+  if (validQuote(quoteState, state, now) || state.pending) return;
+  const money = /\b\d{1,3}(?:\.\d{3})+(?:,\d{2})?\b|\b\d{4,5}(?:,\d{2})?\b|\br\$\s?\d/;
+  const previous = [...state.history].reverse().find(item => norm(item) !== s) || '';
+  if (!money.test(s) && !money.test(norm(previous))) return;
+  return {kind: 'team_offer' as const, handoff: true,
+    answer: 'Ótimo! Vou chamar a nossa equipe para confirmar esse valor e finalizar a sua reserva por aqui.'};
+}
+
 // The Réveillon is sold only as the full package: dates that touch it without
 // covering it (31/12–01/01) become the package period, remembering what was
 // asked so the answer can say why.
@@ -766,7 +794,8 @@ function controlTurn(body: any, now = Date.now()) {
   }
   const newYearSale=['prepare','route','confirm'].includes(body.operation)&&!human(s)&&!guestServiceRequest(raw)
     &&!paymentStatusInquiry(raw,state.history.at(-1)||'')&&!existingReservationInquiry(raw,!!state.existing_reservation)
-    ?newYearSalesTurn(raw,state.package_context||state.recent_package,state.facts.guests,now):undefined;
+    ?newYearSalesTurn(raw,state.package_context||state.recent_package,state.facts.guests,now,newYearCampaignFocus(state.campaign,state.facts))
+      ||teamOfferAcceptance(raw,state,body.quote_state,now):undefined;
   if(newYearSale){
     // Owner-confirmed campaign answers (29/09/2026). They never create stay
     // facts: a partial period is declined, party/partner questions go to the team.
@@ -1355,6 +1384,7 @@ function controlTurn(body: any, now = Date.now()) {
       politica_instalacoes_confirmada: confirmedGuestFacilitiesPolicy,
       politicas_hotel_confirmadas: confirmedHotelPolicy,
       politica_reveillon_confirmada: newYearPolicyContext(raw, state.package_context || state.recent_package, state.campaign === 'RV27', now) || null,
+      regra_valores_da_equipe: 'Nossa equipe também responde nesta conversa e você não vê essas mensagens. Se o cliente citar um valor, condição ou acomodação que você não informou, nunca diga que é inválido, que não corresponde ou que está errado: diga que vai confirmar com a equipe ou ofereça calcular aqui. Se ele aceitar algo combinado com a equipe, a equipe finaliza.',
       regra_ensaios_e_hidromassagem:'Ensaio ou sessão de fotos não é pedido para receber imagens do hotel: exige consulta prévia à recepção, sem autorização automática. As duas piscinas de hidromassagem são compartilhadas pelos hóspedes, não privativas; aquecimento e temperatura não estão confirmados.',
       regra_instalacoes: 'A copa baby e seu micro-ondas são de uso dos hóspedes para aquecer alimentos, sem horário específico. Isso não confirma equipamento dentro de quartos, acesso de visitantes, outros eletrodomésticos ou serviço prestado por funcionários. Não transformar uma dúvida sobre comida de bebê em nova criança na ocupação. Pedido efetivo para a equipe aquecer ou entregar deve seguir ao humano, sem afirmar execução.',
       regra_politica_gastronomia: 'A política de gastronomia confirmada mais recentemente pelo responsável prevalece sobre respostas antigas do histórico ou instruções sazonais anteriores. Não aplicar cobrança de entrada automaticamente em feriados, férias ou datas de grande movimento: somente datas previamente autorizadas e informadas pelo responsável podem ter cobrança. Não inventar tarifa nem converter preço de entrada em preço de café, refeições ou couvert. Os horários gerais não comprovam funcionamento em tempo real.',
@@ -1589,9 +1619,12 @@ function controlTurn(body: any, now = Date.now()) {
     delete state.subject;delete state.extra_photo_subjects;delete state.extra_photo_requests;
   }
   else {
-    const selected = quote ? selection(s, quote) : undefined;
+    // "Ficou em 8.210?" then "Aceito": the accepted total names the option.
+    const accepting = /^(?:(?:ok|sim|entao|beleza|perfeito)[,!.]?\s+)?(?:aceito|fechado|fechamos|pode fechar|vamos fechar|quero fechar|pode reservar)\b/.test(s);
+    const previousAsk = [...state.history].reverse().find(item => norm(item) !== s) || '';
+    const selected = quote ? selection(s, quote) || (accepting ? quotedChoice(norm(previousAsk), quote) : undefined) : undefined;
     const selecting = /\b(quero|prefiro|escolho|escolhi|aceito|pode ser|fico com|vou ficar|vou querer)\b/.test(s)
-      || !!selected&&shortRoomChoice(s,selected.name) || !!quote&&!!quotedChoice(s,quote);
+      || !!selected&&shortRoomChoice(s,selected.name) || !!quote&&!!quotedChoice(s,quote) || accepting&&!!selected;
     if (quote && selected && selecting && !question(s) && !/\b(nao|talvez|pensar|depois|ainda)\b/.test(s)) {
       state.pending = { quote_id: quote.id, option: selected.name };
       confirmationText = confirmation(quote, selected.name);

@@ -17,7 +17,7 @@ import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
 import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
 import { namedPackageInquiry, packageGeneralInclusionQuestion, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup,packageDiscoveryRequest,packageRoomDetailFollowup } from '../utils/packageContext.js';
 import {packageInclusionReply} from '../utils/packageInclusions.js';
-import {newYearSalesTurn,newYearStayRange,newYearFullPeriodNote,readNewYearStayRequest} from '../utils/newYearSales.js';
+import {newYearSalesTurn,newYearStayRange,newYearFullPeriodNote,readNewYearStayRequest,newYearCampaignFocus,newYearCampaignPackage,newYearSalesPolicy} from '../utils/newYearSales.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
 import {packageStayDates,readPackageStayQuery,packageStayPriceRequest} from '../utils/packageStayQuery.js';
@@ -39,7 +39,7 @@ import { paymentStatusInquiry } from '../utils/paymentStatus.js';
 import { paymentSupportInquiry } from '../utils/paymentSupport.js';
 import {arrivalTimeQuestion,arrivalTimeHandoff} from '../utils/conversationalStayDates.js';
 import { existingReservationInquiry } from '../utils/existingReservation.js';
-import { familyAccommodation, familyAgeQuestionFor, familyRoomRule, familyRoomExplanation } from '../utils/familyAccommodation.js';
+import { familyAccommodation, familyAgeQuestionFor, familyRoomRule, familyRoomExplanation, baseRoomCapacity } from '../utils/familyAccommodation.js';
 import {readMultiRoomHandoff,multiRoomGuidanceText} from '../utils/multiRoomHandoff.js';
 import {multiRoomRequest,roomAlternativeComparison} from '../utils/lodgingScope.js';
 import {reservaHoursAnswer} from '../utils/diningPolicy.js';
@@ -307,6 +307,27 @@ const withFullPeriodNote = (answer: string, message: string, state: any) => {
   return asked ? `${newYearFullPeriodNote(asked)}\n\n${answer}` : answer;
 };
 
+async function newYearCheapestOption(state: any): Promise<string | undefined> {
+  const client = createClient(supabaseUrl!, supabaseKey!);
+  const [{data: packages, error: packageError}, {data: rooms, error: roomError}] = await Promise.all([
+    client.from('packages').select('*').eq('active', true), client.from('room_types').select('*').eq('active', true)]);
+  if (packageError || roomError || !rooms?.length) return;
+  const pkg = (packages || []).find((item: PackageRecord) => currentPackage(item) && item.id === newYearCampaignPackage.id);
+  if (!pkg) return;
+  const guests = Number(state?.facts?.guests) || 0;
+  const family = familyAccommodation(state, guests);
+  const options = packagePrices(pkg, rooms).prices.filter(item => Number.isInteger(item.capacity) && (guests
+    ? baseRoomCapacity(Number(item.capacity)) + Math.min(1, family.eligible) >= guests
+    : Number(item.capacity) >= 2));
+  if (!options.length) return;
+  const best = options.reduce((a, b) => (b.price < a.price ? b : a));
+  const nights = Math.round((Date.parse(`${pkg.end_iso_date}T12:00:00Z`) - Date.parse(`${pkg.start_iso_date}T12:00:00Z`)) / 86400000);
+  const installments = Number(pkg.max_installments || 0) > 0 ? Number(pkg.max_installments) : newYearSalesPolicy.package_installments;
+  const cash = best.price * (1 - newYearSalesPolicy.cash_discount_pct / 100);
+  const group = guests ? ` para ${guests} ${guests === 1 ? 'pessoa' : 'pessoas'}` : '';
+  return `Entendo! A opção mais em conta${group} é a ${best.name}: R$ ${money(best.price)} pelas ${nights} noites, já com a Festa da Virada (ceia, open bar, Banda Zona Rural e DJ). Dá para parcelar em até ${installments}x de R$ ${(best.price / installments).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} no cartão, ou pagar à vista com ${newYearSalesPolicy.cash_discount_pct}% de desconto: R$ ${money(cash)}. Criança de até 6 anos não paga.${guests ? ' Quer que eu siga com essa opção?' : ' Para quantas pessoas seria?'}`;
+}
+
 const packageHowToBook = (message: string) =>
   /\bcomo (?:eu )?(?:faco|faz|fazer|faco a|posso|consigo) (?:para |pra |a )?(?:reservar|reserva|fechar|garantir)\b|\bcomo (?:reservo|fecho|garanto)\b/.test(normalize(message));
 const formatPackageHowToBook = (pkg: PackageRecord, guests?: number) => [
@@ -423,13 +444,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({...routed,quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
       can_collect:'NAO',confirmation_text:'',matched:false,match_type:deferred?'booking_deferral':'hotel_call_difficulty',availability_checked:false});
   }
-  const newYearSale=!req.query?.operation?newYearSalesTurn(serviceMessage,earlyState?.package_context||earlyState?.recent_package,earlyState?.facts?.guests):undefined;
+  const newYearSale=!req.query?.operation?newYearSalesTurn(serviceMessage,earlyState?.package_context||earlyState?.recent_package,earlyState?.facts?.guests,Date.now(),newYearCampaignFocus(earlyState?.campaign,earlyState?.facts)):undefined;
   if(newYearSale){
     // Owner-confirmed Réveillon answers: the controller owns the handoff and
     // the remembered turn; never replace them with the package card or a quote.
     const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
-    const answer='answer' in routed&&routed.answer?routed.answer:newYearSale.answer;
+    let answer='answer' in routed&&routed.answer?routed.answer:newYearSale.answer;
     const handoff='quote_request' in routed&&routed.quote_request==='HUMANO';
+    // "Achei caro": answer with the most affordable option for the group,
+    // from the current catalogue (never a price from memory).
+    if(newYearSale.kind==='price_objection'&&!handoff){
+      const cheapest=await newYearCheapestOption(earlyState);
+      if(cheapest){
+        answer=cheapest;
+        const remembered=control({operation:'remember_response',state:'state' in routed?routed.state:req.body?.state,response_text:answer});
+        return res.status(200).json({...routed,...remembered,quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
+          can_collect:'NAO',confirmation_text:'',matched:false,match_type:'new_year_price_objection',availability_checked:false});
+      }
+    }
     return res.status(200).json({...routed,quote_request:handoff?'HUMANO':'ROOM_LIST',quote_text:answer,conversation_text:answer,
       can_collect:'NAO',confirmation_text:'',matched:false,match_type:`new_year_${newYearSale.kind}`,availability_checked:false});
   }
@@ -467,7 +499,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const answer=!pkg?'O cadastro desse pacote mudou. Preciso consultar o pacote atual antes de calcular essas datas. Qual pacote deseja consultar?'
       :!permitted.length?`${blockedExit?'Não temos saída em '+formatDate(query.check_out):blockedEntry?'Não temos entrada em '+formatDate(query.check_in):'Não temos hospedagem no período '+period} nesse pacote. O pacote é de ${regular}; se quiserem, dá para somar diárias antes ou depois dele. Qual período vocês preferem?`
       :!covered&&requiresFullPackagePeriod(pkg)&&query.check_in<pkg.end_iso_date&&query.check_out>pkg.start_iso_date
-      ?`O pacote regular é de ${regular}. O período ${period} não inclui todas as noites do pacote. Posso calcular o período completo com diárias adicionais; para uma exceção, a recepção precisa avaliar. Quais datas deseja simular?`
+      ?`O ${pkg.name} é vendido somente no período completo, de ${regular}. O período ${period} deixa de fora parte do pacote. Posso calcular o pacote completo, somando diárias antes ou depois se quiserem. Quais datas deseja simular?`
       :currentStay?.price_requested&&'answer' in routed?routed.answer
       :`Posso simular ${period}, somando as tarifas de cada diária cadastradas no motor${covered?' e mantendo todas as noites do pacote':''}. Isso não confirma disponibilidade nem reserva. ${earlyState?.facts?.guests?`Você já informou ${earlyState.facts.guests} hóspedes; pode pedir o cálculo para esse grupo.`:'Para quantas pessoas será a estadia? Se houver crianças, informe também as idades.'}`;
     return res.status(200).json({quote_request:'ROOM_LIST',can_collect:'NAO',confirmation_text:'',quote_text:answer,conversation_text:answer,

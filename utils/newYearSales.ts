@@ -20,9 +20,14 @@ export const newYearSalesPolicy = {
   party_seating: 'não há lugar marcado: os lugares são por ordem de chegada',
   party_min_age: 'não há idade mínima',
   rdc_bookings: 'as reservas da RDC Viagens são feitas somente pelo canal de atendimento da própria RDC',
+  // Confirmed by the owner on 01/10/2026 for the lodging package (not the
+  // party-only wristband): up to 6x on card, or 10% off when paid à vista.
+  package_installments: 6,
+  cash_discount_pct: 10,
+  payment_confirmed_at: '2026-10-01',
 };
 
-export type NewYearSalesReply = {kind: 'party_only' | 'party_detail' | 'partial_stay' | 'unknown_partner'; answer: string; handoff: boolean};
+export type NewYearSalesReply = {kind: 'party_only' | 'party_detail' | 'partial_stay' | 'unknown_partner' | 'payment' | 'price_objection'; answer: string; handoff: boolean};
 
 const norm = (s: string) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 const belemToday = (now: number) => new Date(now - 3 * 3600000).toISOString().slice(0, 10);
@@ -201,13 +206,45 @@ const partyMention = /\b(?:\d{1,2}|uma|um|duas|dois|tres|quatro|cinco|seis|sete|
 /** Réveillon sales answer for this turn. "31/12 a 01/01 para 5 pessoas" has
  * everything to price the full package, so it is quoted (widened dates)
  * instead of only declining the partial stay. */
-export function newYearSalesTurn(message: string, context: unknown, guests: number | undefined, now = Date.now()): NewYearSalesReply | undefined {
-  const reply = newYearSalesReply(message, context, now);
+export function newYearSalesTurn(message: string, context: unknown, guests: number | undefined, now = Date.now(), campaignLead = false): NewYearSalesReply | undefined {
+  const reply = newYearSalesReply(message, context, now) || newYearPaymentReply(message, context, campaignLead, now);
   if (reply?.kind !== 'partial_stay') return reply;
   const s = norm(message);
   // Declining the party night itself ("não quero passar a virada") gets the rule.
   if (newYearStayRange(message) && (guests || partyMention.test(s)) && !skipsPartyNight(s)) return;
   return guests ? {...reply, answer: newYearPartialStayRule} : reply;
+}
+
+// "à vista" is a payment term only outside room views ("vista mar", "a vista
+// para o mar", "Sacada Vista Mar").
+const cash = '(?:a vista|avista)(?!\\s*(?:e\\s+|eh\\s+)?(?:mar|para|pro|pra|do|da|de|das|dos|piscina|frontal|lateral|bonita|mais|linda))';
+const paymentQuestion = new RegExp(`\\b(?:${cash}|desconto|pix|parcel\\w*|em quantas vezes|quantas vezes|formas? de pagamento|como (?:eu )?(?:pago|pagar|faco o pagamento)|como funciona o pagamento|no cartao|de cartao)\\b`);
+const payCashIntent = new RegExp(`\\b(?:quero|vou|prefiro|vamos|pode ser|fecho|fechamos|consigo|da pra|posso)\\b.{0,25}\\b(?:${cash}|no pix|via pix)|^(?:${cash}|no pix)(?: entao| mesmo| por favor)?[.!]*$`);
+const priceObjection = /\b(?:caro|cara|carissimo|susto|salgad[oa]|puxad[oa]|fora do (?:meu |nosso )?orcamento|acima do (?:meu |nosso )?orcamento|nao cabe no (?:meu |nosso )?bolso|absurdo|muito alto|valor alto|nao tenho condic\w*|nao temos condic\w*|por (?:esse|este) (?:valor|preco))\b/;
+
+export const newYearPaymentAnswer = () => `No pacote do Réveillon, você pode pagar em até ${newYearSalesPolicy.package_installments}x no cartão ou à vista com ${newYearSalesPolicy.cash_discount_pct}% de desconto. Se preferir à vista com o desconto, é só me avisar que a nossa equipe finaliza o pagamento com você por aqui.`;
+export const newYearCashIntentAnswer = () => `Combinado! No pagamento à vista, o pacote do Réveillon tem ${newYearSalesPolicy.cash_discount_pct}% de desconto. Vou chamar a nossa equipe para finalizar o pagamento com você por aqui.`;
+export const newYearPriceObjectionFallback = () => `Entendo! O pacote inclui as 3 noites, a Festa da Virada com ceia, open bar, Banda Zona Rural e DJ, e o passeio de barco. Dá para parcelar em até ${newYearSalesPolicy.package_installments}x no cartão ou pagar à vista com ${newYearSalesPolicy.cash_discount_pct}% de desconto, e criança de até 6 anos não paga. Quer que eu calcule a opção mais em conta para o seu grupo?`;
+
+/** A campaign lead talks about the Réveillon unless the stay facts point to
+ * another period (a lost package focus must not lose the 6x/discount rule). */
+export function newYearCampaignFocus(campaign: unknown, facts?: {check_in?: string; check_out?: string}) {
+  if (campaign !== 'RV27') return false;
+  if (!facts?.check_in || !facts?.check_out) return true;
+  return facts.check_in < newYearSalesPolicy.package_end && facts.check_out > newYearSalesPolicy.package_start;
+}
+
+/** Lodging payment and price reactions in the Réveillon conversation. */
+function newYearPaymentReply(message: string, context: unknown, campaignLead: boolean, now: number): NewYearSalesReply | undefined {
+  const s = norm(message);
+  if (!campaignActive(now) || !s || s.length > 300) return;
+  if (!(newYearWords.test(s) || focusedOnNewYear(context, now) || campaignLead)) return;
+  if (/\b(?:pulseiras?|ingressos?|comprovante|paguei|ja paguei|reembolso|estorno)\b/.test(s)) return;
+  if (payCashIntent.test(s)) return {kind: 'payment', answer: newYearCashIntentAnswer(), handoff: true};
+  if (paymentQuestion.test(s)) return {kind: 'payment', answer: newYearPaymentAnswer(), handoff: false};
+  if (priceObjection.test(s) && !/\b(?:barat[oa]|mais em conta|mais economic[oa])\b/.test(s))
+    return {kind: 'price_objection', answer: newYearPriceObjectionFallback(), handoff: false};
+  return;
 }
 
 /** Confirmed Réveillon rules for the AI context while the campaign runs. The
@@ -222,6 +259,7 @@ export function newYearPolicyContext(message: string, context: unknown, campaign
     festa_da_virada: `Incluída no pacote: ceia, open bar, Banda Zona Rural e DJ. Horário: ${newYearSalesPolicy.party_hours}. Local: ${newYearSalesPolicy.party_venue}. Lugares: ${newYearSalesPolicy.party_seating}. Idade: ${newYearSalesPolicy.party_min_age}. (Confirmado em 30/09/2026.)`,
     rdc_viagens: `${newYearSalesPolicy.rdc_bookings[0].toUpperCase()}${newYearSalesPolicy.rdc_bookings.slice(1)}. Por aqui, somente reservas diretas com o hotel.`,
     festa_sem_hospedagem: `Pulseira R$ ${newYearSalesPolicy.party_wristband_price} por pessoa, ${newYearSalesPolicy.party_payment}, com ceia, open bar, Banda Zona Rural e DJ. A equipe envia o pagamento nesta conversa.`,
+    pagamento_do_pacote: `Em até ${newYearSalesPolicy.package_installments}x no cartão, ou à vista com ${newYearSalesPolicy.cash_discount_pct}% de desconto (confirmado em 01/10/2026). Não use a regra de 3x das reservas comuns para o Réveillon. Pagamento à vista é finalizado pela equipe nesta conversa.`,
     detalhes_nao_confirmados: 'Traje, cardápio da ceia e bebidas do open bar ainda não foram confirmados. Diga que esse detalhe ainda não está confirmado, sem inventar, e continue ajudando; se o cliente quiser, ele pode escrever “recepção”.',
     como_reservar: `Escolher a acomodação na simulação e confirmar a opção; a recepção finaliza nesta conversa. Também é possível reservar pelo site: https://reservas.hotelsolar.tur.br/?pacote=${newYearCampaignPackage.id}`,
   };

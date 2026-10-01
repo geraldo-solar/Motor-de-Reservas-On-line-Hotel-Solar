@@ -269,3 +269,42 @@ test('leads de 30/09: diária comum, estadia parcial com grupo e primeira respos
   assert.doesNotMatch(decline.text,/Para quantas pessoas/);
   now=start;
 });
+
+// Real WhatsApp leads of 01/10/2026: year typed for the exit, an offer the
+// team made out of the AI's sight, payment conditions and price reactions.
+test('leads de 01/10: ano trocado, valor da equipe, 6x e 10% à vista, susto com o preço',async()=>{
+  now=Date.parse('2026-09-30T21:30:00-03:00');
+  const say=conversation(CAMPAIGN_SEED);
+  const first=await say('3 adultos e uma criança de 8 meses. Periodo de 31 a 04/01');
+  assert.equal(first.r.quote_request,'QUOTE|2026-12-31|2027-01-04|4|NONE');
+  const typo=await conversation(CAMPAIGN_SEED)('Entrada 31/12 a 04/01/2026 para 2 adultos');
+  assert.equal(typo.r.quote_request,'QUOTE|2026-12-31|2027-01-04|2|NONE');
+  await say('Ficou em 8.210,00?');
+  const accepted=await say('Aceito');
+  assert.equal(accepted.r.quote_request,'COLETAR');assert.match(accepted.text,/Suíte Quádruplo\n31\/12\/2026 a 04\/01\/2027/);
+
+  // No AI quote: accepting a value quoted by the team goes to the team.
+  const team=conversation(CAMPAIGN_SEED);
+  await team('Ficou em 8.210,00?');
+  const teamAccept=await team('Aceito');
+  assert.equal(teamAccept.r.quote_request,'HUMANO');assert.match(teamAccept.text,/equipe para confirmar esse valor/);
+  assert.doesNotMatch(teamAccept.text,/não corresponde|inválid/);
+
+  now=Date.parse('2026-10-01T11:46:00-03:00');
+  const pay=conversation(CAMPAIGN_SEED);
+  const cash=await pay('Pagamento a vista nao consigo nem 10%?');
+  assert.equal(cash.r.quote_request,'NOQUOTE');assert.match(cash.text,/até 6x no cartão ou à vista com 10% de desconto/);
+  assert.doesNotMatch(cash.text,/3x|3 vezes/);
+  const intent=await pay('quero pagar à vista');
+  assert.equal(intent.r.quote_request,'HUMANO');assert.match(intent.text,/10% de desconto/);
+  const view=await conversation(CAMPAIGN_SEED)('A vista é para o mar?');
+  assert.notEqual(view.result?.match_type,'new_year_payment');
+
+  const shock=conversation(CAMPAIGN_SEED);
+  await shock('Quais os valores do Réveillon?');await shock('2 adultos');
+  const objection=await shock('Por este valor irei ao Chile e Argentina');
+  assert.equal(objection.result.match_type,'new_year_price_objection');
+  assert.match(objection.text,/mais em conta para 2 pessoas é a Suíte Casal: R\$ 5\.600,00 pelas 3 noites/);
+  assert.match(objection.text,/6x de R\$ 933,33.*à vista com 10% de desconto: R\$ 5\.040,00/s);
+  now=start;
+});
