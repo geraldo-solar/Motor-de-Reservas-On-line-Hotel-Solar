@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { converterNoGoogle, rastrearNoGoogle } from '../services/googleTag';
 
 const WhatsAppButton: React.FC = () => {
   const phoneNumber = "5591981229825";
@@ -17,6 +18,10 @@ const WhatsAppButton: React.FC = () => {
         href={whatsappUrl}
         target="_blank"
         rel="noopener noreferrer"
+        onClick={() => {
+          rastrearNoGoogle('clique_whatsapp', { local: 'motor_botao_flutuante' });
+          converterNoGoogle('cliqueNoWhatsApp');
+        }}
         className="pointer-events-auto relative flex items-center justify-center w-14 h-14 md:w-16 md:h-16 bg-[#25D366] text-white rounded-full shadow-[0_10px_30px_-5px_rgba(37,211,102,0.6)] hover:bg-[#128C7E] transition-all duration-300 transform hover:scale-110 active:scale-95 border-2 border-white/20"
         aria-label="Atendimento via WhatsApp"
       >

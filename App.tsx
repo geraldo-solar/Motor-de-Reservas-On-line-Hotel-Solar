@@ -25,6 +25,8 @@ import { PreCheckinPage } from './components/PreCheckinPage';
 import { buscarReserva } from './services/reservaNoServidor';
 import { rastrearNaMeta } from './services/metaPixel';
 import { dadosDaCompra, idDoEventoDeCompra } from './utils/metaEventos';
+import { converterNoGoogle, rastrearNoGoogle } from './services/googleTag';
+import { compraNoGoogle } from './utils/googleEventos';
 
 const ERP_URL = 'https://erp-hotel-solar.vercel.app';
 
@@ -379,6 +381,9 @@ export default function App() {
       checkin_date: pkg.startIsoDate,
       checkout_date: pkg.endIsoDate,
     });
+    rastrearNoGoogle('view_item', {
+      items: [{ item_id: pkg.id, item_name: pkg.name, item_category: 'pacote' }],
+    });
     const startDate = parseISODate(pkg.startIsoDate);
     const endDate = parseISODate(pkg.endIsoDate);
     setCheckIn(startDate);
@@ -417,6 +422,13 @@ export default function App() {
       // Mesmo event_id que o servidor manda (api/check-reservation): a Meta
       // conta uma compra só, venha pelos dois lados ou por um deles.
       rastrearNaMeta('Purchase', dadosDaCompra(reservation), idDoEventoDeCompra(reservation.id));
+      const compra = compraNoGoogle(reservation);
+      rastrearNoGoogle('purchase', compra);
+      converterNoGoogle('reservaConcluida', {
+        value: compra.value,
+        currency: compra.currency,
+        transaction_id: compra.transaction_id,
+      });
       const comPagamento = reservation.paymentMethod === 'CREDIT_CARD'
         ? { ...reservation, checkoutUrl: await pedirPagamentoNaCielo(reservation.id) }
         : reservation;
@@ -498,6 +510,15 @@ export default function App() {
       ...(checkIn ? { checkin_date: toLocalISO(checkIn) } : {}),
       ...(checkOut ? { checkout_date: toLocalISO(checkOut) } : {}),
     });
+    rastrearNoGoogle('begin_checkout', {
+      currency: 'BRL',
+      items: selectedRooms.map(r => ({
+        item_id: r.id,
+        item_name: r.name,
+        item_category: activePackage ? 'pacote' : 'hospedagem',
+      })),
+    });
+    converterNoGoogle('inicioDeReserva');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentView]);
 

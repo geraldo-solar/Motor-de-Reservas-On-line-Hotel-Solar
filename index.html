@@ -144,6 +144,23 @@
       fbq('track', 'PageView');
     })(location.hostname);
   </script>
+  <script>
+    // Tag do Google: Google Ads (conversões das campanhas) e o mesmo Analytics
+    // do site. Ids iguais aos de utils/googleEventos.ts. Mesma trava do pixel:
+    // só o endereço publicado manda dados.
+    (function (host) {
+      if (host !== 'hotelsolar.tur.br' && !/\.hotelsolar\.tur\.br$/.test(host)) return;
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtag/js?id=AW-754939028';
+      document.head.appendChild(s);
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function () { dataLayer.push(arguments); };
+      gtag('js', new Date());
+      gtag('config', 'AW-754939028');
+      gtag('config', 'G-0TN73829QP');
+    })(location.hostname);
+  </script>
 </head>
 
 <body class="bg-[#F9F8F6] text-slate-800 antialiased selection:bg-solar-gold selection:text-white">
