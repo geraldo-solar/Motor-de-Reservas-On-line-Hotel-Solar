@@ -16,7 +16,8 @@ import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage, audioSourceHash, readAudi
 import { isAttachmentInput, analyzeAttachment, type AttachmentKind } from '../utils/attachmentAnalysis.js';
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
 import { packageCardChoice } from '../utils/packageReply.js';
-import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, packageResumeRequest, type PackageContext } from '../utils/packageContext.js';
+import { closingTurn, assistantBefore } from '../utils/conversationClosers.js';
+import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageAcknowledgment, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, packageResumeRequest, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {newYearSalesTurn,newYearCampaignSeed,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,newYearPolicyContext,newYearSiteLink,newYearCampaignFocus,type NewYearStayRequest} from '../utils/newYearSales.js';
 import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
@@ -1520,15 +1521,27 @@ function controlTurn(body: any, now = Date.now()) {
   // that option: price the package period so the choice can be confirmed.
   const cardChoice=!quote&&!state.facts.children_pending&&!state.family_clarification?cardChoiceFor(state,publicMessage):undefined;
   const choiceAccepted=!!quote&&!!state.package_choice&&!question(s)
-    &&/^(?:ok[,!. ]+)?(?:sim|pode|pode ser|pode seguir|pode preparar|confirmo|isso|quero|perfeito|fechado|claro|com certeza|aceito|bora|vamos)\b/.test(s)
+    &&(/^(?:ok[,!. ]+)?(?:sim|pode|pode ser|pode seguir|pode preparar|confirmo|isso|quero|perfeito|fechado|claro|com certeza|aceito|bora|vamos)\b/.test(s)
+      ||/^(?:ok|okay|blz|beleza|certo|combinado)[.!]*$/.test(s))
     &&!/\b(?:nao|talvez|depois|pensar)\b/.test(s)
     ?quote.options.find(option=>option.name===state.package_choice!.option):undefined;
+  // "Ok", "obrigado", "👍", "nenhuma" or the customer's own away message:
+  // a short closing, or nothing after a goodbye (see conversationClosers).
+  // "Entendi"/"Ótimo" about the package in focus keeps its own short reply.
+  const closingCandidate=!choiceAccepted&&!cardChoice?closingTurn(raw,assistantBefore(state,raw)):undefined;
+  const closing=closingCandidate?.kind==='closing'&&state.package_context&&state.topic==='package_info'&&packageAcknowledgment(raw)
+    ?undefined:closingCandidate;
   if (raw === AUDIO_UNAVAILABLE) {
     answer = AUDIO_RETRY;
     state.resolved_message = AUDIO_UNAVAILABLE;
     state.changed = false;
     delete state.pending;
     delete state.topic; delete state.topic_at; delete state.subject; delete state.extra_photo_subjects; delete state.guest_inquiry;
+  }
+  else if (closing) {
+    answer = closing.answer;
+    state.changed = false;
+    delete state.pending; delete state.awaiting;
   }
   else if (human(s)) {
     decision = 'HUMANO';
@@ -1717,7 +1730,7 @@ function controlTurn(body: any, now = Date.now()) {
     state.checkout_question={at:now,key:JSON.stringify(state.stay_date_pending)};
   if (state.first_turn && decision === 'NOQUOTE' && answer && !/^(olá|oi|bom dia|boa tarde|boa noite)/i.test(answer)) answer = 'Olá! Que bom receber seu contato no Hotel Solar. ☀️\n\n' + answer;
   delete state.awaiting;
-  if (decision === 'NOQUOTE' && (!mediaRequest(norm(state.resolved_message || raw)) || documentPhotoInquiry(state.resolved_message || raw))) {
+  if (decision === 'NOQUOTE' && answer && (!mediaRequest(norm(state.resolved_message || raw)) || documentPhotoInquiry(state.resolved_message || raw))) {
     remember(state, 'assistant', answer);
     if (!inquiry && /quantas pessoas/.test(answer)) state.awaiting = 'guests';
     else if (!inquiry && (state.stay_date_pending||/datas de entrada e sa[ií]da|data de entrada.*data de sa[ií]da/.test(answer))) state.awaiting = 'dates';

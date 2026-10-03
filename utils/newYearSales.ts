@@ -27,7 +27,7 @@ export const newYearSalesPolicy = {
   payment_confirmed_at: '2026-10-01',
 };
 
-export type NewYearSalesReply = {kind: 'party_only' | 'party_detail' | 'partial_stay' | 'unknown_partner' | 'payment' | 'price_objection'; answer: string; handoff: boolean};
+export type NewYearSalesReply = {kind: 'party_only' | 'party_detail' | 'partial_stay' | 'unknown_partner' | 'payment' | 'price_objection' | 'hesitation'; answer: string; handoff: boolean};
 
 const norm = (s: string) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 const belemToday = (now: number) => new Date(now - 3 * 3600000).toISOString().slice(0, 10);
@@ -224,9 +224,14 @@ const cash = '(?:a vista|avista)(?!\\s*(?:e\\s+|eh\\s+)?(?:mar|para|pro|pra|do|d
 const paymentQuestion = new RegExp(`\\b(?:${cash}|desconto|pix|parcel\\w*|em quantas vezes|quantas vezes|formas? de pagamento|como (?:eu )?(?:pago|pagar|faco o pagamento)|como funciona o pagamento|no cartao|de cartao)\\b`);
 const payCashIntent = new RegExp(`\\b(?:quero|vou|prefiro|vamos|pode ser|fecho|fechamos|consigo|da pra|posso)\\b.{0,25}\\b(?:${cash}|no pix|via pix)|^(?:${cash}|no pix)(?: entao| mesmo| por favor)?[.!]*$`);
 const priceObjection = /\b(?:caro|cara|carissimo|susto|salgad[oa]|puxad[oa]|fora do (?:meu |nosso )?orcamento|acima do (?:meu |nosso )?orcamento|nao cabe no (?:meu |nosso )?bolso|absurdo|muito alto|valor alto|nao tenho condic\w*|nao temos condic\w*|por (?:esse|este) (?:valor|preco))\b/;
+// "Prefiro ir pra Fortaleza, 1.200 com passagem": another trip as the price reference.
+const priceComparison = /\b(?:prefiro|prefirimos|preferimos|melhor|compensa mais|vale mais a pena|sai mais barato|e mais barato) (?:ir|viajar|ficar|passar)\b|\bcom (?:passagem|passagens|aereo|voo)(?: e hospedagem| inclus[oa])?\b|\b(?:irei|iremos|vou|vamos|iria|iriamos) (?:pra|para|ao|a|pro) (?:o |a )?(?:chile|argentina|europa|exterior|nordeste|fortaleza|porto seguro|maceio|cancun|buenos aires|gramado|orlando|disney|jericoacoara|recife|salvador)\b/;
+// "Vou pensar", "estamos pesquisando", "vou falar com meu marido".
+const hesitation = /\b(?:vou|vamos|preciso|precisamos|irei|iremos|ainda vou|ainda vamos) (?:pensar|ver|analisar|avaliar|decidir|verificar|conversar|falar|combinar|pesquisar|olhar|consultar|organizar)\b|\b(?:estou|estamos|to|tou|ainda estou|ainda estamos|ainda to) (?:pesquisando|pensando|vendo|analisando|avaliando|decidindo|combinando|olhando|cotando|verificando|organizando)\b|^(?:pesquisando|pensando|so pesquisando|so olhando|so cotando|vou ver|vamos ver)\b|\b(?:depois (?:eu )?(?:vejo|falo|retorno|te falo|te chamo|chamo|aviso)|qualquer coisa (?:eu )?(?:chamo|te chamo|volto|aviso|retorno)|te (?:retorno|aviso)(?: depois| mais tarde)?|retorno (?:depois|mais tarde|em breve)|volto a (?:falar|chamar))\b/;
 
 export const newYearPaymentAnswer = () => `No pacote do Réveillon, você pode pagar em até ${newYearSalesPolicy.package_installments}x no cartão ou à vista com ${newYearSalesPolicy.cash_discount_pct}% de desconto. Se preferir à vista com o desconto, é só me avisar que a nossa equipe finaliza o pagamento com você por aqui.`;
 export const newYearCashIntentAnswer = () => `Combinado! No pagamento à vista, o pacote do Réveillon tem ${newYearSalesPolicy.cash_discount_pct}% de desconto. Vou chamar a nossa equipe para finalizar o pagamento com você por aqui.`;
+export const newYearHesitationFallback = () => `Claro, fiquem à vontade! 😊 O pacote inclui as 3 noites, a Festa da Virada com ceia, open bar, Banda Zona Rural e DJ, e o passeio de barco, em até ${newYearSalesPolicy.package_installments}x no cartão ou à vista com ${newYearSalesPolicy.cash_discount_pct}% de desconto. É o nosso evento mais procurado do ano. Quando decidirem, é só me chamar por aqui.`;
 export const newYearPriceObjectionFallback = () => `Entendo! O pacote inclui as 3 noites, a Festa da Virada com ceia, open bar, Banda Zona Rural e DJ, e o passeio de barco. Dá para parcelar em até ${newYearSalesPolicy.package_installments}x no cartão ou pagar à vista com ${newYearSalesPolicy.cash_discount_pct}% de desconto, e criança de até 6 anos não paga. Quer que eu calcule a opção mais em conta para o seu grupo?`;
 
 /** A campaign lead talks about the Réveillon unless the stay facts point to
@@ -245,8 +250,11 @@ function newYearPaymentReply(message: string, context: unknown, campaignLead: bo
   if (/\b(?:pulseiras?|ingressos?|comprovante|paguei|ja paguei|reembolso|estorno)\b/.test(s)) return;
   if (payCashIntent.test(s)) return {kind: 'payment', answer: newYearCashIntentAnswer(), handoff: true};
   if (paymentQuestion.test(s)) return {kind: 'payment', answer: newYearPaymentAnswer(), handoff: false};
-  if (priceObjection.test(s) && !/\b(?:barat[oa]|mais em conta|mais economic[oa])\b/.test(s))
+  if (priceComparison.test(s) || priceObjection.test(s) && !/\b(?:barat[oa]|mais em conta|mais economic[oa])\b/.test(s))
     return {kind: 'price_objection', answer: newYearPriceObjectionFallback(), handoff: false};
+  // "Estamos vendo para 4 pessoas" declares the group: not a hesitation.
+  if (!s.includes('?') && s.length <= 220 && hesitation.test(s) && !partyMention.test(s) && !/\d/.test(s))
+    return {kind: 'hesitation', answer: newYearHesitationFallback(), handoff: false};
   return;
 }
 

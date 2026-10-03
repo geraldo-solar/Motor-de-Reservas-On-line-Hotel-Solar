@@ -367,3 +367,66 @@ test('leads de 02/10: cartão por grupo fecha a venda, dia sem mês não vira R�
   assert.equal(couple.state.facts.guests,2);assert.match(couple.text,/Indicada para vocês: Suíte Casal/);
   now=start;
 });
+
+// Audit of 02/10/2026, item 5: hesitation and price comparisons get a
+// concrete offer; "ok"/emojis/"nenhuma" get one short closing; the
+// customer's own away message and acks after a goodbye get nothing.
+test('itens 5 da auditoria: indecisão, comparação, ok/emoji/nenhuma e mensagem automática',async()=>{
+  now=Date.parse('2026-10-02T15:00:00-03:00');
+  const say=conversation(CAMPAIGN_SEED);
+  await say('Quais os valores do Réveillon?');await say('2 adultos');
+  const think=await say('Vou pensar');
+  assert.equal(think.result.match_type,'new_year_hesitation');
+  assert.match(think.text,/^Claro, fiquem à vontade! 😊 Para ajudar na decisão: a opção mais em conta para 2 pessoas é a Suíte Casal, R\$ 5\.600,00 pelas 3 noites/);
+  assert.match(think.text,/em até 6x de R\$ 933,33 no cartão ou R\$ 5\.040,00 à vista\. É o nosso evento mais procurado do ano\./);
+  assert.match(think.text,new RegExp('Quando decidirem, é só me chamar aqui ou garantir direto pelo site: https://reservas\\.hotelsolar\\.tur\\.br/\\?pacote='+RV27_ID));
+  const ok=await say('Ok');
+  assert.equal(ok.result.quote_request,'ROOM_DONE');assert.equal(ok.text,'');
+  const emoji=await say('🤝👍');
+  assert.equal(emoji.result.quote_request,'ROOM_DONE');
+  const again=await say('Vou falar com meu esposo e retorno');
+  assert.equal(again.text,'Combinado! 😊 Se surgir qualquer dúvida, é só me chamar por aqui.');
+
+  const trip=conversation(CAMPAIGN_SEED);
+  await trip('Quais os valores do Réveillon?');await trip('Casal');
+  const fortaleza=await trip('Prefiro ir pra fortaleza que está 1200 com hospedagem e passagem');
+  assert.equal(fortaleza.result.match_type,'new_year_price_objection');
+  assert.match(fortaleza.text,/mais em conta para 2 pessoas é a Suíte Casal: R\$ 5\.600,00/);
+
+  const none=conversation(CAMPAIGN_SEED);
+  await none('Quais os valores do Réveillon?');
+  const nenhuma=await none('Nenhuma');
+  assert.equal(nenhuma.text,'Combinado! 😊 Se surgir qualquer dúvida, é só me chamar por aqui.');
+  const thanks=conversation(CAMPAIGN_SEED);
+  await thanks('Quais os valores do Réveillon?');await thanks('Nenhuma');
+  const obrigado=await thanks('Obrigado');
+  assert.equal(obrigado.result.quote_request,'ROOM_DONE');
+  const firstThanks=await conversation()('Obrigada!');
+  assert.match(firstThanks.text,/Por nada! 😊/);
+
+  // An "ok" that may answer the question in the last lines is left to the AI.
+  const pending=conversation(CAMPAIGN_SEED);
+  await pending('Quais os valores do Réveillon?');
+  const okQuestion=await pending('Ok');
+  assert.notEqual(okQuestion.result?.match_type,'closing');assert.notEqual(okQuestion.result?.quote_request,'ROOM_DONE');
+
+  for(const away of ['Agradecemos sua mensagem. Não estamos disponíveis no momento, mas responderemos assim que possível.',
+    'Olá! Esta é uma mensagem automática. Em breve um atendente vai te responder.']){
+    const bot=conversation(CAMPAIGN_SEED);
+    await bot('Quais os valores do Réveillon?');
+    const reply=await bot(away);
+    assert.equal(reply.r.quote_request,'NOQUOTE',away);assert.equal(reply.result.quote_request,'ROOM_DONE',away);
+    assert.doesNotMatch(String(reply.text),/Pacotes ativos|Réveillon/,away);
+  }
+
+  // "Estamos vendo para 4 pessoas" declares the group; "ok" confirms a picked option.
+  const group=conversation(CAMPAIGN_SEED);
+  await group('Quais os valores do Réveillon?');
+  const four=await group('Estamos vendo para 4 pessoas');
+  assert.equal(four.state.facts.guests,4);assert.notEqual(four.result?.match_type,'new_year_hesitation');
+  const pick=conversation(CAMPAIGN_SEED);
+  await pick('Quais os valores do Réveillon?');await pick('2 adultos');await pick('Sim');
+  const confirm=await pick('ok');
+  assert.equal(confirm.r.quote_request,'COLETAR');
+  now=start;
+});

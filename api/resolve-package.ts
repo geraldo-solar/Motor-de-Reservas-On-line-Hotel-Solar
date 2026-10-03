@@ -44,6 +44,7 @@ import {readMultiRoomHandoff,multiRoomGuidanceText} from '../utils/multiRoomHand
 import {multiRoomRequest,roomAlternativeComparison} from '../utils/lodgingScope.js';
 import {reservaHoursAnswer} from '../utils/diningPolicy.js';
 import {explicitHumanRequest,stripNegatedHumanRequests} from '../utils/humanIntent.js';
+import {closingTurn,assistantBefore,closingAnswer} from '../utils/conversationClosers.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -307,7 +308,7 @@ const withFullPeriodNote = (answer: string, message: string, state: any) => {
   return asked ? `${newYearFullPeriodNote(asked)}\n\n${answer}` : answer;
 };
 
-async function newYearCheapestOption(state: any): Promise<string | undefined> {
+async function newYearCheapestOption(state: any, mode: 'objection' | 'hesitation' = 'objection'): Promise<string | undefined> {
   const client = createClient(supabaseUrl!, supabaseKey!);
   const [{data: packages, error: packageError}, {data: rooms, error: roomError}] = await Promise.all([
     client.from('packages').select('*').eq('active', true), client.from('room_types').select('*').eq('active', true)]);
@@ -325,6 +326,9 @@ async function newYearCheapestOption(state: any): Promise<string | undefined> {
   const installments = Number(pkg.max_installments || 0) > 0 ? Number(pkg.max_installments) : newYearSalesPolicy.package_installments;
   const cash = best.price * (1 - newYearSalesPolicy.cash_discount_pct / 100);
   const group = guests ? ` para ${guests} ${guests === 1 ? 'pessoa' : 'pessoas'}` : '';
+  const each = (best.price / installments).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  // "Vou pensar": a concrete reference to decide with, and the way back.
+  if (mode === 'hesitation') return `Claro, fiquem à vontade! 😊 Para ajudar na decisão: a opção mais em conta${group} é a ${best.name}, R$ ${money(best.price)} pelas ${nights} noites, já com a Festa da Virada (ceia, open bar, Banda Zona Rural e DJ), em até ${installments}x de R$ ${each} no cartão ou R$ ${money(cash)} à vista. É o nosso evento mais procurado do ano. Quando decidirem, é só me chamar aqui ou garantir direto pelo site: ${newYearSiteLink(String(pkg.start_iso_date), String(pkg.end_iso_date)) || `https://reservas.hotelsolar.tur.br/?pacote=${pkg.id}`}`;
   return `Entendo! A opção mais em conta${group} é a ${best.name}: R$ ${money(best.price)} pelas ${nights} noites, já com a Festa da Virada (ceia, open bar, Banda Zona Rural e DJ). Dá para parcelar em até ${installments}x de R$ ${(best.price / installments).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} no cartão, ou pagar à vista com ${newYearSalesPolicy.cash_discount_pct}% de desconto: R$ ${money(cash)}. Criança de até 6 anos não paga.${guests ? ' Quer que eu siga com essa opção?' : ' Para quantas pessoas seria?'}`;
 }
 
@@ -384,6 +388,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     previousPaymentMessage = earlyState?.history?.at(-1) || '';
   } catch { /* Invalid state cannot establish payment context. */ }
   const discovery=!req.query?.operation&&packageDiscoveryRequest(serviceMessage,earlyState?.package_context);
+  // "Ok", "obrigado", "👍", "nenhuma": a short closing. After a goodbye, or
+  // for the customer's own away message, nothing is sent (ROOM_DONE).
+  const closingCandidate=!req.query?.operation&&!isAudioInput(incomingMessage)
+    ?closingTurn(serviceMessage,assistantBefore(earlyState,serviceMessage)):undefined;
+  const closing=closingCandidate?.kind==='closing'&&earlyState?.package_context&&earlyState?.topic==='package_info'
+    &&packageAcknowledgment(serviceMessage)?undefined:closingCandidate;
+  if(closing){
+    if(closing.kind!=='closing')return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',
+      can_collect:'NAO',confirmation_text:'',matched:false,match_type:closing.kind,availability_checked:false,state:JSON.stringify(earlyState)});
+    return res.status(200).json({quote_request:'ROOM_LIST',quote_text:closing.answer,conversation_text:closing.answer,
+      can_collect:'NAO',confirmation_text:'',matched:false,match_type:'closing',availability_checked:false,
+      ...control({operation:'remember_response',state:req.body?.state,response_text:closing.answer})});
+  }
   if(!req.query?.operation&&massageServiceAnswer(serviceMessage,earlyState?.massage_context)){
     const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
     if('service_info' in routed&&routed.service_info==='outsourced_massage'){
@@ -453,6 +470,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const handoff='quote_request' in routed&&routed.quote_request==='HUMANO';
     // "Achei caro": answer with the most affordable option for the group,
     // from the current catalogue (never a price from memory).
+    // A second "vou pensar" right after that answer only closes the turn.
+    if(newYearSale.kind==='hesitation'&&!handoff){
+      const repeated=/Quando decidirem, é só me chamar/.test(assistantBefore(earlyState,serviceMessage));
+      const text=repeated?closingAnswer:await newYearCheapestOption(earlyState,'hesitation');
+      if(text){
+        const remembered=control({operation:'remember_response',state:'state' in routed?routed.state:req.body?.state,response_text:text});
+        return res.status(200).json({...routed,...remembered,quote_request:'ROOM_LIST',quote_text:text,conversation_text:text,
+          can_collect:'NAO',confirmation_text:'',matched:false,match_type:'new_year_hesitation',availability_checked:false});
+      }
+    }
     if(newYearSale.kind==='price_objection'&&!handoff){
       const cheapest=await newYearCheapestOption(earlyState);
       if(cheapest){

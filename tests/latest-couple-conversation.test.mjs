@@ -85,7 +85,8 @@ test('resposta livre não contradiz hóspedes atuais nem conserva valores da fam
     'Entendi, são cinco hóspedes. Posso esclarecer mais alguma coisa?','A cotação considera cinco hóspedes.']){
     const c=chat();await c.say('Só eu e minha esposa');
     const result=await c.say('Entendi',{answer});
-    assert.match(result.text,/considerando 2 hóspedes/);assert.doesNotMatch(result.text,/quantas pessoas|cinco|R\$|duas suítes/);
+    // "Entendi" after a statement now gets the short closing (audit 02/10), which does not contradict either.
+    assert.match(result.text,/considerando 2 hóspedes|^Combinado! 😊/);assert.doesNotMatch(result.text,/quantas pessoas|cinco|R\$|duas suítes/);
     assert.equal(result.state.facts.guests,2);assert.equal(result.routed.can_collect,'NAO');assert.equal(result.state.pending,undefined);
   }
 });
