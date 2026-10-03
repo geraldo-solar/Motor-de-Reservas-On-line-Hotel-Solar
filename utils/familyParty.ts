@@ -221,6 +221,8 @@ function memberListDeclaration(s: string): {adults:number;children:number;ages_m
  */
 export function updateFamilyParty(message: string, previous?: unknown, now=Date.now(), knownTotal?: number): FamilyPartyResult {
   let s=norm(message);
+  // "Dois idosos" are two adults ("casal de idosos" stays a couple).
+  s=s.replace(/\bidos([oa])s\b/g,'adult$1s').replace(/\bidos([oa])\b/g,'adult$1');
   const old=readFamilyParty(previous,now);
   if(!s) return {handled:false,...(old?{party:old}:{})};
   const messageHash=createHash('sha256').update(s).digest('hex');
@@ -280,6 +282,10 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   const ageText=withAssignedFamilyAgeUnits(completePendingList?`${pendingList} anos`:s,childMatches.some(match=>quantity(match[1])>0)
     || !!old?.children&&old.ages_months.length<old.children);
   const ageValues=declaredFamilyAges(ageText,countDeclaration);
+  // "2 crianças de 12 anos": one age stated for every child of that count.
+  const sharedAge=childMatches.length===1&&quantity(childMatches[0][1])>1&&quantity(childMatches[0][1])<=20&&ageValues.length===1
+    &&/^\s*,?\s*(?:(?:ambas|ambos|as duas|os dois|todas|todos)\s+)?(?:de|com)\s+\S+\s+(?:anos?|mes|meses)\b(?!\s*(?:e|,)\s*\S+\s*(?:anos?|mes|meses)\b)/.test(s.slice(childMatches[0].index!+childMatches[0][0].length));
+  if(sharedAge)ageValues.push(...Array(quantity(childMatches[0][1])-1).fill(ageValues[0]));
   const ageOnly=!countDeclaration&&familyAgeFollowup(ageText);
   const barePendingAge=!!old?.children&&old.ages_months.length<old.children&&/^\d{1,3}[.!]?$/.test(s);
   if(!countDeclaration && !(ageOnly&&old?.children) && !barePendingAge) return {handled:false,...(old?{party:old}:{})};

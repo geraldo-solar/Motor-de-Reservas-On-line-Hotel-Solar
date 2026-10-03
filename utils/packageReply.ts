@@ -91,28 +91,36 @@ const money = (value: number) => value.toLocaleString('pt-BR', {
   style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2,
 }).replace(/\u00a0/g, ' ');
 
-/** Informational comparison confined to this catalog package and known capacity. */
+/** Sale conditions the caller confirmed for this package (e.g. Réveillon 10% à vista). */
+export type PackageSaleTerms = { cashDiscountPct?: number; siteUrl?: string };
+
+/** Sales card for a known group: the cheapest compatible option first, with
+ * payment conditions, the other options and a closing question. */
 export function packageRecommendation(
   pkg: PackagePricingRecord,
   rooms: PackageRoomRecord[],
   guests?: number,
   state?: unknown,
+  terms: PackageSaleTerms = {},
 ): string {
   const name = displayText(pkg.name || 'Pacote especial', 150);
   const start = displayDate(pkg.start_iso_date);
   const end = displayDate(pkg.end_iso_date);
   const text = [`🎉 *${name}*`];
-  if (start && end) text.push(`📅 *Período do pacote:* ${start} a ${end}`);
 
   if (!Number.isInteger(guests) || Number(guests) <= 0) {
+    if (start && end) text.push(`📅 *Período do pacote:* ${start} a ${end}`);
     text.push('', 'Quantas pessoas vão se hospedar, contando adultos e crianças? Assim posso indicar acomodações para esse pacote.');
     return text.join('\n');
   }
 
-  text.push(`👥 *Ocupação:* ${guests} hóspede${guests === 1 ? '' : 's'}, contando adultos e crianças.`);
+  const nights = pkg.start_iso_date && pkg.end_iso_date
+    ? Math.round((Date.parse(`${pkg.end_iso_date}T12:00:00Z`) - Date.parse(`${pkg.start_iso_date}T12:00:00Z`)) / 86400000) : 0;
+  const period = start && end ? `${start} a ${end}${nights > 0 ? ` · ${nights} ${nights === 1 ? 'noite' : 'noites'}` : ''} · ` : '';
+  text.push(`📅 ${period}${guests} ${guests === 1 ? 'hóspede' : 'hóspedes'}`);
   const family = familyAccommodation(state, Number(guests));
   if (family.pending) return text.join('\n') + '\n\n' + familyAgeQuestionFor(state);
-  const { prices, label } = packagePrices(pkg, rooms);
+  const { prices } = packagePrices(pkg, rooms);
   const knownRooms = new Set(rooms.map(room => String(room.id)));
   const compatible = prices.filter(item =>
     knownRooms.has(item.id)
@@ -128,19 +136,75 @@ export function packageRecommendation(
     return text.join('\n') + disclaimer;
   }
 
-  text.push('', 'Para comparar as acomodações com capacidade para o seu grupo:', label);
-  const coupleWithChild = guests === 3 && family.children === 1 && family.eligible === 1;
-  if (coupleWithChild) compatible.sort((a,b)=>Number(b.capacity===2)-Number(a.capacity===2));
-  let result = text.join('\n');
   const seen = new Set<string>();
-  for (const option of compatible) {
-    if (seen.has(option.id)) continue;
-    const prefix = coupleWithChild ? (option.capacity === 2 ? 'Categoria Casal, com a criança em cortesia' : 'Categoria maior opcional') : seen.size ? 'Outra opção' : 'Opção premium (maior valor cadastrado)';
-    const capacity = baseRoomCapacity(Number(option.capacity));
-    const line = `\n• ${prefix}: *${displayText(option.name, 120)}* — ${money(option.price)}; capacidade de ${capacity} hóspedes${family.eligible ? ' mais 1 criança de até 6 anos em cortesia' : ''}.`;
-    if (result.length + line.length + disclaimer.length > 1800) break;
+  const options = [...compatible].sort((a, b) => a.price - b.price)
+    .filter(option => !seen.has(option.id) && !!seen.add(option.id));
+  const best = options[0];
+  const installments = Number(pkg.max_installments || 0) > 1 ? Number(pkg.max_installments) : 0;
+  const cashPct = Number(terms.cashDiscountPct || 0) > 0 ? Number(terms.cashDiscountPct) : 0;
+  const pay = [
+    installments ? `em até ${installments}x de ${money(best.price / installments)} no cartão` : '',
+    cashPct ? `${money(best.price * (1 - cashPct / 100))} à vista (${cashPct}% de desconto)` : '',
+  ].filter(Boolean).join(' ou ');
+  const bestName = displayText(best.name, 120);
+  const coupleWithChild = guests === 3 && family.children === 1 && family.eligible === 1 && best.capacity === 2;
+  text.push('', `⭐ *Indicada para vocês: ${bestName}* — *${money(best.price)}*${coupleWithChild ? ', com a criança em cortesia' : ''}`);
+  if (pay) text.push(`💳 ${pay.charAt(0).toUpperCase()}${pay.slice(1)}`);
+  if (family.eligible) text.push('👶 1 criança de até 6 anos em cortesia por apartamento (não paga); berço ou cama extra sem custo, conforme disponibilidade.');
+  else if (family.children) text.push('Todos contam na ocupação normal do apartamento; a cortesia é só para criança de até 6 anos.');
+  const site = terms.siteUrl || `https://reservas.hotelsolar.tur.br/?pacote=${encodeURIComponent(pkg.id)}`;
+  const closing = [
+    '', 'Valores por apartamento (não por pessoa), para o pacote completo, sujeitos à disponibilidade.',
+    `👉 Reserve pelo site: ${site}`,
+    `Prefere a ${bestName} ou outra opção? Me diga qual que eu preparo o resumo para você confirmar.`,
+  ].join('\n');
+  let result = text.join('\n');
+  if (options.length > 1) result += '\n\nOutras opções para o seu grupo:';
+  for (const option of options.slice(1)) {
+    const line = `\n• ${displayText(option.name, 120)} — ${money(option.price)}`;
+    if (result.length + line.length + closing.length > 1800) break;
     result += line;
-    seen.add(option.id);
   }
-  return result + (family.children ? '\n\n'+familyRoomExplanation(Number(guests),family.eligible) : '') + disclaimer;
+  return result + '\n' + closing;
+}
+
+const normChoice = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  .replace(/[^\w\s.,]/g, ' ').replace(/\s+/g, ' ').trim();
+const cardMoney = (value: string) => Number(value.replace(/\./g, '').replace(',', '.'));
+
+/** The option a customer picks right after the sales card of
+ * packageRecommendation: "sim"/"pode ser" takes the indicated one; a category
+ * name, its total or "a mais barata" picks that line. Anything hesitant,
+ * a question or an ambiguous reference is not a choice. */
+export function packageCardChoice(message: string, cardText: string): {name: string; price: number} | undefined {
+  const best = /⭐ \*Indicada para vocês: (.+?)\* — \*R\$ ([\d.]+,\d{2})\*/.exec(cardText);
+  if (!best) return;
+  const options = [{name: best[1], price: cardMoney(best[2])}];
+  const others = cardText.split('Outras opções para o seu grupo:')[1] || '';
+  for (const line of others.matchAll(/^• (.+?) — R\$ ([\d.]+,\d{2})$/gm)) options.push({name: line[1], price: cardMoney(line[2])});
+  const s = normChoice(message);
+  if (!s || s.length > 80 || message.includes('?')) return;
+  if (/\b(?:nao|talvez|pensar|depois|ainda|caro|cara|vou ver|verificar|consultar|quanto|qual|quais|como|somos|seremos|pessoas?|adult[oa]s?|criancas?|filh[oa]s?)\b/.test(s)) return;
+  const distinct = (name: string) => normChoice(name).replace(/\bsuite\b/g, '').trim();
+  // "Só um casal" describes the group; a long message names a room only with a choice verb.
+  const choosing = /\b(?:quero|prefiro|escolho|escolhi|fico com|vou de|vamos de|pode ser|reservar|fechar)\b/.test(s);
+  const groupWords = /\b(?:um|uma|o|so|somos|para|pra|sendo)\s+(?:um\s+)?casal\b/.test(s) && !/\bsuite casal\b/.test(s);
+  const byName = s.length > 40 && !choosing ? [] : options.filter(option => {
+    if (groupWords && /\bcasal\b/.test(distinct(option.name))) return false;
+    const words = distinct(option.name).split(' ').filter(word => word.length > 3 && !['vista', 'terreo'].includes(word));
+    return words.some(word => new RegExp(`\\b${word}\\b`).test(s))
+      || /\bvista mar\b/.test(distinct(option.name)) && /\bvista (?:para o |pro |pra o |do |ao )?mar\b/.test(s);
+  });
+  if (byName.length === 1) return byName[0];
+  if (byName.length > 1) return;
+  const amounts = [...s.matchAll(/\b\d{1,3}(?:\.\d{3})+(?:,\d{2})?\b|\b\d{4,5}\b/g)].map(match => cardMoney(match[0].replace(/,\d{2}$/, '')));
+  if (amounts.length) {
+    const byPrice = options.filter(option => amounts.includes(Math.round(option.price)));
+    return byPrice.length === 1 ? byPrice[0] : undefined;
+  }
+  if (/\b(?:mais barat[oa]|mais em conta|mais economic[oa]|a indicada|primeira opcao|a primeira)\b/.test(s)) return options[0];
+  // A bare acceptance of the indicated option, nothing else in the message.
+  const bare = s.replace(/[.,!]+/g, ' ').replace(/\b(?:ok|okay|entao|sim|por favor|obrigad[oa]|pode|quero|essa|esse|ela|mesmo|mesma|ai|isso|vamos|bora|ser|seguir|preparar|fechar|fechado|reservar|perfeito|claro|com certeza|aceito|otimo|beleza|show|com|a|o)\b/g, '').trim();
+  if (!bare && /\b(?:sim|pode ser|quero|essa|esse|fechado|fechar|vamos|bora|pode seguir|pode preparar|perfeito|aceito|reservar)\b/.test(s)) return options[0];
+  return;
 }

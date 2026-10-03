@@ -15,6 +15,7 @@ import { isAudioInput, transcribeAudio } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage, audioSourceHash, readAudioTurn, type AudioTurn } from '../utils/audioInput.js';
 import { isAttachmentInput, analyzeAttachment, type AttachmentKind } from '../utils/attachmentAnalysis.js';
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
+import { packageCardChoice } from '../utils/packageReply.js';
 import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, packageResumeRequest, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {newYearSalesTurn,newYearCampaignSeed,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,newYearPolicyContext,newYearSiteLink,newYearCampaignFocus,type NewYearStayRequest} from '../utils/newYearSales.js';
@@ -55,7 +56,7 @@ type Quote = { version: number; id: string; created_at: number; check_in: string
 type GuestInquiryState = { kind: GuestInquiry; at: number };
 type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPartyResult['clarification'];package_stay_query?:PackageStayQuery;party_confirmed_at?:number };
 type ExistingReservationState = { flexible_stay?:FlexibleStay;existing_reservation?: {at: number};payment_support?:{at:number;topics?:PaymentSupportSupplementaryTopic[]};assistant_disclosure?:AssistantDisclosure;multi_room?:MultiRoomHandoff;checkout_question?:{at:number;key:string};arrival_time?:ArrivalTimePending;package_date_request?:PackageDateRequest };
-type State = ExistingReservationState & FamilyState & { massage_context?: {at:number}; programming_pending?: {question: string; at: number}; recent_package?: PackageContext; campaign?: 'RV27'; full_period_extended?: NewYearStayRequest } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
+type State = ExistingReservationState & FamilyState & { massage_context?: {at:number}; programming_pending?: {question: string; at: number}; recent_package?: PackageContext; campaign?: 'RV27'; full_period_extended?: NewYearStayRequest; package_choice?: {option: string; at: number} } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
 const json = (v: unknown): any => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
 const months = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -243,6 +244,9 @@ function loadState(value: unknown, now = Date.now()): State {
     ...(readPackageContext(parsed.package_context, now) ? {package_context:readPackageContext(parsed.package_context, now)} : {}),
     ...(readPackageContext(parsed.recent_package, now) ? {recent_package:readPackageContext(parsed.recent_package, now)} : {}),
     ...(parsed.campaign === 'RV27' ? {campaign:'RV27' as const} : {}),
+    ...(typeof parsed.package_choice?.option === 'string' && parsed.package_choice.option.length <= 120 && Number.isFinite(parsed.package_choice.at)
+      && parsed.package_choice.at > 0 && parsed.package_choice.at <= now && now - parsed.package_choice.at <= 30 * 60000
+      ? {package_choice:{option:parsed.package_choice.option, at:parsed.package_choice.at}} : {}),
     ...(readNewYearStayRequest(parsed.full_period_extended, facts, now) ? {full_period_extended:readNewYearStayRequest(parsed.full_period_extended, facts, now)} : {}),
     ...(readPackageStayQuery(parsed.package_stay_query,parsed.package_context,now)?{package_stay_query:readPackageStayQuery(parsed.package_stay_query,parsed.package_context,now)}:{}),
     ...(readPackageDateRequest(parsed.package_date_request,parsed.package_context,now)?{package_date_request:readPackageDateRequest(parsed.package_date_request,parsed.package_context,now)}:{}),
@@ -443,6 +447,19 @@ function parseDates(s: string, now: number): { dates: string[]; unclear?: boolea
     friday.setUTCDate(friday.getUTCDate() + days);
     const sunday = new Date(friday); sunday.setUTCDate(sunday.getUTCDate() + 2);
     return {dates:[friday.toISOString().slice(0, 10), sunday.toISOString().slice(0, 10)]};
+  }
+  // "Entrada dia 22, saída dia 23" or "do dia 22 ao 23", without a month: the
+  // next such days on the calendar. A month, holiday or a range that would
+  // cross months (it may be "31 a 3" of the Réveillon) stays unknown.
+  const entry = /\bentrada\s+(?:no\s+|em\s+)?(?:dia\s+)?(\d{1,2})\b(?!\s*(?:\/|h\b|horas?))/.exec(s);
+  const exit = /\bsaida\s+(?:no\s+|em\s+)?(?:dia\s+)?(\d{1,2})\b(?!\s*(?:\/|h\b|horas?))/.exec(s);
+  const dayRange = /\b(?:d[oe]\s+)?dia\s+(\d{1,2})\s+(?:a|ao|ate)\s+(?:o\s+)?(?:dia\s+)?(\d{1,2})\b(?!\s*(?:\/|h\b|horas?))/.exec(s);
+  const days = entry && exit ? [+entry[1], +exit[1]] : dayRange ? [+dayRange[1], +dayRange[2]] : undefined;
+  if (days && days[1] > days[0] && !new RegExp(`\\b(?:${months.join('|')}|reveillon|natal|ano novo|virada|carnaval|ferias|feriado)\\b`).test(s)) {
+    let year = currentYear, month = Number(today.slice(5, 7));
+    if (days[0] < Number(today.slice(8, 10))) { month++; if (month > 12) { month = 1; year++; } }
+    const first = iso(days[0], month, year), second = iso(days[1], month, year);
+    if (first && second) return {dates:[first, second]};
   }
   return {dates:[]};
 }
@@ -655,6 +672,10 @@ function widenNewYearStay(state: State, now: number) {
   if (full) { state.full_period_extended = {requested_check_in: f.check_in!, requested_check_out: f.check_out!}; Object.assign(f, full); return; }
   if (!readNewYearStayRequest(state.full_period_extended, f, now)) delete state.full_period_extended;
 }
+
+// The option picked right after the package sales card (last assistant turn).
+const cardChoiceFor=(state: State, message: string)=>state.package_context&&state.facts.guests
+  ?packageCardChoice(message,[...(state.turns||[])].reverse().find(turn=>turn.role==='assistant')?.text||''):undefined;
 
 function validQuote(value: unknown, state: State, now: number): Quote | null {
   if(state.flexible_stay)return null;
@@ -1272,7 +1293,7 @@ function controlTurn(body: any, now = Date.now()) {
     const roomDetailFollowup=packageRoomDetailFollowup(topicMessage,state.package_context,now);
     const directInquiry = occupancyFollowup||roomDetailFollowup||state.topic==='package_info'&&packageInclusionFollowup(raw,state.package_context,now)?undefined:guestInquiry(raw);
     const packageQuery = !human(s) && !restaurantInquiry(s) && !eventInquiry(topicMessage) && !publicEventInquiry(topicMessage) && directInquiry !== 'lodging_faq' && packageInquiry(topicMessage);
-    const packageContinuation = !human(s) && !eventInquiry(topicMessage) && !publicEventInquiry(topicMessage) && (!guestFacilityInquiry(raw)||roomDetailFollowup) && directInquiry !== 'dining' && directInquiry !== 'day_use' && state.topic === 'package_info' && !!state.package_context && (packageFollowup(topicMessage)||occupancyFollowup||roomDetailFollowup);
+    const packageContinuation = !human(s) && !eventInquiry(topicMessage) && !publicEventInquiry(topicMessage) && (!guestFacilityInquiry(raw)||roomDetailFollowup) && directInquiry !== 'dining' && directInquiry !== 'day_use' && state.topic === 'package_info' && !!state.package_context && (packageFollowup(topicMessage)||occupancyFollowup||roomDetailFollowup||!!cardChoiceFor(state,topicMessage));
     if (newTripRequest(raw)&&!alternativeDates) {
       delete state.facts.check_in; delete state.facts.check_out; state.facts.extras = [];
       clearStayDuration(state);
@@ -1495,6 +1516,13 @@ function controlTurn(body: any, now = Date.now()) {
   const facilityAnswer = confirmedHotelAnswer(publicMessage) || (inquiry === 'lodging_faq' ? lodgingInclusionsAnswer(publicMessage) || guestFacilityAnswer(publicMessage) || locmilAnswer(publicMessage) : undefined);
   const weekdayQuestion = packageWeekdayClarification(publicMessage, state.package_context, now);
   const roomGuidance=multiRoomGuidanceText(state,publicMessage,now);
+  // Right after the package sales card, "sim", a category or its total picks
+  // that option: price the package period so the choice can be confirmed.
+  const cardChoice=!quote&&!state.facts.children_pending&&!state.family_clarification?cardChoiceFor(state,publicMessage):undefined;
+  const choiceAccepted=!!quote&&!!state.package_choice&&!question(s)
+    &&/^(?:ok[,!. ]+)?(?:sim|pode|pode ser|pode seguir|pode preparar|confirmo|isso|quero|perfeito|fechado|claro|com certeza|aceito|bora|vamos)\b/.test(s)
+    &&!/\b(?:nao|talvez|depois|pensar)\b/.test(s)
+    ?quote.options.find(option=>option.name===state.package_choice!.option):undefined;
   if (raw === AUDIO_UNAVAILABLE) {
     answer = AUDIO_RETRY;
     state.resolved_message = AUDIO_UNAVAILABLE;
@@ -1513,6 +1541,21 @@ function controlTurn(body: any, now = Date.now()) {
       answer = 'Entendi seu pedido de não receber mensagens promocionais. Vou chamar a equipe para providenciar isso.';
       delete state.pending;
     } else if (paymentDispute(s)) answer = 'Essa cobrança precisa ser conferida pela equipe. Vou chamar um atendente para verificar com você, sem confirmar ou alterar o pagamento por aqui.';
+  }
+  else if (cardChoice) {
+    const f=state.facts,focus=state.package_context!;
+    if(!(f.check_in&&f.check_out&&f.check_in<=focus.start_date&&f.check_out>=focus.end_date)){f.check_in=focus.start_date;f.check_out=focus.end_date;}
+    state.package_choice={option:cardChoice.name,at:now};
+    answer='Vou preparar o resumo da opção escolhida.';
+    decision=`QUOTE|${f.check_in}|${f.check_out}|${f.guests}|${f.extras.join(',')||'NONE'}`;
+    delete state.pending;
+  }
+  else if (choiceAccepted) {
+    state.pending={quote_id:quote!.id,option:choiceAccepted.name};
+    confirmationText=confirmation(quote!,choiceAccepted.name);
+    answer=confirmationText;
+    decision='COLETAR';
+    delete state.package_choice;
   }
   else if (continuingEvent && state.event) {answer=state.event.answer;delete state.pending;}
   else if (weekdayQuestion) {

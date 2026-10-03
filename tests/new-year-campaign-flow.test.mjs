@@ -98,7 +98,7 @@ test('teste do WhatsApp 29/09: contexto do Réveillon, família, criança, parce
 
   const family=await say('Vamos eu, minha esposa e nosso filho de 5 anos');
   assert.equal(family.state.facts.guests,3);assert.doesNotMatch(family.text,/Quantas pessoas/);
-  assert.match(family.text,/Categoria Casal, com a criança em cortesia: \*Suíte Casal\* — R\$ 5\.600,00/);
+  assert.match(family.text,/Indicada para vocês: Suíte Casal\* — \*R\$ 5\.600,00\*, com a criança em cortesia/);
   assert.doesNotMatch(family.text,/,01|,99/);
 
   const extended=await say('E se a gente ficar até o dia 4?');
@@ -157,7 +157,7 @@ test('pedido de reserva sem cotação, com o grupo desta conversa, calcula o pac
   await say('somos eu, meu marido e nossa filha de 2 anos');
   const booking=await say('Quero reservar a suíte casal');
   assert.equal(booking.r.quote_request,'QUOTE|2026-12-31|2027-01-03|3|NONE');
-  assert.match(booking.text,/Suíte Casal \(até 2 pessoas \+ 1 criança\): \*R\$ 5\.600\*/);
+  assert.match(booking.text,/Ótimo! \*Suíte Casal\*\n.*3 hóspedes\n💰 \*R\$ 5\.600,00\*/);
   const chosen=await say('Quero a Suíte Casal');
   assert.equal(chosen.r.quote_request,'COLETAR');assert.match(chosen.text,/Suíte Casal\n31\/12\/2026 a 03\/01\/2027 · 3 hóspedes/);
 });
@@ -183,7 +183,7 @@ test('lead da campanha responde à boas-vindas com o grupo e recebe os valores d
   const say=conversation(CAMPAIGN_SEED);
   const family=await say('2 adultos e 1 criança de 5 anos');
   assert.equal(family.result.match_type,'package_followup');
-  assert.match(family.text,/Réveillon Solar 2027/);assert.match(family.text,/Suíte Casal\* — R\$ 5\.600,00/);
+  assert.match(family.text,/Réveillon Solar 2027/);assert.match(family.text,/Suíte Casal\* — \*R\$ 5\.600,00\*/);
   assert.doesNotMatch(family.text,/datas de entrada e saída/);
   assert.equal(family.state.campaign,'RV27');
   const booking=await say('Quero reservar a suíte casal');
@@ -232,7 +232,7 @@ test('leads de 30/09: diária comum, estadia parcial com grupo e primeira respos
   assert.match(child.text,/Você pediu 31\/12\/2026 a 01\/01\/2027.*idades das crianças/s);
   assert.equal(child.state.facts.check_out,'2027-01-03');
   const age=await say('5 anos');
-  assert.match(age.text,/Categoria Casal, com a criança em cortesia: \*Suíte Casal\* — R\$ 5\.600,00/);
+  assert.match(age.text,/Indicada para vocês: Suíte Casal\* — \*R\$ 5\.600,00\*, com a criança em cortesia/);
   assert.doesNotMatch(age.text,/datas que você informou são diferentes/);
 
   // "Poderia verificar as 3 diárias" confirms the quoted period; the option is
@@ -306,5 +306,64 @@ test('leads de 01/10: ano trocado, valor da equipe, 6x e 10% à vista, susto com
   assert.equal(objection.result.match_type,'new_year_price_objection');
   assert.match(objection.text,/mais em conta para 2 pessoas é a Suíte Casal: R\$ 5\.600,00 pelas 3 noites/);
   assert.match(objection.text,/6x de R\$ 933,33.*à vista com 10% de desconto: R\$ 5\.040,00/s);
+  now=start;
+});
+
+// Audit of the real leads of 02/10/2026: the group card ended without a next
+// step, a month-less "dia 22" became December, and stated ages were asked again.
+test('leads de 02/10: cartão por grupo fecha a venda, dia sem mês não vira Réveillon, idades e idosos',async()=>{
+  now=Date.parse('2026-10-02T12:30:00-03:00');
+  const say=conversation(CAMPAIGN_SEED);
+  await say('Quais os valores do Réveillon?');
+  const card=await say('2 adultos');
+  assert.match(card.text,/3 noites · 2 hóspedes/);
+  assert.match(card.text,/Indicada para vocês: Suíte Casal\* — \*R\$ 5\.600,00\*\n💳 Em até 6x de R\$ 933,33 no cartão ou R\$ 5\.040,00 à vista \(10% de desconto\)/);
+  assert.match(card.text,/Outras opções para o seu grupo:\n• Suíte Triplo — R\$ 6\.400,00/);
+  assert.match(card.text,/Valores por apartamento \(não por pessoa\)/);
+  assert.match(card.text,new RegExp('pacote='+RV27_ID+'&utm_source=whatsapp'));
+  assert.match(card.text,/Prefere a Suíte Casal ou outra opção\?/);
+  assert.doesNotMatch(card.text,/premium|maior valor cadastrado|Outra opção:|capacidade de/);
+
+  // "Sim" takes the indicated option; a second "sim" opens the confirmation card.
+  const yes=await say('Sim');
+  assert.equal(yes.r.quote_request,'QUOTE|2026-12-31|2027-01-03|2|NONE');
+  assert.match(yes.text,/^Ótimo! \*Suíte Casal\*\n📅 31\/12\/2026 a 03\/01\/2027 · 3 diárias · 2 hóspedes\n💰 \*R\$ 5\.600,00\* — em até 6x de R\$ 933,33 no cartão ou R\$ 5\.040,00 à vista/);
+  const confirm=await say('sim');
+  assert.equal(confirm.r.quote_request,'COLETAR');assert.match(confirm.text,/Suíte Casal\n31\/12\/2026 a 03\/01\/2027 · 2 hóspedes/);
+
+  for(const [reply,room] of [['A sacada','Suíte Sacada Vista Mar'],['a de 7.100','Suíte Sacada Vista Mar'],['Pode ser','Suíte Casal'],['Quero o loft','LOFT']]){
+    const pick=conversation(CAMPAIGN_SEED);
+    await pick('Quais os valores do Réveillon?');await pick('2 adultos');
+    const chosen=await pick(reply);
+    assert.match(chosen.r.quote_request,/^QUOTE\|2026-12-31\|2027-01-03\|2\|/,reply);
+    assert.match(chosen.text,new RegExp('^Ótimo! \\*'+room+'\\*'),reply);
+  }
+  for(const reply of ['Vou pensar','Ok','Quanto fica o loft?','Só queremos curtir a noite do Ano Novo. Temos casa em Salinas. Só um casal']){
+    const other=conversation(CAMPAIGN_SEED);
+    await other('Quais os valores do Réveillon?');await other('2 adultos');
+    const answer=await other(reply);
+    assert.equal(answer.state.package_choice,undefined,reply);assert.doesNotMatch(String(answer.text),/^Ótimo!/,reply);
+  }
+
+  // "Entrada dia 22 / Saída dia 23" asked for an ordinary rate: the next 22–23.
+  const daily=conversation(CAMPAIGN_SEED);
+  await daily('Gostaria de saber o valor da diária para um casal');
+  const days=await daily('Entrada dia 22\nSaída dia 23');
+  assert.equal(days.r.quote_request,'QUOTE|2026-10-22|2026-10-23|2|NONE');
+  assert.doesNotMatch(days.text,/Réveillon|motor|pode pedir o cálculo/);
+  assert.equal(days.state.package_context,undefined);
+  const crossing=await conversation(CAMPAIGN_SEED)('Do dia 31 ao dia 3 para 2 adultos');
+  assert.doesNotMatch(crossing.r.quote_request,/2026-10-31|2026-11-03/);
+
+  // Ages already given are not asked again; "dois idosos" are two adults.
+  const ages=conversation(CAMPAIGN_SEED);
+  await ages('Quais os valores do Réveillon?');
+  const seven=await ages('Seriam 5 adultos e 2 crianças de 12 anos');
+  assert.equal(seven.state.facts.guests,7);assert.equal(seven.state.facts.children_pending,false);
+  assert.doesNotMatch(seven.text,/idades das crianças/);
+  const elderly=conversation(CAMPAIGN_SEED);
+  await elderly('Quais os valores do Réveillon?');
+  const couple=await elderly('Dois idosos .Casal');
+  assert.equal(couple.state.facts.guests,2);assert.match(couple.text,/Indicada para vocês: Suíte Casal/);
   now=start;
 });

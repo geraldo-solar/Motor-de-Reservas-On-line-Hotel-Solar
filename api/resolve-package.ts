@@ -17,7 +17,7 @@ import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
 import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
 import { namedPackageInquiry, packageGeneralInclusionQuestion, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup,packageDiscoveryRequest,packageRoomDetailFollowup } from '../utils/packageContext.js';
 import {packageInclusionReply} from '../utils/packageInclusions.js';
-import {newYearSalesTurn,newYearStayRange,newYearFullPeriodNote,readNewYearStayRequest,newYearCampaignFocus,newYearCampaignPackage,newYearSalesPolicy} from '../utils/newYearSales.js';
+import {newYearSalesTurn,newYearStayRange,newYearFullPeriodNote,readNewYearStayRequest,newYearCampaignFocus,newYearCampaignPackage,newYearSalesPolicy,newYearSiteLink} from '../utils/newYearSales.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
 import {packageStayDates,readPackageStayQuery,packageStayPriceRequest} from '../utils/packageStayQuery.js';
@@ -833,6 +833,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Extra nights around the full package (31/12–04/01) are the same package.
     const differentDates = (facts.check_in && facts.check_in !== pkg.start_iso_date && !(facts.check_in < String(pkg.start_iso_date) && (!facts.check_out || facts.check_out >= String(pkg.end_iso_date))))
       || (facts.check_out && facts.check_out !== pkg.end_iso_date && !(facts.check_out > String(pkg.end_iso_date) && (!facts.check_in || facts.check_in <= String(pkg.start_iso_date))));
+    // Owner-confirmed Réveillon terms (10% à vista only on the package with lodging).
+    const saleTerms = pkg.id === newYearCampaignPackage.id
+      ? {cashDiscountPct: newYearSalesPolicy.cash_discount_pct, siteUrl: newYearSiteLink(String(pkg.start_iso_date), String(pkg.end_iso_date))}
+      : {};
     const reply = packageAcknowledgment(userMessage)
       ? `Certo! Continuamos falando do pacote ${pkg.name}. Pode me dizer qual outra informação gostaria de esclarecer.`
       : packageGeneralInclusionQuestion(userMessage)
@@ -852,11 +856,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : childPolicyQuestion(userMessage) || childAgeFollowup(userMessage) && !family.key
       ? packageChildReply(pkg,userMessage)
       : childAgeFollowup(userMessage) && family.key
-      ? packageRecommendation(pkg,rooms || [],facts.guests,conversationState)
+      ? packageRecommendation(pkg,rooms || [],facts.guests,conversationState,saleTerms)
       : packageBookingRequest(userMessage)
       ? `Vamos continuar com o pacote ${pkg.name}, de ${formatDate(pkg.start_iso_date)} a ${formatDate(pkg.end_iso_date)}. ${!facts.guests ? 'Quantas pessoas vão se hospedar, contando adultos e crianças?' : facts.children_pending ? familyAgeQuestionFor(conversationState) : 'Para seguir com a opção escolhida, peça para falar com a recepção, que confere as condições e a disponibilidade.'} Ainda não há reserva confirmada.`
       : packageRecommendationInquiry(userMessage)
-      ? packageRecommendation(pkg,rooms || [],conversationState?.facts?.guests,conversationState)
+      ? packageRecommendation(pkg,rooms || [],conversationState?.facts?.guests,conversationState,saleTerms)
       : formatPackageDetails(pkg,rooms || [],true);
     const answer=withFullPeriodNote(reply,userMessage,conversationState);
     return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,

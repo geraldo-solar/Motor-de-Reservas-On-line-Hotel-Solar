@@ -50,11 +50,14 @@ test('comparação para casal e criança mantém pacote e exclui acomodação de
   const reply = packageRecommendation(pkg, rooms, 3);
   assert.match(reply, /Réveillon Solar 2027/);
   assert.match(reply, /31\/12\/2026 a 03\/01\/2027/);
-  assert.match(reply, /3 hóspedes, contando adultos e crianças/);
-  assert.match(reply, /Opção premium[^\n]*Loft[^\n]*R\$ 2\.160,00/);
-  assert.match(reply, /Outra opção[^\n]*Suíte Tripla[^\n]*R\$ 1\.620,00/);
-  assert.doesNotMatch(reply, /Suíte Casal|setembro|20\/09|qual.*data|informe.*data|gratuid|grátis/i);
-  assert.match(reply, /sem confirmar disponibilidade ou reserva/);
+  assert.match(reply, /3 noites · 3 hóspedes/);
+  // Cheapest compatible option first, the others after it, and a closing question.
+  assert.match(reply, /Indicada para vocês: Suíte Tripla\* — \*R\$ 1\.620,00\*/);
+  assert.match(reply, /Outras opções para o seu grupo:\n• Loft — R\$ 2\.160,00/);
+  assert.doesNotMatch(reply, /Suíte Casal|setembro|20\/09|qual.*data|informe.*data|gratuid|grátis|premium|maior valor/i);
+  assert.match(reply, /Valores por apartamento \(não por pessoa\)/);
+  assert.match(reply, /pacote=reveillon/);
+  assert.match(reply, /Prefere a Suíte Tripla ou outra opção\?/);
 });
 
 test('sem ocupação não inicia cotação e pede apenas o grupo no contexto do pacote', () => {
@@ -95,6 +98,7 @@ test('resposta respeita 1800 caracteres sem remover ressalva em catálogos longo
   }));
   const reply = packageRecommendation({ ...pkg, name: 'Réveillon '.repeat(200) }, longRooms, 3);
   assert.ok(reply.length <= 1800, `Length: ${reply.length}`);
-  assert.match(reply, /Opção premium/);
-  assert.match(reply, /sem confirmar disponibilidade ou reserva/);
+  assert.match(reply, /Indicada para vocês/);
+  assert.match(reply, /sujeitos à disponibilidade/);
+  assert.match(reply, /Prefere a .* ou outra opção\?/);
 });

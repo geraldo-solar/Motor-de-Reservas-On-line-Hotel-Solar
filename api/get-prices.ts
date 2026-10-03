@@ -7,7 +7,7 @@ import {motorStayPrice,motorStayRestriction,requiresFullPackagePeriod} from '../
 import {readPackageStayQuery} from '../utils/packageStayQuery.js';
 import {packageToday} from '../utils/packageAvailability.js';
 import {readStayDatePending,stayDateClarification} from '../utils/stayDuration.js';
-import {newYearFullPeriodNote,readNewYearStayRequest} from '../utils/newYearSales.js';
+import {newYearFullPeriodNote,readNewYearStayRequest,newYearCampaignPackage,newYearSalesPolicy} from '../utils/newYearSales.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -439,7 +439,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const asked = state?.version === 2 && state.facts?.check_in === checkIn && state.facts?.check_out === checkOut
       ? readNewYearStayRequest(state.full_period_extended, state.facts) : undefined;
     const fullPeriodNote = activePackage && asked ? newYearFullPeriodNote(asked) : '';
-    const conversationText = `☀️ Simulação: ${formatDate(checkIn)} a ${formatDate(checkOut)} · ${nights} ${nights === 1 ? 'diária' : 'diárias'} · ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}.\n\n`
+    // The customer already picked this option on the package card: confirm
+    // it in a short message instead of resending every category.
+    const choice = state?.version === 2 && typeof state.package_choice?.option === 'string'
+      && Number(state.package_choice.at) > 0 && Date.now() - Number(state.package_choice.at) <= 30 * 60000
+      ? quoteOptions.find(option => option.name === state.package_choice.option) : undefined;
+    const choiceInstallments = Number(activePackage?.max_installments || 0) > 1 ? Number(activePackage!.max_installments) : 0;
+    const choiceCash = exactPackage?.id === newYearCampaignPackage.id ? newYearSalesPolicy.cash_discount_pct : 0;
+    const cents = (value: number) => value.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const choiceText = choice ? `Ótimo! *${choice.name}*\n`
+      + `📅 ${formatDate(checkIn)} a ${formatDate(checkOut)} · ${nights} ${nights === 1 ? 'diária' : 'diárias'} · ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}\n`
+      + `💰 *R$ ${cents(choice.total)}*`
+      + (choiceInstallments ? ` — em até ${choiceInstallments}x de R$ ${cents(choice.total / choiceInstallments)} no cartão` : '')
+      + (choiceCash ? `${choiceInstallments ? ' ou' : ' —'} R$ ${cents(choice.total * (1 - choiceCash / 100))} à vista (${choiceCash}% de desconto)` : '')
+      + '\n\nResponda *sim* que eu preparo o resumo para você confirmar. Depois, a recepção confere a disponibilidade e finaliza a reserva com você por aqui.' : '';
+    const conversationText = choiceText || `☀️ Simulação: ${formatDate(checkIn)} a ${formatDate(checkOut)} · ${nights} ${nights === 1 ? 'diária' : 'diárias'} · ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}.\n\n`
       + (activePackage ? `🎉 Pacote especial: ${activePackage.name}\n\n` : '')
       + (fullPeriodNote ? fullPeriodNote + '\n\n' : '')
       + compactRoomText + compactFamilyText + whatsappText.slice(familyTextEnd)

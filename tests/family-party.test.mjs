@@ -75,6 +75,15 @@ test('meses são idades, e uma idade composta não vira duas crianças',()=>{
   assert.equal(partial.children_pending,true);assert.deepEqual(partial.party.ages_months,[30]);
 });
 
+test('uma idade dita para o grupo de crianças vale para todas (lead de 02/10)',()=>{
+  const twelve=turn('Seriam 5 adultos e 2 crianças de 12 anos');
+  assert.equal(twelve.guests,7);assert.deepEqual(twelve.party.ages_months,[144,144]);assert.equal(twelve.children_pending,false);
+  const both=turn('2 adultos e 2 crianças, ambas de 4 anos');
+  assert.deepEqual(both.party.ages_months,[48,48]);assert.equal(both.children_pending,false);
+  const elderly=turn('Dois idosos');
+  assert.equal(elderly.guests,2);assert.equal(elderly.party.adults,2);
+});
+
 test('mesma entrada reaplicada é idempotente e não renova o relógio do estado',()=>{
   const initial=turn('2 adultos e 2 crianças');
   const first=turn('Uma tem 2 anos',initial);
