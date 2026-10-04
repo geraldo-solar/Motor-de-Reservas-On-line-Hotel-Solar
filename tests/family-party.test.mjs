@@ -82,6 +82,13 @@ test('uma idade dita para o grupo de crianças vale para todas (lead de 02/10)',
   assert.deepEqual(both.party.ages_months,[48,48]);assert.equal(both.children_pending,false);
   const elderly=turn('Dois idosos');
   assert.equal(elderly.guests,2);assert.equal(elderly.party.adults,2);
+  // Lead of 03/10: a teenager occupies a normal place.
+  const teen=turn('2 adultos e 1 adolescente');
+  assert.equal(teen.guests,3);assert.equal(teen.children_pending,false);assert.deepEqual(teen.party.ages_months,[156]);
+  const aged=turn('2 adultos e 1 adolescente de 15 anos');
+  assert.equal(aged.guests,3);assert.deepEqual(aged.party.ages_months,[180]);
+  const two=turn('Somos 2 adultos e 2 adolescentes');
+  assert.equal(two.guests,4);assert.equal(two.children_pending,false);
 });
 
 test('mesma entrada reaplicada é idempotente e não renova o relógio do estado',()=>{

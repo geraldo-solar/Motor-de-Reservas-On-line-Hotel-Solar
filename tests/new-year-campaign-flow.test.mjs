@@ -365,6 +365,10 @@ test('leads de 02/10: cartão por grupo fecha a venda, dia sem mês não vira R�
   await elderly('Quais os valores do Réveillon?');
   const couple=await elderly('Dois idosos .Casal');
   assert.equal(couple.state.facts.guests,2);assert.match(couple.text,/Indicada para vocês: Suíte Casal/);
+  // Lead of 03/10: "2 adultos e 1 adolescente" is three people, not a couple.
+  const teen=await conversation(CAMPAIGN_SEED)('2 adultos e 1 adolescente');
+  assert.equal(teen.state.facts.guests,3);assert.match(teen.text,/3 noites · 3 hóspedes/);
+  assert.match(teen.text,/Indicada para vocês: Suíte Triplo/);assert.doesNotMatch(teen.text,/Indicada para vocês: Suíte Casal/);
   now=start;
 });
 

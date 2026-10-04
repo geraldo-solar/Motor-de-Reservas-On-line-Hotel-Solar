@@ -223,6 +223,10 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   let s=norm(message);
   // "Dois idosos" are two adults ("casal de idosos" stays a couple).
   s=s.replace(/\bidos([oa])s\b/g,'adult$1s').replace(/\bidos([oa])\b/g,'adult$1');
+  // "2 adultos e 1 adolescente": a teenager occupies a normal place (no
+  // under-6 courtesy). Without a stated age, count it as a child of 13.
+  s=s.replace(new RegExp(`\\b${number}\\s+adolescentes?\\b(?!\\s*,?\\s*(?:de|com)\\s+\\S+\\s+anos?)`,'g'),'$1 criancas de 13 anos')
+    .replace(new RegExp(`\\b${number}\\s+adolescentes?\\b`,'g'),'$1 criancas');
   const old=readFamilyParty(previous,now);
   if(!s) return {handled:false,...(old?{party:old}:{})};
   const messageHash=createHash('sha256').update(s).digest('hex');
