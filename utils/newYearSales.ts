@@ -173,7 +173,8 @@ export function newYearCampaignSeed(message: string, facts: {check_in?: string; 
   if (/\b\d{1,2}\s*\/\s*\d{1,2}\b|\b\d{1,2}\s+(?:de\s+)?(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*\b/.test(s)) return;
   // "Entrada dia 22, saída dia 23" gives dates without a month: never assume
   // the Réveillon (and December) for them.
-  if (/\b(?:dias?|de|do)\s+\d{1,2}\s+(?:a|ao|ate|e)\s+(?:o\s+)?(?:dia\s+)?\d{1,2}\b|\bdias?\s+\d{1,2}\b|\b(?:entrada|saida|check ?-?in|check ?-?out|chegada|chegar|sair)\b/.test(s)) return;
+  // "Crianças de 15 e 12 anos" are ages, not days.
+  if (/\b(?:dias?|de|do)\s+\d{1,2}\s+(?:a|ao|ate|e)\s+(?:o\s+)?(?:dia\s+)?\d{1,2}\b(?!\s*(?:anos?|meses?)\b)|\bdias?\s+\d{1,2}\b|\b(?:entrada|saida|check ?-?in|check ?-?out|chegada|chegar|sair)\b/.test(s)) return;
   if (/\b(?:feriados?|natal|carnaval|pascoa|finados|ostrabeach|dia das criancas|independencia|fim de semana|final de semana|hoje|amanha|semana que vem|setembro|outubro|novembro|janeiro|fevereiro|marco|abril|julho)\b/.test(s)) return;
   // "Qual o valor da diária para casal" asks the ordinary rate, not the package.
   if (!newYearWords.test(s) && /\b(?:diarias?|pernoites?|day ?use|segunda|terca|quarta|quinta|sexta|sabado|domingo|(?:esta|essa|nesta|nessa|proxima) semana|(?:este|esse|neste|nesse) mes|mes que vem)\b/.test(s)) return;

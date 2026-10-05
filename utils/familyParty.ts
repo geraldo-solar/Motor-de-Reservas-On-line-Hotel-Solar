@@ -105,7 +105,8 @@ function singleTravelerDeclaration(s: string): 'single' | 'unasserted' | undefin
     || /\b(?:para|somos|seremos|sao|sera|so|apenas|somente|total de|ao todo)\s*$/.test(s.slice(0,one.index!)));
   const alone=/^sozinh[oa][.!]*$/.test(s)||/\b(?:vou|irei|viajarei|ficarei|estarei|vou viajar|vou ficar|vou me hospedar)\s+sozinh[oa]\b/.test(s)
     || /\b(?:para\s+(?:(?:a )?minha mae|(?:o )?meu pai|mim|ela|ele)|(?:minha mae|meu pai|ela|ele)\s+(?:vai|ira|viajara))\s+sozinh[oa]\b/.test(s)
-    || /\b(?:so|apenas|somente)\s+(?:eu|para mim)(?=[,.;!?]|$|\s+(?:de|entre|no periodo|em)\b)/.test(s);
+    || /\b(?:so|apenas|somente)\s+(?:eu|para mim|pra mim)(?=[,.;!?]|$|\s+(?:de|entre|no periodo|em)\b)/.test(s)
+    || /\bsou sozinh[oa]\b/.test(s);
   if(!singleTotal&&!alone)return;
   // A hypothetical, negated, per-room or per-person amount is not a new group.
   if(/[?]|\b(?:nao|talvez|se|caso|hipoteticamente|poderia|posso|pode|sera que|ou|acho|exemplo|cada|por pessoa|por hospede|capacidade|cabe|cabem)\b/.test(s))return 'unasserted';
@@ -219,8 +220,41 @@ function memberListDeclaration(s: string): {adults:number;children:number;ages_m
  * that context nor changes booking facts. The caller owns topic/TTL resets.
  * Every clarification must block treating the new composition as complete.
  */
+// Informal WhatsApp compositions seen in the audit of 05/10/2026, rewritten
+// into the explicit forms parsed below: "adolescente d 14 anos", "duas
+// crianças de 3a e 6a", "uma moça de 14 anos um rapaz de 8", "casal e
+// crianças, de 15 e 12 anos". People are only counted next to adults/couple.
+const countBefore=(text: string)=>new RegExp(`\\b${number}\\s*$`).test(text);
+function informalComposition(s: string): string {
+  s=s.replace(/\banod\b/g,'anos').replace(/\bd (?=\d{1,2} (?:anos?|meses?|a)\b)/g,'de ')
+    // The ad's greeting quoted back and filled in: "quantos adultos:07".
+    .replace(/\bpara (?:eu )?te mandar os valores certinhos,? me conta:?|\(?com a idade das criancas\)?\??/g,' ')
+    .replace(/\bquant[oa]s\s+(adult[oa]s?|criancas?)\s*:\s*(\d{1,2})\b/g,'$2 $1')
+    // "07 crianças entre 07 a 12 anos": no child up to 6, so none is a
+    // courtesy; the lower age stands for all of them.
+    .replace(new RegExp(`\\b(${number}\\s+(?:criancas|filh[oa]s))\\s+(?:entre\\s+(\\d{1,2})\\s+(?:a|e|ate)|de\\s+(\\d{1,2})\\s+(?:a|ate))\\s+(\\d{1,2})\\s*anos\\b`,'g'),
+      (all,head:string,_count:string,between:string|undefined,from:string|undefined,high:string)=>{
+        const low=Number(between??from);
+        return low>=7&&Number(high)>=low?`${head} de ${low} anos`:all;
+      });
+  const people=/\b(?:criancas?|filh[oa]s?|bebes?|menin[oa]s?|mocas?|rapaz(?:es)?|garot[oa]s?|adolescentes?)\b/;
+  if(people.test(s))s=s.replace(/\b(\d{1,2}) a\b(?=\s*(?:e\b|,|;|\.|!|$))/g,'$1 anos');
+  if(!/\badult[oa]s?\b|\bcasa(?:l|is)\b|\bpessoas\b|\beu\b/.test(s))return s;
+  s=s.replace(new RegExp(`\\b${number}\\s+(?:menin[oa]s|mocas|rapazes|garot[oa]s|jovens)\\b`,'g'),'$1 criancas');
+  const person='(?:adolescente|crianca|menina|menino|moca|rapaz|garota|garoto|bebe)';
+  s=s.replace(new RegExp(`(^|[^\\w])((?:um|uma|a|o|1)\\s+)?${person}\\s+(?:de|com)\\s+(\\d{1,2})(?:\\s*(anos?|meses?))?\\b`,'g'),
+    (all,lead:string,article:string|undefined,age:string,unit:string|undefined,offset:number,whole:string)=>
+      !article&&(countBefore(whole.slice(0,offset+lead.length))||/\b(?:nossa|nosso|minha|meu|sua|seu)\s*$/.test(whole.slice(0,offset+lead.length)))
+        ?all:`${lead}1 crianca de ${age} ${unit||'anos'}`);
+  s=s.replace(new RegExp(`(^|[^\\w])(?:um|uma|1)\\s+(?:menina|menino|moca|rapaz|garota|garoto|bebe)\\b(?!\\s+(?:de|com)\\s+\\d)`,'g'),(_all,lead:string)=>`${lead}1 crianca`);
+  return s.replace(/(^|[^\w])(criancas|filh[oa]s|adolescentes)(\s*,?\s*(?:de|com)\s+)(\d{1,2}(?:\s*(?:,|e)\s*\d{1,2})+)(\s*anos?)\b/g,
+    (all,lead:string,noun:string,middle:string,list:string,unit:string,offset:number,whole:string)=>
+      countBefore(whole.slice(0,offset+lead.length))?all
+        :`${lead}${list.split(/\s*(?:,|e)\s*/).length} ${noun==='adolescentes'?'criancas':noun}${middle}${list}${unit}`);
+}
+
 export function updateFamilyParty(message: string, previous?: unknown, now=Date.now(), knownTotal?: number): FamilyPartyResult {
-  let s=norm(message);
+  let s=informalComposition(norm(message));
   // "Dois idosos" are two adults ("casal de idosos" stays a couple).
   s=s.replace(/\bidos([oa])s\b/g,'adult$1s').replace(/\bidos([oa])\b/g,'adult$1');
   // "2 adultos e 1 adolescente": a teenager occupies a normal place (no
@@ -262,9 +296,12 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
     ? new RegExp(`^nos(?:\\s+somos)?\\s+${number}[.!?]?$`).exec(s) : null;
   const hasTotal=totalMatches.length>0||!!contextualTotal;
   const pluralCouple=[...s.matchAll(new RegExp(`\\b${number}\\s*casais\\b`,'g'))].find(match=>!roomLinkedCouple(s,match.index!));
-  const oneCouple=/^(?:casal)(?:\s*(?:[.!?]|$)|\s+(?:e|com)\b)/.test(s)
+  // "Seria o casal", "pra casal", "casal adulto, ...": the group, unless a
+  // choice verb picks the Casal category ("prefiro o casal").
+  const oneCouple=/^(?:casal)(?:\s+adult[oa]s?)?(?:\s*(?:[.,!?]|$)|\s+(?:e|com)\b)/.test(s)
     || [...s.matchAll(/(?:[:,;]\s*|\b(?:na verdade|corrigindo)\s+)casal(?=\s*(?:[.!?]|$)|\s+(?:e|com)\b)/g)].some(match=>!roomLinkedCouple(s,match.index!))
-    || [...s.matchAll(/\b(?:somos|para|vai|um|1)\s+casal\b/g)].some(match=>/^somos\s/.test(match[0])||!roomLinkedCouple(s,match.index!));
+    || [...s.matchAll(/\b(?:somos|para|pra|vai|vamos|um|1|o|seria|sera|so|apenas|somente)\s+casal\b/g)].some(match=>/^somos\s/.test(match[0])
+      ||!roomLinkedCouple(s,match.index!)&&!(/^o\s/.test(match[0])&&/\b(?:prefiro|quero|escolho|escolhi|fico com|vou de|vamos de|reservar|fechar|pode ser)\s*$/.test(s.slice(0,match.index))));
   const couple=pluralCouple?quantity(pluralCouple[1]):oneCouple?1:undefined;
   const offspringMention=/\bfilh[oa]s?\b/.test(s);
   const unspecifiedOffspring=offspringMention&&!childMatches.length

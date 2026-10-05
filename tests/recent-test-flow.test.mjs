@@ -144,10 +144,14 @@ test('replay 14/09: áudio, correção, escolha, foto, troca de assunto, pacote,
   assertFamily(family.state);assertNoSelectedStay(family.state);
   assert.equal(family.state.multi_room?.status,'offered');
   assert.doesNotMatch(family.response.quote_request,/^PACKAGE_ID\|/);
-  assert.match(family.text,/dois apartamentos/);
+  // The cheapest combination of two apartments and the team right away.
+  assert.equal(family.response.quote_request,'HUMANO');
+  assert.match(family.text,/vocês precisam de 2 apartamentos/);
   assert.doesNotMatch(family.text,/Quais são as idades/);
   const loft=await chat.say('Loft dá para todos nós?');
-  assertFamily(loft.state);assert.match(loft.text,/dois apartamentos/);
+  assertFamily(loft.state);assert.equal(loft.response.quote_request,'ROOM_LIST');
+  assert.match(loft.text,/Loft acomoda até 4 pessoas.*não comporta o grupo todo/s);
+  assert.doesNotMatch(loft.text,/combinação mais em conta/);
   assert.doesNotMatch(loft.text,/Quais são as idades/);
   const ages=await chat.say('8, 10 e 16');
   assertFamily(ages.state);assertNoSelectedStay(ages.state);
@@ -175,9 +179,12 @@ test('escolher qual foto ver não autoriza seleção de quarto nem coleta',async
 test('recusa da oferta humana não encaminha; Sim posterior não reaproveita autorização recusada',async()=>{
   const {chat,offer}=await packageOfferConversation();
   assert.equal(offer.state.multi_room?.status,'offered');
+  // With package prices the offer is the combination card, already with the team.
+  assert.equal(offer.response.quote_request,'HUMANO');assert.match(offer.text,/combinação mais em conta/);
   const declined=await chat.say('Não, obrigado');
   assert.notEqual(declined.routed.quote_request,'HUMANO');assert.equal(declined.routed.can_collect,'NAO');
-  assert.match(declined.text,/não vou|não.*encaminh|não.*solicitar/i);
+  assert.notEqual(declined.response.quote_request,'HUMANO');
+  assert.doesNotMatch(declined.text,/vou chamar|encaminh|combinação/i);
   const later=await chat.say('Sim');
   assert.notEqual(later.routed.quote_request,'HUMANO');assert.equal(later.routed.can_collect,'NAO');
 });

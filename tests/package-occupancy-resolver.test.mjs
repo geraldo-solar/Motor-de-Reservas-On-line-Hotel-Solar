@@ -54,6 +54,8 @@ test('continuação curta de idades preserva foco e usa a oferta multi-apartamen
   calls.length=0;
   const first=await turn('No Réveillon somos 5 pessoas: 2 adultos e 3 crianças. Cabem em um apartamento?');
   const next=await turn('8, 10 e 16',first.state);
+  // Without package prices in the catalogue there is no combination to show:
+  // the controller's offer stays (with prices: new-year-campaign-flow).
   assert.equal(next.result.quote_request,'ROOM_LIST');
   assert.match(next.result.conversation_text,/dois apartamentos|dividir o grupo/);
   assert.match(next.result.conversation_text,/Posso chamar/);
@@ -63,7 +65,7 @@ test('continuação curta de idades preserva foco e usa a oferta multi-apartamen
   assert.equal(next.state.facts.check_in,undefined);
   assert.equal(next.state.facts.check_out,undefined);
   assert.equal(next.result.can_collect,'NAO');
-  assert.deepEqual(calls,[]);
+  assert.ok(calls.every(table=>['packages','room_types'].includes(table)),String(calls));
 });
 
 test('pedido de exceção fica separado de datas confirmadas e não aciona catálogo',async()=>{

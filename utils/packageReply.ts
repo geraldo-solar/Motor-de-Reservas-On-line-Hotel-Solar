@@ -92,7 +92,109 @@ const money = (value: number) => value.toLocaleString('pt-BR', {
 }).replace(/\u00a0/g, ' ');
 
 /** Sale conditions the caller confirmed for this package (e.g. Réveillon 10% à vista). */
-export type PackageSaleTerms = { cashDiscountPct?: number; siteUrl?: string };
+export type PackageSaleTerms = { cashDiscountPct?: number; siteUrl?: string; highlights?: string };
+
+const packageNights = (pkg: PackagePricingRecord) => pkg.start_iso_date && pkg.end_iso_date
+  ? Math.round((Date.parse(`${pkg.end_iso_date}T12:00:00Z`) - Date.parse(`${pkg.start_iso_date}T12:00:00Z`)) / 86400000) : 0;
+const paymentLine = (pkg: PackagePricingRecord, total: number, terms: PackageSaleTerms) => {
+  const installments = Number(pkg.max_installments || 0) > 1 ? Number(pkg.max_installments) : 0;
+  const cashPct = Number(terms.cashDiscountPct || 0) > 0 ? Number(terms.cashDiscountPct) : 0;
+  const pay = [
+    installments ? `em até ${installments}x de ${money(total / installments)} no cartão` : '',
+    cashPct ? `${money(total * (1 - cashPct / 100))} à vista (${cashPct}% de desconto)` : '',
+  ].filter(Boolean).join(' ou ');
+  return pay ? `💳 ${pay.charAt(0).toUpperCase()}${pay.slice(1)}` : '';
+};
+
+/** First answer about a package (audit 05/10/2026: most leads stopped after
+ * the full price table). Starting prices by group size, payment and the
+ * question that leads to the card of packageRecommendation. */
+export function packageOfferSummary(pkg: PackagePricingRecord, rooms: PackageRoomRecord[], terms: PackageSaleTerms = {}): string {
+  const start = displayDate(pkg.start_iso_date), end = displayDate(pkg.end_iso_date), nights = packageNights(pkg);
+  const text = [`🎉 *${displayText(pkg.name || 'Pacote especial', 150)}*`];
+  if (start && end) text.push(`📅 ${start} a ${end}${nights > 0 ? ` · ${nights} ${nights === 1 ? 'noite' : 'noites'}` : ''}`);
+  if (terms.highlights) text.push(`✨ ${displayText(terms.highlights, 300)}`);
+  const knownRooms = new Set(rooms.map(room => String(room.id)));
+  const { prices } = packagePrices(pkg, rooms);
+  const options = prices.filter(item => knownRooms.has(item.id) && Number.isInteger(item.capacity) && item.price > 0);
+  const lines = [2, 3, 4].map(size => {
+    const fits = options.filter(item => baseRoomCapacity(Number(item.capacity)) >= size);
+    if (!fits.length) return '';
+    const cheapest = Math.min(...fits.map(item => item.price));
+    return `• ${size === 2 ? 'Até 2 pessoas' : `${size} pessoas`}: a partir de ${money(cheapest)}`;
+  }).filter(Boolean);
+  if (lines.length) text.push('', '💰 *Pacote completo, por apartamento:*', ...lines);
+  const installments = Number(pkg.max_installments || 0) > 1 ? Number(pkg.max_installments) : 0;
+  const cashPct = Number(terms.cashDiscountPct || 0) > 0 ? Number(terms.cashDiscountPct) : 0;
+  if (installments || cashPct) text.push(`💳 ${[installments ? `Em até ${installments}x no cartão` : '', cashPct ? `${installments ? 'à' : 'À'} vista com ${cashPct}% de desconto` : ''].filter(Boolean).join(' ou ')}`);
+  text.push('👶 1 criança de até 6 anos por apartamento não paga', '',
+    'Quantas pessoas vão? Me diga quantos adultos e a idade das crianças que eu indico a melhor opção para vocês.');
+  return text.join('\n');
+}
+
+/** A group that does not fit one apartment (5+ people): the cheapest
+ * combination of apartments, each with its normal occupancy plus at most 1
+ * child up to 6 in courtesy. The caller hands the conversation to the team,
+ * who confirm availability and the distribution of the people. */
+export function packageGroupCombination(
+  pkg: PackagePricingRecord,
+  rooms: PackageRoomRecord[],
+  guests?: number,
+  state?: unknown,
+  terms: PackageSaleTerms = {},
+): string | undefined {
+  if (!Number.isInteger(guests) || Number(guests) < 5 || Number(guests) > 40) return;
+  const group = Number(guests);
+  const family = familyAccommodation(state, group);
+  if (family.pending) return;
+  const knownRooms = new Set(rooms.map(room => String(room.id)));
+  const options = packagePrices(pkg, rooms).prices.filter(item => knownRooms.has(item.id)
+    && Number.isInteger(item.capacity) && Number(item.capacity) > 0 && item.price > 0);
+  if (!options.length || options.some(item => baseRoomCapacity(Number(item.capacity)) + Math.min(1, family.eligible) >= group)) return;
+  // The cheapest category of each size is enough to search combinations.
+  const bySize = new Map<number, PackagePrice>();
+  for (const item of options) {
+    const size = baseRoomCapacity(Number(item.capacity));
+    if (!bySize.has(size) || bySize.get(size)!.price > item.price) bySize.set(size, item);
+  }
+  const sizes = [...bySize.values()];
+  let best: PackagePrice[] | undefined;
+  for (let count = 2; count <= 12 && !best; count++) {
+    const free = Math.min(family.eligible, count);
+    const pick = (from: number, chosen: PackagePrice[]) => {
+      if (chosen.length === count) {
+        const places = chosen.reduce((sum, item) => sum + baseRoomCapacity(Number(item.capacity)), 0) + free;
+        const total = chosen.reduce((sum, item) => sum + item.price, 0);
+        if (places >= group && (!best || total < best.reduce((sum, item) => sum + item.price, 0))) best = [...chosen];
+        return;
+      }
+      for (let index = from; index < sizes.length; index++) pick(index, [...chosen, sizes[index]]);
+    };
+    pick(0, []);
+  }
+  if (!best) return;
+  const total = best.reduce((sum, item) => sum + item.price, 0);
+  const counts = new Map<string, number>();
+  for (const item of [...best].sort((a, b) => a.price - b.price)) counts.set(displayText(item.name, 120), (counts.get(displayText(item.name, 120)) || 0) + 1);
+  const combination = [...counts].map(([name, count]) => count > 1 ? `${count} × ${name}` : name).join(' + ');
+  const start = displayDate(pkg.start_iso_date), end = displayDate(pkg.end_iso_date), nights = packageNights(pkg);
+  const text = [`🎉 *${displayText(pkg.name || 'Pacote especial', 150)}*`,
+    `📅 ${start && end ? `${start} a ${end}${nights > 0 ? ` · ${nights} ${nights === 1 ? 'noite' : 'noites'}` : ''} · ` : ''}${group} hóspedes`, '',
+    `Para ${group} pessoas, vocês precisam de ${best.length} apartamentos. A combinação mais em conta:`,
+    `⭐ *${combination}* — *${money(total)}*`];
+  const pay = paymentLine(pkg, total, terms);
+  if (pay) text.push(pay);
+  if (family.eligible) text.push('👶 1 criança de até 6 anos em cortesia por apartamento (não paga).');
+  // Five people of unknown ages may include a courtesy child.
+  const party = (state as any)?.family_party;
+  if (group === 5 && !family.key && !(Number.isInteger(party?.adults) && Number.isInteger(party?.children))) {
+    const single = options.filter(item => baseRoomCapacity(Number(item.capacity)) >= 4).sort((a, b) => a.price - b.price)[0];
+    if (single) text.push(`Se uma das 5 pessoas for criança de até 6 anos, vocês cabem em um apartamento para 4 com ela em cortesia, a partir de ${money(single.price)}.`);
+  }
+  text.push('', 'Valores por apartamento, para o pacote completo, sujeitos à disponibilidade.',
+    'Vou chamar nossa equipe para confirmar a disponibilidade e a distribuição de vocês nesta conversa.');
+  return text.join('\n');
+}
 
 /** Sales card for a known group: the cheapest compatible option first, with
  * payment conditions, the other options and a closing question. */
@@ -114,8 +216,7 @@ export function packageRecommendation(
     return text.join('\n');
   }
 
-  const nights = pkg.start_iso_date && pkg.end_iso_date
-    ? Math.round((Date.parse(`${pkg.end_iso_date}T12:00:00Z`) - Date.parse(`${pkg.start_iso_date}T12:00:00Z`)) / 86400000) : 0;
+  const nights = packageNights(pkg);
   const period = start && end ? `${start} a ${end}${nights > 0 ? ` · ${nights} ${nights === 1 ? 'noite' : 'noites'}` : ''} · ` : '';
   text.push(`📅 ${period}${guests} ${guests === 1 ? 'hóspede' : 'hóspedes'}`);
   const family = familyAccommodation(state, Number(guests));
@@ -140,16 +241,11 @@ export function packageRecommendation(
   const options = [...compatible].sort((a, b) => a.price - b.price)
     .filter(option => !seen.has(option.id) && !!seen.add(option.id));
   const best = options[0];
-  const installments = Number(pkg.max_installments || 0) > 1 ? Number(pkg.max_installments) : 0;
-  const cashPct = Number(terms.cashDiscountPct || 0) > 0 ? Number(terms.cashDiscountPct) : 0;
-  const pay = [
-    installments ? `em até ${installments}x de ${money(best.price / installments)} no cartão` : '',
-    cashPct ? `${money(best.price * (1 - cashPct / 100))} à vista (${cashPct}% de desconto)` : '',
-  ].filter(Boolean).join(' ou ');
   const bestName = displayText(best.name, 120);
   const coupleWithChild = guests === 3 && family.children === 1 && family.eligible === 1 && best.capacity === 2;
-  text.push('', `⭐ *Indicada para vocês: ${bestName}* — *${money(best.price)}*${coupleWithChild ? ', com a criança em cortesia' : ''}`);
-  if (pay) text.push(`💳 ${pay.charAt(0).toUpperCase()}${pay.slice(1)}`);
+  text.push('', `⭐ *Indicada para ${guests === 1 ? 'você' : 'vocês'}: ${bestName}* — *${money(best.price)}*${coupleWithChild ? ', com a criança em cortesia' : ''}`);
+  const pay = paymentLine(pkg, best.price, terms);
+  if (pay) text.push(pay);
   if (family.eligible) text.push('👶 1 criança de até 6 anos em cortesia por apartamento (não paga); berço ou cama extra sem custo, conforme disponibilidade.');
   else if (family.children) text.push('Todos contam na ocupação normal do apartamento; a cortesia é só para criança de até 6 anos.');
   const site = terms.siteUrl || `https://reservas.hotelsolar.tur.br/?pacote=${encodeURIComponent(pkg.id)}`;
@@ -177,7 +273,7 @@ const cardMoney = (value: string) => Number(value.replace(/\./g, '').replace(','
  * name, its total or "a mais barata" picks that line. Anything hesitant,
  * a question or an ambiguous reference is not a choice. */
 export function packageCardChoice(message: string, cardText: string): {name: string; price: number} | undefined {
-  const best = /⭐ \*Indicada para vocês: (.+?)\* — \*R\$ ([\d.]+,\d{2})\*/.exec(cardText);
+  const best = /⭐ \*Indicada para vocês?: (.+?)\* — \*R\$ ([\d.]+,\d{2})\*/.exec(cardText);
   if (!best) return;
   const options = [{name: best[1], price: cardMoney(best[2])}];
   const others = cardText.split('Outras opções para o seu grupo:')[1] || '';

@@ -94,7 +94,10 @@ test('teste do WhatsApp 29/09: contexto do Réveillon, família, criança, parce
   now=start;
   const say=conversation();
   const first=await say('Boa tarde! Vi o anúncio do Réveillon Solar 2027. Quais os valores?');
-  assert.match(first.text,/LOFT: \*R\$ 9\.500,00\*/);assert.doesNotMatch(first.text,/,01|,99|motor/);
+  // Audit of 05/10/2026: starting prices by group size, not the full table.
+  assert.match(first.text,/Até 2 pessoas: a partir de R\$ 5\.600,00\n• 3 pessoas: a partir de R\$ 6\.400,00\n• 4 pessoas: a partir de R\$ 7\.400,00/);
+  assert.match(first.text,/Em até 6x no cartão ou à vista com 10% de desconto/);
+  assert.doesNotMatch(first.text,/,01|,99|motor|LOFT/);
 
   const family=await say('Vamos eu, minha esposa e nosso filho de 5 anos');
   assert.equal(family.state.facts.guests,3);assert.doesNotMatch(family.text,/Quantas pessoas/);
@@ -212,7 +215,7 @@ test('campanha não força o Réveillon em outra viagem, fora do período ou sem
 test('leads de 30/09: diária comum, estadia parcial com grupo e primeira resposta com pergunta',async()=>{
   now=Date.parse('2026-09-30T13:00:00-03:00');
   const first=await conversation(CAMPAIGN_SEED)('Quais os valores do Réveillon?');
-  assert.match(first.text,/Para quantas pessoas seria\? Me diga quantos adultos e a idade das crianças/);
+  assert.match(first.text,/Quantas pessoas vão\? Me diga quantos adultos e a idade das crianças/);
   assert.doesNotMatch(first.text,/Se desejar prosseguir|aproveitando o que/);
 
   // "casal" tags the lead in ManyChat, but the ordinary rate is not the package.
@@ -432,5 +435,98 @@ test('itens 5 da auditoria: indecisão, comparação, ok/emoji/nenhuma e mensage
   await pick('Quais os valores do Réveillon?');await pick('2 adultos');await pick('Sim');
   const confirm=await pick('ok');
   assert.equal(confirm.r.quote_request,'COLETAR');
+  now=start;
+});
+
+// Audit of 05/10/2026 (97 conversations): informal groups, 5+ people, first
+// answer, room capacity, a dry "não", other packages' payment and loops.
+test('auditoria 05/10: grupo informal, combinação para 5+, primeira resposta, capacidade, recusa e pergunta repetida',async()=>{
+  now=Date.parse('2026-10-05T12:00:00-03:00');
+  const read=message=>updateFamilyParty(message,undefined,now);
+  for(const [message,guests,ages] of [['Seria o casal',2,[]],['Pra casal',2,[]],['Casal adulto, menina de 18, menina de 14',4,[216,168]],
+    ['Casal e crianças, de 15 e 12 anos.',4,[180,144]],['2 adultos Adolescente d 14 anos Criança d 9 anos',4,[168,108]],
+    ['São uma moça de 14 anos um rapaz de 8 anos e 2 adultos',4,[168,96]],['3 adultos e 2 crianças 6 anos e 8 anod',5,[72,96]],
+    ['Casal e duas criancas de 3a e 6a',4,[36,72]],['Era só pra mim, sou sozinha',1,[]],['eu, meu marido e nossa bebê de 8 meses',3,[8]],
+    ['quantos adultos:07 e quantas crianças vão? 07 crianças entre 07 a 12 anos',14,Array(7).fill(84)]]){
+    const r=read(message);
+    assert.equal(r.guests,guests,message);assert.deepEqual(r.party.ages_months,ages,message);assert.equal(r.children_pending,false,message);
+  }
+  for(const message of ['Prefiro o casal','Quero a suíte casal','Criança de 7 anos paga?','2 crianças de 8 e 10 anos'])
+    assert.notEqual(read(message).guests,2,message);
+  assert.deepEqual(read('2 adultos e 2 crianças de 8 e 10 anos').party.ages_months,[96,120]);
+
+  // First answer: starting prices by size, and a group stated with the question gets its card.
+  const couple=conversation(CAMPAIGN_SEED);
+  const first=await couple('Quais os valores do Réveillon?');
+  assert.match(first.text,/Pacote completo, por apartamento/);assert.doesNotMatch(first.text,/LOFT|Programação/);
+  const two=await couple('Seria o casal');
+  assert.match(two.text,/Indicada para vocês: Suíte Casal\* — \*R\$ 5\.600,00\*/);
+  const solo=conversation(CAMPAIGN_SEED);await solo('Quais os valores do Réveillon?');
+  assert.match((await solo('Era só pra mim, sou sozinha')).text,/Indicada para você: Suíte Casal/);
+  const four=await conversation(CAMPAIGN_SEED)('Ola qual valor do reveillon para 4 pessoas ?');
+  assert.equal(four.result.quote_request,'ROOM_LIST');assert.match(four.text,/Indicada para vocês: Suíte Quádruplo\* — \*R\$ 7\.400,00\*/);
+  const programme=await conversation(CAMPAIGN_SEED)('Qual a programação para Reveion e valor para este evento?');
+  assert.match(programme.text,/Programação e itens inclusos/);
+
+  // 5+ people: the cheapest combination and the team right away, once.
+  const five=await conversation(CAMPAIGN_SEED)('Qto o Réveillon pra 05 pessoas , incluindo idosa de 87 anos?');
+  assert.equal(five.result.quote_request,'HUMANO');
+  assert.match(five.text,/⭐ \*Suíte Casal \+ Suíte Triplo\* — \*R\$ 12\.000,00\*/);
+  assert.match(five.text,/Se uma das 5 pessoas for criança de até 6 anos.*R\$ 7\.400,00/);
+  const family=conversation(CAMPAIGN_SEED);await family('Quais os valores do Réveillon?');
+  const split=await family('4 adulto e 01 criança de 8anos');
+  assert.equal(split.result.quote_request,'HUMANO');assert.match(split.text,/Suíte Casal \+ Suíte Triplo/);
+  assert.doesNotMatch(split.text,/Posso chamar|Se uma das 5/);
+  const loft=await family('O loft dá para todos nós?');
+  assert.notEqual(loft.result.quote_request,'HUMANO');assert.doesNotMatch(loft.text,/combinação mais em conta/);
+  const ad=await conversation(CAMPAIGN_SEED)('Anúncio do Instagram Mostrar detalhes Olá! 👋 Que bom que você quer virar o ano com a gente no Hotel Solar. Para eu te mandar os valores certinhos, me conta: quantos adultos:07 e quantas crianças vão (com a idade das crianças)? 07 crianças entre 07 a 12 anos');
+  assert.equal(ad.state.facts.guests,14);assert.equal(ad.result.quote_request,'HUMANO');
+  assert.match(ad.text,/4 apartamentos.*R\$ 27\.600,00/s);
+
+  // Capacity of a named category; a dry "não" after an offer.
+  const capacity=conversation(CAMPAIGN_SEED);await capacity('Quais os valores do Réveillon?');
+  const loftCapacity=await capacity('O loft da quantas pessoas');
+  assert.match(loftCapacity.text,/^O LOFT acomoda até 4 pessoas.*R\$ 9\.500/s);assert.doesNotMatch(loftCapacity.text,/Nenhum item|Cada categoria admite/);
+  const no=conversation(CAMPAIGN_SEED);await no('Quais os valores do Réveillon?');
+  const dry=await no('Não!');
+  assert.equal(dry.result.match_type,'offer_declined');assert.doesNotMatch(dry.text,/🎉|R\$/);
+  const card=conversation(CAMPAIGN_SEED);await card('Para 02 pessoas');
+  assert.match((await card('Não precisa')).text,/^Tudo bem! 😊 Se mudar de ideia/);
+
+  // Another package's payment: conditions, and a deposit goes to the team.
+  const christmas=conversation();
+  await christmas('Quero o pacote do Natal');
+  const pay=await christmas('Como posso fazer o pagamento do pacote Natal Luz?');
+  assert.match(pay.text,/em até 3x/);assert.doesNotMatch(pay.text,/🎉/);
+  const deposit=await christmas('Posso dar uma parte para reservar e pagar o restante no dia da hospedagem?');
+  assert.equal(deposit.result.quote_request,'HUMANO');assert.match(deposit.text,/combinado com a nossa equipe/);
+
+  // The same group question twice: the team takes over instead of a loop.
+  const loop=conversation(CAMPAIGN_SEED);
+  await loop('Quero reservar o Réveillon');
+  const asked=await loop('Quero reservar sim');assert.match(asked.text,/Quantas pessoas vão se hospedar/);
+  const again=await loop('reservar');
+  assert.equal(again.result.quote_request,'HUMANO');assert.match(again.text,/vou chamar nossa equipe/);
+  // A partial answer is progress, not a loop.
+  const ages=conversation(CAMPAIGN_SEED);await ages('Quais os valores do Réveillon?');
+  await ages('2 adultos e 2 crianças');
+  assert.notEqual((await ages('uma tem 3 anos')).result.quote_request,'HUMANO');
+  now=start;
+});
+
+test('auditoria 05/10: promessa da IA de falar com a equipe vira encaminhamento real',async()=>{
+  now=Date.parse('2026-10-05T12:00:00-03:00');
+  const say=async(message,state,ai)=>{now+=60000;
+    const p=control({operation:'prepare',user_message:message,state},now);
+    const r=control({operation:'route',user_message:message,state:p.state,proposed:p.quote_request,ai_response:ai},now);
+    return {r,result:r.quote_request==='NOQUOTE'?await request(resolver,{user_message:message,state:r.state}):undefined};};
+  let turn=await say('Gostaria de saber os valores da reserva',undefined,'Para quantas pessoas será a estadia?');
+  turn=await say('4 pessoas',turn.result.state,'Quais são as datas de entrada e saída?');
+  const promise=await say('Sim',turn.result.state,'Por favor, aguarde um momento enquanto confirmo as informações com a equipe.');
+  assert.equal(promise.result.quote_request,'HUMANO');
+  const vendor=await say('Encaminhe o catálogo para o setor de compras',undefined,'Encaminharei seu pedido para o setor de compras.');
+  assert.equal(vendor.result.quote_request,'HUMANO');
+  const plain=await say('Qual o horário do café?',undefined,'O café da manhã é servido das 7h às 10h.');
+  assert.equal(plain.result.quote_request,'ROOM_LIST');
   now=start;
 });

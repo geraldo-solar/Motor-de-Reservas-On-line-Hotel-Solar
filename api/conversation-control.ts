@@ -202,8 +202,20 @@ function safeAudioText(value: string): string {
 // Apply the same conservative redaction used by audio before interpreting or
 // remembering the message. Plain text and media URLs retain their exact form.
 // The resolver uses this too so its current-turn checks match the safe history.
+// A reply that quotes the ad and its greeting ("Anúncio do Instagram Mostrar
+// detalhes Olá! 👋 Que bom que você quer virar o ano... me conta: quantos
+// adultos e quantas crianças vão (com a idade das crianças)?") keeps only what
+// the customer typed; the greeting's words are not the customer's question.
+const quotedAd = /^\s*an[uú]ncio do (?:instagram|facebook)\s*(?:mostrar detalhes)?\s*/i;
+const quotedAdGreeting = /^(?:ol[aá]!?\s*(?:👋\s*)?)?que bom que voc[eê] quer virar o ano com a gente no hotel solar\.?\s*para (?:eu )?te mandar os valores certinhos,?\s*me conta:?\s*/i;
+function withoutQuotedAd(value: string): string {
+  const typed = String(value || '').replace(quotedAd, '');
+  if (!quotedAdGreeting.test(typed)) return typed === value ? value : typed.trim() || value;
+  return typed.replace(quotedAdGreeting, '').replace(/\s*\(com a idade das crian[cç]as\)\??/i, '? ').trim() || value;
+}
 export function safeTypedMessage(value: string): string {
-  return personal(value) ? safeAudioText(value) : value;
+  const typed = withoutQuotedAd(value);
+  return personal(typed) ? safeAudioText(typed) : typed;
 }
 
 function loadState(value: unknown, now = Date.now()): State {
