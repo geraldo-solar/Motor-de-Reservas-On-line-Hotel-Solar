@@ -72,7 +72,8 @@ export function declaredRelativeStay(message:string,now=Date.now()):{dates:[stri
   const s=norm(message);
   if(excluded(s)||/\bsem hospedagem\b/.test(s)||! /\b(?:valor|preco|cotacao|orcamento|hospedagem|estadia|quartos?|duplo|apartamentos?|quero|queria|preciso|gostaria)\b/.test(s))return;
   const entry=/\b(?:ir|entrar|entrada|chegar|chego|entro|de|desde)\s+(hoje|amanha|depois de amanha)\b/.exec(s);
-  const exit=new RegExp(`\\b(?:sair|saida|saio|ate)\\s+(?:(?:na|no)\\s+)?(${weekdays.join('|')})(?:-feira)?\\b`).exec(s);
+  // "de hoje a domingo" as well as "de hoje até domingo" (audit 05/10/2026).
+  const exit=new RegExp(`\\b(?:(?:sair|saida|saio|ate)|(?<=\\b(?:hoje|amanha)\\s)(?:a|ao))\\s+(?:(?:na|no|o|a)\\s+)?(${weekdays.join('|')})(?:-feira)?\\b`).exec(s);
   if(!entry||!exit||entry.index>=exit.index)return;
   const start=new Date(day(now)+'T12:00:00Z');start.setUTCDate(start.getUTCDate()+({hoje:0,amanha:1,'depois de amanha':2}[entry[1]]!));
   const distance=(weekdays.indexOf(exit[1])-start.getUTCDay()+7)%7;

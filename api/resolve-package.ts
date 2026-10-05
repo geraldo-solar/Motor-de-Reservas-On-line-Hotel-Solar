@@ -26,6 +26,7 @@ import {updateFamilyParty} from '../utils/familyParty.js';
 import {familyAgeFollowup} from '../utils/familyAges.js';
 import {currentPackage,packageEnded,retiredIndependence,endedPackageMarker,endedPackageAnswer} from '../utils/packageAvailability.js';
 import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer} from '../utils/packageDateRequest.js';
+import { WEEKEND_PRICES } from '../utils/pricing.js';
 import { packagePrices, packageRecommendation, packageOfferSummary, packageGroupCombination, type PackageSaleTerms } from '../utils/packageReply.js';
 import { childPolicyQuestion, childAgeFollowup, packageChildReply } from '../utils/packageChildInquiry.js';
 import { stayDateClarification } from '../utils/stayDuration.js';
@@ -43,7 +44,7 @@ import { existingReservationInquiry } from '../utils/existingReservation.js';
 import { familyAccommodation, familyAgeQuestionFor, familyRoomRule, familyRoomExplanation, baseRoomCapacity } from '../utils/familyAccommodation.js';
 import {readMultiRoomHandoff,multiRoomGuidanceText} from '../utils/multiRoomHandoff.js';
 import {multiRoomRequest,roomAlternativeComparison} from '../utils/lodgingScope.js';
-import {reservaHoursAnswer} from '../utils/diningPolicy.js';
+import {restaurantHoursAnswer} from '../utils/diningPolicy.js';
 import {explicitHumanRequest,stripNegatedHumanRequests} from '../utils/humanIntent.js';
 import {closingTurn,assistantBefore,closingAnswer,declined} from '../utils/conversationClosers.js';
 
@@ -362,6 +363,7 @@ const groupInMessage = (message: string, state: any) => {
   const guests = Number(state?.facts?.guests) || 0;
   return guests > 0 && updateFamilyParty(message, undefined, Date.now()).guests === guests ? guests : 0;
 };
+const endOfYearMention = (message: string) => /\b(?:fim|final) (?:do|de) ano\b/.test(normalize(message));
 const programmeQuestion = (message: string) =>
   /\b(?:programac\w*|programa|roteiro|o que (?:inclui|vem|tem)|inclus\w*|incluid\w*|itens)\b/.test(normalize(message));
 
@@ -451,7 +453,35 @@ const groupQuestionKind = (text: string) =>
   /Quantas pessoas vão se hospedar|Para quantas pessoas será a (?:estadia|hospedagem|reserva)|preciso saber para quantas pessoas/i.test(text) ? 'people'
   : /Quais são as idades/.test(text) ? 'ages' : undefined;
 const repeatedQuestionAnswer = 'Para não te fazer repetir, vou chamar nossa equipe para calcular o valor para vocês nesta conversa.';
-function repeatedQuestionHandoff(payload: any, sourceState: any, message: string) {
+
+// The customer asked the price again without the group or dates (audit
+// 05/10/2026, "Estou tentando mas não consigo saber o valor"): the regular
+// rates by category, the same table the team sends, from the catalogue.
+const priceTableTitle = 'Valores das diárias fora de férias e feriados';
+const whole = (value: number) => Math.round(value).toLocaleString('pt-BR', {maximumFractionDigits: 0});
+const priceAsked = (state: any, message: string) => [message, ...(Array.isArray(state?.turns) ? state.turns : [])
+  .filter((turn: any) => turn?.role === 'user').slice(-3).map((turn: any) => String(turn.text || ''))]
+  .some(text => /\b(?:valor(?:es)?|precos?|quanto|tarifas?|diarias?|orcamento|estadi[as]|custa|custo)\b/.test(normalize(text)));
+const priceTableSent = (state: any) => (Array.isArray(state?.turns) ? state.turns : []).slice(-8)
+  .some((turn: any) => turn?.role === 'assistant' && String(turn.text || '').startsWith(priceTableTitle));
+async function regularPriceTable(): Promise<string | undefined> {
+  if (!supabaseUrl || !supabaseKey) return;
+  const {data: rooms, error} = await createClient(supabaseUrl, supabaseKey).from('room_types').select('*').eq('active', true);
+  if (error || !rooms?.length) return;
+  const list = (rooms as RoomRecord[]).filter(room => Number(room.base_price) > 0 && room.name)
+    .map(room => ({name: String(room.name), capacity: Number(room.capacity) || 0, weekday: Number(room.base_price),
+      weekend: WEEKEND_PRICES[String(room.name)] || Number(room.base_price) * 1.15}))
+    .sort((a, b) => a.weekday - b.weekday || a.name.localeCompare(b.name));
+  if (!list.length) return;
+  return [`${priceTableTitle}, por apartamento e já com café da manhã ☕`, '', '*Sexta e sábado:*',
+    ...list.map(room => `• ${room.name}${room.capacity ? ` (até ${room.capacity} ${room.capacity === 1 ? 'pessoa' : 'pessoas'})` : ''}: R$ ${whole(room.weekend)}`),
+    '', '*Domingo a quinta:*', ...list.map(room => `• ${room.name}: R$ ${whole(room.weekday)}`), '',
+    'Uma criança de até 6 anos por apartamento não paga. Parcelamos em até 3x sem juros no cartão.', '',
+    'Em férias e feriados os valores mudam. Me diga as datas e quantas pessoas vão que eu confirmo para você. Se preferir, também dá para reservar pelo site: https://reservas.hotelsolar.tur.br',
+  ].join('\n');
+}
+
+function repeatedQuestionHandoff(payload: any, sourceState: any, message: string, priceTable?: string) {
   if (!payload || payload.quote_request !== 'ROOM_LIST' && !/^PACKAGE_ID\|/.test(String(payload.quote_request || ''))) return payload;
   const kind = groupQuestionKind(String(payload.conversation_text || ''));
   if (!kind || !message) return payload;
@@ -460,14 +490,17 @@ function repeatedQuestionHandoff(payload: any, sourceState: any, message: string
   if (groupQuestionKind(assistantBefore(state, message)) !== kind) return payload;
   // A partial answer ("uma tem 2 anos", "4 pessoas") is progress, not a loop.
   if (kind === 'ages' ? /\d/.test(message) || familyAgeFollowup(message) : updateFamilyParty(message, undefined, Date.now()).handled) return payload;
+  // A repeated "quantas pessoas?" about a price gets the table once; after it, the team.
+  const table = kind === 'people' && priceTable && !priceTableSent(state) ? priceTable : undefined;
+  const answer = table || repeatedQuestionAnswer;
   let remembered = payload.state;
   try {
     const next = JSON.parse(payload.state);
-    if (next?.turns?.at(-1)?.role === 'assistant') next.turns.at(-1).text = repeatedQuestionAnswer;
+    if (next?.turns?.at(-1)?.role === 'assistant') next.turns.at(-1).text = answer.slice(0, 900);
     remembered = JSON.stringify(next);
   } catch { /* Keep the state as returned. */ }
-  return {...payload, quote_request: 'HUMANO', quote_text: repeatedQuestionAnswer, conversation_text: repeatedQuestionAnswer,
-    can_collect: 'NAO', confirmation_text: '', match_type: 'repeated_question_handoff', ...(remembered ? {state: remembered} : {})};
+  return {...payload, quote_request: table ? 'ROOM_LIST' : 'HUMANO', quote_text: answer, conversation_text: answer,
+    can_collect: 'NAO', confirmation_text: '', match_type: table ? 'regular_price_table' : 'repeated_question_handoff', ...(remembered ? {state: remembered} : {})};
 }
 
 // The model sometimes promises an action ("aguarde enquanto confirmo com a
@@ -478,10 +511,11 @@ const teamPromise = (text: string) =>
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only the first response of a user turn: carousel pages / suggested media
   // are internal continuations and must not send the greeting again.
+  let priceTable: string | undefined;
   if (!req.query?.operation || req.query?.transport === MANYCHAT_TEXT_TRANSPORT) {
     const sendJson = res.json.bind(res);
     res.json = ((payload: any) => {
-      const result = !req.query?.operation ? withDailyGreeting(repeatedQuestionHandoff(payload, req.body?.state, safeTypedMessage(String(req.body?.user_message || req.body?.message || '').trim())), req.body?.state) : payload;
+      const result = !req.query?.operation ? withDailyGreeting(repeatedQuestionHandoff(payload, req.body?.state, safeTypedMessage(String(req.body?.user_message || req.body?.message || '').trim()), priceTable), req.body?.state) : payload;
       return sendJson(req.query?.transport === MANYCHAT_TEXT_TRANSPORT ? withManyChatTextEnvelope(result) : result);
     }) as typeof res.json;
   }
@@ -514,6 +548,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     previousPaymentMessage = earlyState?.history?.at(-1) || '';
   } catch { /* Invalid state cannot establish payment context. */ }
   const discovery=!req.query?.operation&&packageDiscoveryRequest(serviceMessage,earlyState?.package_context);
+  if(!req.query?.operation&&!readPackageContext(earlyState?.package_context)&&groupQuestionKind(assistantBefore(earlyState,serviceMessage))==='people'
+    &&priceAsked(earlyState,serviceMessage)&&!priceTableSent(earlyState)&&!updateFamilyParty(serviceMessage,undefined,Date.now()).handled)
+    priceTable=await regularPriceTable().catch(()=>undefined);
   // "Ok", "obrigado", "👍", "nenhuma": a short closing. After a goodbye, or
   // for the customer's own away message, nothing is sent (ROOM_DONE).
   const closingCandidate=!req.query?.operation&&!isAudioInput(incomingMessage)
@@ -818,7 +855,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     &&packageOccupancyFollowup(earlyState.history?.at(-1)||'',earlyState.package_context))
     return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',
       state:JSON.stringify(earlyState),availability_checked:false});
-  const restaurantHours=reservaHoursAnswer(serviceMessage);
+  const restaurantHours=restaurantHoursAnswer(serviceMessage);
   if(!req.query?.operation && restaurantHours){
     const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
     return res.status(200).json({...routed,quote_request:'ROOM_LIST',quote_text:restaurantHours,conversation_text:restaurantHours,
@@ -1011,7 +1048,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const focusedPackage = !discovery&&conversationState?.topic === 'package_info' ? readPackageContext(conversationState.package_context) : undefined;
   // Inclusions such as the boat belong to the package, not to a new paid-extra
   // offer. Resolve these continuations before the proactive media/extra branch.
-  if (!offersOnly && focusedPackage && packageFollowup(userMessage)
+  if (!offersOnly && focusedPackage && (packageFollowup(userMessage)
+    || focusedPackage.id === newYearCampaignPackage.id && endOfYearMention(userMessage))
     && (!namedPackageInquiry(userMessage)||focusedPackageNameReference(userMessage,focusedPackage)
       ||packageOccupancyFollowup(userMessage,focusedPackage))) {
     const [{data: packages,error: packageError},{data: rooms,error: roomError}] = await Promise.all([
@@ -1068,7 +1106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : packageRecommendationInquiry(userMessage) || groupInMessage(userMessage,conversationState)
       ? recommend()
       : pkg.id === newYearCampaignPackage.id && !programmeQuestion(userMessage)
-      ? packageOfferSummary(pkg,rooms || [],saleTerms)
+      ? facts.guests && !family.pending ? recommend() : packageOfferSummary(pkg,rooms || [],saleTerms)
       : formatPackageDetails(pkg,rooms || [],true);
     const answer=withFullPeriodNote(reply,userMessage,conversationState);
     return res.status(200).json({quote_request:handoff?'HUMANO':'ROOM_LIST',quote_text:answer,conversation_text:answer,
@@ -1155,7 +1193,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ranked = (currentPackages as PackageRecord[])
     .map(pkg => ({ pkg, score: scorePackage(userMessage, pkg) }))
     .sort((a, b) => b.score - a.score);
-  const best = nextPackage?{pkg:nextPackage,score:scorePackage(userMessage,nextPackage)}:ranked[0];
+  // A Réveillon campaign lead asking for "o pacote de final de ano" means the
+  // campaign package, not the list of December packages (audit 05/10/2026).
+  const campaignPackage=!nextPackage&&endOfYearMention(userMessage)&&newYearCampaignFocus(conversationState?.campaign,conversationState?.facts)
+    ?(currentPackages as PackageRecord[]).find(pkg=>pkg.id===newYearCampaignPackage.id):undefined;
+  const best = nextPackage?{pkg:nextPackage,score:scorePackage(userMessage,nextPackage)}
+    :campaignPackage?{pkg:campaignPackage,score:100}:ranked[0];
 
   if (best.score < 20&&!nextPackage) {
     return res.status(200).json({

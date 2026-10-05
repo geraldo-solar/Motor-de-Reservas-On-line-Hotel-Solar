@@ -26,7 +26,7 @@ import {packageStayDates,readPackageStayQuery,packageStayPriceRequest,type Packa
 import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer,packageDateRequestRefused,type PackageDateRequest} from '../utils/packageDateRequest.js';
 import { guestInquiry, explicitLodgingRequest, type GuestInquiry } from '../utils/guestInquiry.js';
 import {affirmedStayInformation,lodgingInclusionsAnswer} from '../utils/stayInformation.js';
-import { confirmedDiningPolicy, diningPolicyAnswer, reservaHoursAnswer } from '../utils/diningPolicy.js';
+import { confirmedDiningPolicy, diningPolicyAnswer, restaurantHoursAnswer } from '../utils/diningPolicy.js';
 import { reservaRestaurantMessage } from '../utils/restaurantIntent.js';
 import { explicitHumanRequest, stripNegatedHumanRequests } from '../utils/humanIntent.js';
 import { childPolicyQuestion, childAgeFollowup } from '../utils/packageChildInquiry.js';
@@ -385,6 +385,11 @@ function iso(day: number, month: number, year: number): string | undefined {
 function parseDates(s: string, now: number): { dates: string[]; unclear?: boolean;morning?:boolean } {
   const relative=declaredRelativeStay(s,now);
   if(relative)return {dates:relative.dates,morning:relative.morning};
+  // "31.12 a 03.01" and "05/11saida 06" (audit 05/10/2026). A time such as
+  // "às 10.30" or a price such as "5.600" is not a date.
+  s = s.replace(/(?<![\d.,/])(\d{1,2})\.(\d{2})(?:\.(\d{4}|\d{2}))?(?![\d.,])/g, (all, d: string, m: string, y: string | undefined, offset: number, whole: string) =>
+    +d >= 1 && +d <= 31 && +m >= 1 && +m <= 12 && !/\b(?:as|das|a partir das)\s*$/.test(whole.slice(0, offset)) ? `${d}/${m}${y ? '/' + y : ''}` : all)
+    .replace(/(\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)(?=[a-z])/g, '$1 ');
   const today = new Date(now - 3 * 3600000).toISOString().slice(0, 10);
   const currentYear = Number(today.slice(0, 4));
   const yearNumber = (value?: string) => value ? Number(value.length === 2 ? `20${value}` : value) : currentYear;
@@ -437,6 +442,19 @@ function parseDates(s: string, now: number): { dates: string[]; unclear?: boolea
     if (!m[3] && result && result < today) result = iso(+m[1], +m[2], currentYear + 1);
     return {date:result,index:m.index!,end:m.index!+m[0].length};
   });
+  // "Entrada 05/11 saída 06", "de 31/12 a 03": the exit day takes the entry's
+  // month, or the next month when it is not after the entry day.
+  if (numeric.length === 1 && numeric[0].date) {
+    const after = s.slice(numeric[0].end);
+    const exitDay = /^\s*,?\s*(?:e\s+)?(?:a|ao|ate|-|saida|sai|saio)\s+(?:(?:no|em|o)\s+)?(?:dia\s+)?(\d{1,2})\b(?![\/\d]|\s*(?:h\b|horas?|pessoas?|adult|crianc|hospedes?|noites?|diarias?|anos?|meses?|x\b|vezes))/.exec(after);
+    if (exitDay) {
+      const first = numeric[0].date;
+      let year = +first.slice(0, 4), month = +first.slice(5, 7);
+      if (+exitDay[1] <= +first.slice(8, 10)) { month++; if (month > 12) { month = 1; year++; } }
+      const exitIndex = numeric[0].end + exitDay.index;
+      return finish([numeric[0], {date:iso(+exitDay[1], month, year), index:exitIndex, end:exitIndex + exitDay[0].length}]);
+    }
+  }
   if (numeric.length) return finish(numeric);
   const range = s.match(new RegExp(`\\b(\\d{1,2})(?:\\s+de)?\\s*(?:a|ate|ao|-)\\s*(\\d{1,2})\\s*(?:de\\s+)?(${months.join('|')})(?:\\s+(?:de\\s+)?(20\\d{2}))?\\b`));
   if (range) {
@@ -1306,7 +1324,9 @@ function controlTurn(body: any, now = Date.now()) {
     const roomDetailFollowup=packageRoomDetailFollowup(topicMessage,state.package_context,now);
     const directInquiry = occupancyFollowup||roomDetailFollowup||state.topic==='package_info'&&packageInclusionFollowup(raw,state.package_context,now)?undefined:guestInquiry(raw);
     const packageQuery = !human(s) && !restaurantInquiry(s) && !eventInquiry(topicMessage) && !publicEventInquiry(topicMessage) && directInquiry !== 'lodging_faq' && packageInquiry(topicMessage);
-    const packageContinuation = !human(s) && !eventInquiry(topicMessage) && !publicEventInquiry(topicMessage) && (!guestFacilityInquiry(raw)||roomDetailFollowup) && directInquiry !== 'dining' && directInquiry !== 'day_use' && state.topic === 'package_info' && !!state.package_context && (packageFollowup(topicMessage)||occupancyFollowup||roomDetailFollowup||!!cardChoiceFor(state,topicMessage));
+    const packageContinuation = !human(s) && !eventInquiry(topicMessage) && !publicEventInquiry(topicMessage) && (!guestFacilityInquiry(raw)||roomDetailFollowup) && directInquiry !== 'dining' && directInquiry !== 'day_use' && state.topic === 'package_info' && !!state.package_context && (packageFollowup(topicMessage)||occupancyFollowup||roomDetailFollowup||!!cardChoiceFor(state,topicMessage)
+      // "Do final de ano" in the Réveillon conversation is the same package.
+      ||state.package_context.id===newYearCampaignPackage.id&&/\b(?:fim|final) (?:do|de) ano\b/.test(norm(topicMessage)));
     if (newTripRequest(raw)&&!alternativeDates) {
       delete state.facts.check_in; delete state.facts.check_out; state.facts.extras = [];
       clearStayDuration(state);
@@ -1525,7 +1545,7 @@ function controlTurn(body: any, now = Date.now()) {
   const publicMessage = state.history.at(-1) === raw ? state.resolved_message || raw : raw;
   const occupancyFollowup=packageOccupancyFollowup(publicMessage,state.package_context,now);
   const inquiry = occupancyFollowup?undefined:currentGuestInquiry(state, publicMessage,now);
-  const diningAnswer = diningPolicyAnswer(publicMessage) || reservaHoursAnswer(publicMessage,now) || visitorBreakfastAnswer(publicMessage);
+  const diningAnswer = diningPolicyAnswer(publicMessage) || restaurantHoursAnswer(publicMessage,now) || visitorBreakfastAnswer(publicMessage);
   const facilityAnswer = confirmedHotelAnswer(publicMessage) || (inquiry === 'lodging_faq' ? lodgingInclusionsAnswer(publicMessage) || guestFacilityAnswer(publicMessage) || locmilAnswer(publicMessage) : undefined);
   const weekdayQuestion = packageWeekdayClarification(publicMessage, state.package_context, now);
   const roomGuidance=multiRoomGuidanceText(state,publicMessage,now);
@@ -1704,7 +1724,10 @@ function controlTurn(body: any, now = Date.now()) {
       decision = 'COLETAR';
     } else if (recommendation(s) && (state.facts.children_pending || familyAccommodation(state,state.facts.guests || 0,now).pending)) {
       answer = familyAgeQuestionFor(state);
-    } else if (recommendation(s) && state.facts.guests && (state.facts.guests <= 4 || state.facts.guests === 5 && familyAccommodation(state,5,now).eligible > 0)) {
+    } else if (recommendation(s) && state.facts.guests && (state.facts.guests <= 4 || state.facts.guests === 5 && familyAccommodation(state,5,now).eligible > 0)
+      // "Faz um orçamento melhor… 4 adultos, entrada 15/10, saída 18/10": with the
+      // stay complete and no quote yet, quote it instead of asking the dates again.
+      && !(!quote && state.facts.check_in && state.facts.check_out && state.facts.check_out > state.facts.check_in)) {
       const premium = quote?.options[0];
       answer = premium
         ? `Minha primeira indicação é ${premium.name}, por ${amount(premium.total)} no período informado${quote!.extras.length ? ', com os extras escolhidos' : ''}. Se preferir uma opção mais econômica, também podemos comparar as demais acomodações da simulação. Qual combina melhor com sua viagem?`

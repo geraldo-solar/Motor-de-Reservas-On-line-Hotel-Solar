@@ -530,3 +530,57 @@ test('auditoria 05/10: promessa da IA de falar com a equipe vira encaminhamento 
   assert.equal(plain.result.quote_request,'ROOM_LIST');
   now=start;
 });
+
+// Audit of 05/10/2026, item 5: date formats, "final de ano", the restaurants
+// and the regular rates when the price is asked again without data.
+test('auditoria 05/10 item 5: datas informais, final de ano, Solar 73 e tabela de diárias',async()=>{
+  now=Date.parse('2026-10-05T12:00:00-03:00'); // Monday
+  const quote=async(message,seed)=>(await conversation(seed)(message)).r.quote_request;
+  assert.equal(await quote('Quero reservar de 10.10 a 12.10 para 2 pessoas'),'QUOTE|2026-10-10|2026-10-12|2|NONE');
+  assert.equal(await quote('Para 3 pessoas de 31.12 a 03.01'),'QUOTE|2026-12-31|2027-01-03|3|NONE');
+  assert.equal(await quote('Qual o valor para duas pessoas de hoje a domingo?'),'QUOTE|2026-10-05|2026-10-11|2|NONE');
+  assert.equal(await quote('Entrada 10/10 saída 12 para 2 pessoas'),'QUOTE|2026-10-10|2026-10-12|2|NONE');
+  assert.equal(await quote('Quero hospedagem de 31/12 a 03 para 2 pessoas'),'QUOTE|2026-12-31|2027-01-03|2|NONE');
+  const denise=conversation();
+  await denise('Gostaria de saber os valores da reserva');await denise('4 pessoas');
+  assert.equal((await denise('Novembro entrada 05/11saida 06')).r.quote_request,'QUOTE|2026-11-05|2026-11-06|4|NONE');
+  // Not dates: a time, a price, a group size.
+  for(const message of ['Quero reservar para 2 pessoas, chego às 10.30 do dia 20/10','Valor 5.600 para 2 pessoas no dia 20/10','Quero hospedagem 05/11 a 06 pessoas']){
+    const r=await conversation()(message);
+    assert.equal(r.state.facts.check_out,undefined,message);assert.doesNotMatch(r.r.quote_request,/^QUOTE/,message);
+  }
+  // A recommendation request with the whole stay is quoted, not asked again.
+  assert.equal(await quote('Faz um orçamento melhor pra mim… Somos uma família de 4 pessoas Todos adultos Entrada 15 de outubro Saída 18 de outubro'),
+    'QUOTE|2026-10-15|2026-10-18|4|NONE');
+
+  // "Final de ano" of a campaign lead is the Réveillon; for others, the December list.
+  const lead=await conversation(CAMPAIGN_SEED)('Qual valor do pacote de final de ano?');
+  assert.equal(lead.result.quote_request,`PACKAGE_ID|${RV27_ID}`);assert.match(lead.text,/Réveillon Solar 2027/);
+  assert.equal((await conversation()('Qual valor do pacote de final de ano?')).result.match_type,'list');
+  const group=conversation(CAMPAIGN_SEED);
+  await group('Seria para 3 pessoas');
+  const endOfYear=await group('DO final de ano');
+  assert.equal(endOfYear.state.package_context?.id,RV27_ID);assert.match(endOfYear.text,/Indicada para vocês: Suíte Triplo/);
+
+  // Both restaurants, with today's regular hours.
+  const restaurant=await conversation()('O restaurante está funcionando hoje ?');
+  assert.equal(restaurant.result.match_type,'restaurant_hours');
+  assert.match(restaurant.text,/Solar 73 funciona das 11h às 23h/);assert.match(restaurant.text,/Hoje é segunda-feira.*Solar 73 abre.*Reserva Solar não abre/s);
+
+  // Price asked again without the group: the regular rates once, then the team.
+  const say=async(message,state,ai)=>{now+=60000;
+    const p=control({operation:'prepare',user_message:message,state},now);
+    const r=control({operation:'route',user_message:message,state:p.state,proposed:p.quote_request,ai_response:ai},now);
+    const result=await request(resolver,{user_message:message,state:r.state});return {result,state:result.state||r.state};};
+  let turn=await say('Boa tarde quanto ficaria a estadia',undefined,'Para informar o valor da estadia, preciso saber para quantas pessoas será a hospedagem e as datas.');
+  turn=await say('Estadia desses dias?',turn.state,'Para quantas pessoas será a estadia?');
+  assert.equal(turn.result.match_type,'regular_price_table');assert.equal(turn.result.quote_request,'ROOM_LIST');
+  assert.match(turn.result.conversation_text,/^Valores das diárias fora de férias e feriados/);
+  assert.match(turn.result.conversation_text,/Sexta e sábado:\*\n• Suíte Casal \(até 2 pessoas\): R\$ 610\n/);
+  assert.match(turn.result.conversation_text,/Domingo a quinta:\*\n• Suíte Casal: R\$ 410\n/);
+  turn=await say('Da estadia',turn.state,'Para quantas pessoas será a estadia?');
+  assert.notEqual(turn.result.match_type,'regular_price_table');
+  const answered=await say('2 pessoas',undefined,'Para quantas pessoas será a estadia?');
+  assert.notEqual(answered.result.match_type,'regular_price_table');
+  now=start;
+});

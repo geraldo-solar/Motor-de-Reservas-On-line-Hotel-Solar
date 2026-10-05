@@ -103,3 +103,22 @@ export function reservaHoursAnswer(message: string, now=Date.now()): string | un
   const weekday=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Belem',weekday:'long'}).format(new Date(now));
   return general+` Hoje é ${weekday}${(h.weekdays as readonly string[]).includes(weekday) ? ', um dos dias habituais de funcionamento' : ', fora desses dias habituais'}. Não tenho confirmação de alterações para hoje; a recepção pode conferir.`;
 }
+
+/** "O restaurante está funcionando hoje?" without naming one: the regular
+ * hours of both restaurants (audit 05/10/2026: only the Reserva Solar was
+ * mentioned, and the Solar 73, open that day, was left out). */
+export function restaurantHoursAnswer(message: string, now=Date.now()): string | undefined {
+  const reserva=reservaHoursAnswer(message,now);
+  if (reserva) return reserva;
+  const s=normalize(stripNegatedHumanRequests(message));
+  if (!/\b(?:restaurantes?|solar 73)\b/.test(s) || !/\b(?:funciona\w*|abert[oa]s?|abrir|abre|fech\w*|horarios?)\b/.test(s)
+    || isPrivateEventRequest(s) || publicEventInquiry(s)
+    || /\b(?:cardapio|menu|fotos?|imagens?|videos?|hospedagem|diarias?|quartos?|pagamento|paguei|atendente|humano|cafe da manha)\b/.test(s)) return;
+  const hour=(value: string)=>value.replace(':00','h');
+  const solar=confirmedDiningPolicy.hours.solar_73, h=confirmedDiningPolicy.hours.reserva_solar.low_season;
+  const general=`Temos dois restaurantes: o Solar 73 funciona das ${hour(solar.opens)} às ${hour(solar.closes)}, e o Reserva Solar, pé na areia, funciona habitualmente de sexta a domingo, das ${hour(h.opens)} às ${hour(h.closes)}, na baixa temporada.`;
+  if (!/\b(?:hj|hoje|agora)\b/.test(s)) return general+' Horários especiais e alterações de funcionamento precisam ser conferidos com a recepção.';
+  const weekday=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Belem',weekday:'long'}).format(new Date(now));
+  const reservaToday=(h.weekdays as readonly string[]).includes(weekday);
+  return general+` Hoje é ${weekday}: pelo horário habitual, o Solar 73 abre das ${hour(solar.opens)} às ${hour(solar.closes)}${reservaToday ? ' e o Reserva Solar também abre' : ', e o Reserva Solar não abre'}. Não tenho confirmação de alterações para hoje; a recepção pode conferir.`;
+}
