@@ -1,6 +1,7 @@
 // Serviço de envio de e-mails via Brevo (Sendinblue)
 
 import { Reservation } from '../types';
+import { linkPagamentoReserva } from './cieloPaymentLink';
 
 import { formatDisplayDate } from '../utils/dateUtils';
 // --- MUDANÇA: WHATSAPP REMOVIDO TEMPORARIAMENTE ---
@@ -161,7 +162,7 @@ export const generateClientEmailHTML = (reservation: Reservation): string => {
     // a aba antes de pagar. Sem o link (Cielo fora do ar), a equipe envia.
     const parcelasMax = reservation.cardDetails?.maxInstallments || reservation.cardDetails?.installments || 1;
     const linkSeguro = reservation.checkoutUrl && /^https:\/\/cieloecommerce\.cielo\.com\.br\//.test(reservation.checkoutUrl)
-      ? reservation.checkoutUrl.replace(/"/g, '%22').replace(/</g, '%3C')
+      ? linkPagamentoReserva(reservation.id)
       : null;
     paymentSection = `
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px 0;">
@@ -176,7 +177,7 @@ export const generateClientEmailHTML = (reservation: Reservation): string => {
           <a href="${linkSeguro}" style="display: inline-block; background: #1a3c34; color: #d4a853; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; letter-spacing: 1px;">PAGAR NO CARTÃO PELA CIELO</a>
         </div>
         <p style="color: #64748b; margin: 8px 0 0 0; font-size: 12px; text-align: center;">
-          Página segura da Cielo: o hotel não recebe os dados do seu cartão. Se já pagou, desconsidere.
+          O link confere sua reserva e encaminha à página segura da Cielo quando o pagamento ainda está pendente. O hotel não recebe os dados do seu cartão.
         </p>` : `
         <p style="color: #64748b; margin: 12px 0 0 0; font-size: 13px;">
           Nossa equipe vai enviar o link para pagar no cartão pelo WhatsApp.

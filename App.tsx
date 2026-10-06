@@ -28,7 +28,7 @@ import { dadosDaCompra, idDoEventoDeCompra } from './utils/metaEventos';
 import { converterNoGoogle, rastrearNoGoogle } from './services/googleTag';
 import { compraNoGoogle } from './utils/googleEventos';
 
-const ERP_URL = 'https://erp-hotel-solar.vercel.app';
+import { ERP_URL } from './services/cieloPaymentLink';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.HOME);

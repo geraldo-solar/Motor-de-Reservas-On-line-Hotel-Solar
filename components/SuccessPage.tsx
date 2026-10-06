@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle, QrCode, Copy, CreditCard, Home } from 'lucide-react';
 import { Reservation } from '../types';
+import { linkPagamentoReserva } from '../services/cieloPaymentLink';
 
 interface SuccessPageProps {
     reservation: Reservation;
@@ -95,10 +96,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({ reservation, onGoHome,
                         {reservation.checkoutUrl ? (
                             <>
                                 <p className="text-sm text-slate-600">Sua reserva está registrada. Para garanti-la, pague na página segura da Cielo, à vista ou em até <strong>{reservation.cardDetails?.maxInstallments || 1}x sem juros</strong>.</p>
-                                <a href={reservation.checkoutUrl} className="block w-full text-center bg-solar-gold text-solar-green py-4 rounded-2xl font-bold uppercase tracking-widest hover:bg-solar-green hover:text-white transition-all text-sm">
+                                <a href={linkPagamentoReserva(reservation.id)} className="block w-full text-center bg-solar-gold text-solar-green py-4 rounded-2xl font-bold uppercase tracking-widest hover:bg-solar-green hover:text-white transition-all text-sm">
                                     Pagar agora no cartão pela Cielo
                                 </a>
-                                <p className="text-[11px] text-slate-400">O hotel não recebe os dados do seu cartão. O mesmo botão está no e-mail de confirmação.</p>
+                                <p className="text-[11px] text-slate-400">O link confere sua reserva antes de abrir a Cielo. O hotel não recebe os dados do seu cartão. O mesmo botão está no e-mail de confirmação.</p>
                             </>
                         ) : (
                             <p className="text-sm text-slate-600">Sua reserva está registrada. Nossa equipe vai enviar o link para pagar no cartão pelo WhatsApp e pelo e-mail.</p>

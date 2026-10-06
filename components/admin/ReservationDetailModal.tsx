@@ -3,6 +3,7 @@ import { X, Check, Edit2, MessageSquare, Mail, Phone, Calendar, Clock, CreditCar
 import { Reservation, ReservationStatus } from '../../types';
 import { sendPaymentConfirmedEmail, sendReservationCanceledEmail } from '../../services/emailService';
 import { formatDisplayDate, formatDisplayDateTime } from '../../utils/dateUtils';
+import { ERP_URL, linkPagamentoReserva } from '../../services/cieloPaymentLink';
 
 interface ReservationDetailModalProps {
     isOpen: boolean;
@@ -445,7 +446,7 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
                                 {reservation.paymentMethod === 'PIX' ? <QrCode size={24} className="text-solar-gold" /> : <CreditCard size={24} className="text-solar-gold" />}
                                 <span className="text-xs font-bold uppercase tracking-[0.2em]">{reservation.paymentMethod}</span>
                             </div>
-                            {reservation.paymentMethod === 'CREDIT_CARD' && <PagamentoNaCielo reservationId={reservation.id} pendente={String(reservation.status).toUpperCase() === 'PENDING'} onSituacao={setCielo} jaLancado={cieloJaLancado} cartaoDescartado={Boolean((reservation.cardDetails as any)?.cartaoDescartado)} />}
+                            {reservation.paymentMethod === 'CREDIT_CARD' && <div key={reservation.id}><PagamentoNaCielo reservationId={reservation.id} pendente={String(reservation.status).toUpperCase() === 'PENDING'} valorPago={currentPaid} valorTotal={reservation.totalPrice} onSituacao={setCielo} jaLancado={cieloJaLancado} cartaoDescartado={Boolean((reservation.cardDetails as any)?.cartaoDescartado)} /></div>}
                             {/* Só reservas anteriores a 22/09 ainda têm cartão gravado; apagar depois de cobrar. */}
                             {reservation.cardDetails?.number && /\d{4}/.test(reservation.cardDetails.number) && !reservation.cardDetails.number.includes('•') && (
                                 <div className="mt-4 pt-4 border-t border-slate-200 space-y-2">
@@ -526,8 +527,6 @@ export const ReservationDetailModal: React.FC<ReservationDetailModalProps> = ({
     );
 };
 
-const ERP_URL = 'https://erp-hotel-solar.vercel.app';
-
 type SituacaoCielo = {
     texto: string; situacao: string; divergencia: string | null; parcelas: number | null;
     bandeira: string | null; final: string | null; pagoCentavos: number | null; esperadoCentavos: number;
@@ -535,11 +534,15 @@ type SituacaoCielo = {
 };
 
 // Situação do pagamento na Cielo, confirmada pelo ERP consultando a Cielo.
-function PagamentoNaCielo({ reservationId, pendente, cartaoDescartado, onSituacao, jaLancado }: { reservationId: string; pendente: boolean; cartaoDescartado: boolean; onSituacao?: (p: SituacaoCielo | null) => void; jaLancado?: boolean }) {
+function PagamentoNaCielo({ reservationId, pendente, valorPago, valorTotal, cartaoDescartado, onSituacao, jaLancado }: { reservationId: string; pendente: boolean; valorPago: number; valorTotal: number; cartaoDescartado: boolean; onSituacao?: (p: SituacaoCielo | null) => void; jaLancado?: boolean }) {
     const [p, setP] = React.useState<SituacaoCielo | null | undefined>(undefined);
     const [gerando, setGerando] = React.useState(false);
     const [linkGerado, setLinkGerado] = React.useState<string | null>(null);
     const [erroLink, setErroLink] = React.useState('');
+    const [erroConsulta, setErroConsulta] = React.useState(false);
+    const quitada = valorTotal > 0 && valorPago >= valorTotal - 0.005;
+    const podeGerarLink = !erroConsulta && pendente && valorPago <= 0 && !jaLancado;
+    const linkParaHospede = linkPagamentoReserva(reservationId);
 
     // Para quem reservou com a versão antiga do site (cartão descartado) ou
     // fechou a página antes: a recepção gera o link e manda ao hóspede.
@@ -550,16 +553,24 @@ function PagamentoNaCielo({ reservationId, pendente, cartaoDescartado, onSituaca
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reservationId }),
             });
             const d = await r.json().catch(() => ({}));
-            if (typeof d?.checkoutUrl === 'string' && /^https:\/\/cieloecommerce\.cielo\.com\.br\//.test(d.checkoutUrl)) setLinkGerado(d.checkoutUrl);
-            else setErroLink(d?.error === 'prazo_vencido' ? 'Reserva com mais de 72 horas: gere um link de pagamento pelo painel da Cielo.' : 'Não foi possível gerar o link agora.');
+            if (r.ok && typeof d?.checkoutUrl === 'string' && /^https:\/\/cieloecommerce\.cielo\.com\.br\//.test(d.checkoutUrl)) setLinkGerado(linkParaHospede);
+            else {
+                const mensagens: Record<string, string> = {
+                    prazo_vencido: 'Reserva com mais de 72 horas: gere um link de pagamento pelo painel da Cielo.',
+                    ja_pago: 'Já existe pagamento lançado nesta reserva. Confira antes de cobrar novamente.',
+                    conferir_cielo: 'Esta tentativa precisa ser conferida na Cielo antes de gerar outra cobrança.',
+                    nao_pendente: 'A reserva não está pendente. Confira a situação antes de cobrar.',
+                };
+                setErroLink(mensagens[String(d?.error)] || 'Não foi possível gerar o link agora.');
+            }
         } catch { setErroLink('Não foi possível gerar o link agora.'); }
         setGerando(false);
     };
-    const blocoDoLink = pendente ? (
+    const blocoDoLink = podeGerarLink ? (
         <div className="mt-2 space-y-1">
             {cartaoDescartado && <p className="text-[11px] font-bold text-amber-700">O hóspede usou a versão antiga do site: o cartão foi descartado. Envie o link da Cielo.</p>}
             {linkGerado ? (
-                <input readOnly value={linkGerado} onFocus={(e) => e.currentTarget.select()} className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-[11px]" />
+                <input readOnly aria-label="Link de pagamento para o hóspede" value={linkGerado} onFocus={(e) => e.currentTarget.select()} className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-[11px]" />
             ) : (
                 <button type="button" disabled={gerando} onClick={gerarLink} className="rounded bg-solar-green px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-white disabled:opacity-50">
                     {gerando ? 'Gerando…' : 'Gerar link de pagamento da Cielo'}
@@ -574,10 +585,12 @@ function PagamentoNaCielo({ reservationId, pendente, cartaoDescartado, onSituaca
         try {
             const r = await fetch(`${ERP_URL}/api/reservas/pagamento-cartao?reservationId=${encodeURIComponent(reservationId)}`);
             const d = await r.json();
+            if (!r.ok || d?.ok !== true) throw new Error('consulta_cielo_indisponivel');
+            setErroConsulta(false);
             setP(d?.pagamento ?? null);
             onSituacao?.(d?.pagamento ?? null);
         } catch {
-            setP((atual) => atual ?? null);
+            setErroConsulta(true);
         }
         setConsultando(false);
     }, [reservationId, onSituacao]);
@@ -600,10 +613,10 @@ function PagamentoNaCielo({ reservationId, pendente, cartaoDescartado, onSituaca
             {consultando ? 'Consultando…' : 'Atualizar'}
         </button>
     );
-    if (p === undefined) return <p className="mt-4 text-[11px] text-slate-400">Consultando a Cielo…</p>;
+    if (p === undefined) return <p className="mt-4 text-[11px] text-slate-400">{erroConsulta ? 'Não foi possível consultar a Cielo agora.' : 'Consultando a Cielo…'} {erroConsulta && botaoAtualizar}</p>;
     if (p === null) return (
         <div className="mt-4 pt-4 border-t border-slate-200 text-[11px]">
-            <p className="text-slate-500">Sem página de pagamento na Cielo para esta reserva. {botaoAtualizar}</p>
+            <p className="text-slate-500">{erroConsulta ? 'Não foi possível confirmar a situação na Cielo agora.' : quitada ? 'Pagamento integral registrado na reserva; não há cobrança a enviar.' : valorPago > 0 ? 'Há pagamento parcial registrado; confira o saldo antes de criar outra cobrança.' : 'Sem página de pagamento na Cielo para esta reserva.'} {botaoAtualizar}</p>
             {blocoDoLink}
         </div>
     );
@@ -615,6 +628,7 @@ function PagamentoNaCielo({ reservationId, pendente, cartaoDescartado, onSituaca
                 <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Cartão pela Cielo</p>
                 {botaoAtualizar}
             </div>
+            {erroConsulta && <p className="font-bold text-red-600">Não foi possível atualizar a Cielo. Confira novamente antes de enviar um link.</p>}
             {pago ? (
                 <p className="rounded-lg bg-emerald-50 p-2 font-bold text-emerald-700 border border-emerald-200">
                     ✓ Pago na Cielo{jaLancado ? ' e lançado na reserva' : pendente ? ' — lance no histórico de pagamentos acima' : ''}
@@ -623,8 +637,11 @@ function PagamentoNaCielo({ reservationId, pendente, cartaoDescartado, onSituaca
                 <p className="font-bold text-amber-700">{p.texto}{emAberto && pendente ? ' (atualiza sozinho)' : ''}</p>
             )}
             {pago && <p className="text-slate-600">{reais(p.pagoCentavos)} · {p.parcelas}x · {p.bandeira} final {p.final}</p>}
-            {!pago && <p className="text-slate-500">Valor da cobrança: {reais(p.esperadoCentavos)}</p>}
-            {!pago && p.linkDePagamento && <input readOnly value={p.linkDePagamento} onFocus={(e) => e.currentTarget.select()} className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-[11px]" />}
+            {!pago && !quitada && <p className="text-slate-500">Valor da cobrança: {reais(p.esperadoCentavos)}</p>}
+            {quitada && <p className="font-bold text-emerald-700">Pagamento integral registrado na reserva. O link anterior não deve ser enviado.</p>}
+            {!quitada && valorPago > 0 && <p className="font-bold text-amber-700">Há pagamento parcial registrado. Confira o saldo antes de cobrar novamente.</p>}
+            {!erroConsulta && !pago && !quitada && valorPago <= 0 && pendente && p.linkDePagamento && <input readOnly aria-label="Link de pagamento para o hóspede" value={linkParaHospede} onFocus={(e) => e.currentTarget.select()} className="w-full rounded border border-slate-200 bg-white px-2 py-1 text-[11px]" />}
+            {!erroConsulta && !pago && !quitada && valorPago <= 0 && pendente && !p.linkDePagamento && <p className="text-slate-500">O link anterior não está disponível. Confira a tentativa na Cielo antes de enviar nova cobrança.</p>}
             {p.divergencia && <p className="font-bold text-red-600">Atenção: a Cielo mostra um pagamento de valor diferente.</p>}
         </div>
     );
