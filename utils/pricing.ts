@@ -12,6 +12,11 @@ export const WEEKEND_PRICES: Record<string, number> = {
   "LOFT": 1450
 };
 
+// Apartamento individual: Suíte Casal para 1 pessoa, confirmado pelo
+// responsável em 07/10/2026. Vale nas datas sem preço cadastrado (fora de
+// férias, feriados e pacotes); nelas a diária é a da Suíte Casal.
+export const SINGLE_OCCUPANCY_PRICES = { weekday: 370, weekend: 410 };
+
 // Valor da diária de uma acomodação numa data específica.
 // Precedência: preço cadastrado para a data > tarifa de fim de semana > tarifa base.
 export const getNightlyPrice = (room: Room, date: Date): number => {

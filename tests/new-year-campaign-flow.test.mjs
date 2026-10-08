@@ -471,7 +471,9 @@ test('auditoria 05/10: grupo informal, combinação para 5+, primeira resposta, 
   // 5+ people: the cheapest combination and the team right away, once.
   const five=await conversation(CAMPAIGN_SEED)('Qto o Réveillon pra 05 pessoas , incluindo idosa de 87 anos?');
   assert.equal(five.result.quote_request,'HUMANO');
-  assert.match(five.text,/⭐ \*Suíte Casal \+ Suíte Triplo\* — \*R\$ 12\.000,00\*/);
+  // Owner, 07/10/2026: the Quádruplo with a sofa bed (+R$ 800) comes first.
+  assert.match(five.text,/⭐ \*Suíte Quádruplo com bicama para a 5ª pessoa\* — \*R\$ 8\.200,00\*/);
+  assert.match(five.text,/Ou 2 apartamentos, \*Suíte Casal \+ Suíte Triplo\* — R\$ 12\.000,00/);
   assert.match(five.text,/Se uma das 5 pessoas for criança de até 6 anos.*R\$ 7\.400,00/);
   const family=conversation(CAMPAIGN_SEED);await family('Quais os valores do Réveillon?');
   const split=await family('4 adulto e 01 criança de 8anos');
@@ -583,4 +585,57 @@ test('auditoria 05/10 item 5: datas informais, final de ano, Solar 73 e tabela d
   const answered=await say('2 pessoas',undefined,'Para quantas pessoas será a estadia?');
   assert.notEqual(answered.result.match_type,'regular_price_table');
   now=start;
+});
+
+test('auditoria 07/10: idades, avó, bebê, pro casal, obrigada, reserva existente, recellion, bicama e individual',async()=>{
+  now=Date.parse('2026-10-06T19:00:00-03:00'); // Tuesday
+  const read=(message,previous)=>updateFamilyParty(message,previous,now);
+  let r=read('2 adultos 2 crianças e 1 avó');
+  assert.deepEqual([r.guests,r.party.adults,r.party.children],[5,3,2]);
+  r=read('3 adultos 1 bebê');
+  assert.deepEqual([r.guests,r.children_pending,r.party.ages_months],[4,false,[12]]);
+  assert.equal(read('Bom Dia!Menor preço pro casal').guests,2);
+  // Answers to "Quais são as idades das crianças?" that used to loop.
+  let pending=read('2 adultos e 2 crianças').party;
+  assert.deepEqual(read('Crianças de 11 anos',pending).party.ages_months,[132,132]);
+  pending=read('3 adultos 1 criança').party;
+  assert.deepEqual(read('0',pending).party.ages_months,[0]);
+  assert.deepEqual(read('42, 33 e 52 e 0',pending).party.ages_months,[0]);
+  pending=read('São 4 pessoas ao todo sendo um casal e duas crianças').party;
+  assert.deepEqual(read('31 anos , 29 anos 11 e 3 anos',pending).party.ages_months,[36,132]);
+  pending=read('13 adultos e três crianças').party;
+  assert.deepEqual(read('Duas de 10 e uma de 13',pending).party.ages_months,[120,120,156]);
+
+  const grandma=conversation(CAMPAIGN_SEED);
+  await grandma('Quais os valores do Réveillon?');await grandma('2 adultos 2 crianças e 1 avó');
+  assert.match((await grandma('3 anos e 1 ano')).text,/Indicada para vocês: Suíte Quádruplo/);
+  const fits=await grandma('1 apartamento da pra todos');
+  assert.match(fits.text,/Sim! Os 5 cabem em um apartamento/);assert.doesNotMatch(fits.text,/Nenhum item|orientação/);
+  const list=conversation(CAMPAIGN_SEED);
+  await list('Quais os valores do Réveillon?');await list('3 adultos 1 criança');
+  assert.match((await list('42, 33 e 52 e 0')).text,/Indicada para vocês: Suíte Triplo/);
+
+  const thanks=conversation(CAMPAIGN_SEED);await thanks('Quais os valores do Réveillon?');
+  assert.match((await thanks('Obrigada!')).text,/^Por nada!/);
+  const typo=conversation();await typo('Olá');
+  assert.match((await typo('Gostaria de saber sobre o recellion')).text,/Pacote completo, por apartamento/);
+  assert.equal((await conversation()('Oi amigo, poderia cancelar a minha reserva!')).r.quote_request,'HUMANO');
+  const status=conversation();await status('Boa noite');
+  assert.equal((await status('Está confirmada minha reserva ?')).r.quote_request,'HUMANO');
+
+  // Owner, 07/10/2026: five people in the Quádruplo with a sofa bed (+R$ 800).
+  const five=conversation(CAMPAIGN_SEED);await five('Quais os valores do Réveillon?');
+  const offer=await five('5 adultos');
+  assert.equal(offer.result.quote_request,'HUMANO');
+  assert.match(offer.text,/⭐ \*Suíte Quádruplo com bicama para a 5ª pessoa\* — \*R\$ 8\.200,00\*/);
+  // Owner, 07/10/2026: one guest on a regular weekday pays the single rate.
+  const single=conversation();
+  await single('Boa tarde');await single('Qual valor da diária de Apt individual para hoje ?');await single('07/10');
+  const quote=await single('1');
+  assert.match(quote.text,/⭐ \*Suíte Casal \(individual\)\* — \*R\$ 370\*/);
+  assert.match(quote.text,/checkIn=2026-10-06&checkOut=2026-10-07/);
+  assert.doesNotMatch(quote.text,/Recomendação premium|Simulação sem confirmação/);
+
+  const echo=control({operation:'route',user_message:'Oi',proposed:'NOQUOTE',ai_response:'Vejo que enviou "Contexto:". Posso ajudar?'},now);
+  assert.doesNotMatch(echo.answer,/Contexto/);
 });

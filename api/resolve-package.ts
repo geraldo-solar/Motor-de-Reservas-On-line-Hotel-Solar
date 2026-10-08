@@ -23,10 +23,9 @@ import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
 import {packageStayDates,readPackageStayQuery,packageStayPriceRequest} from '../utils/packageStayQuery.js';
 import {motorStayRestriction,requiresFullPackagePeriod} from '../utils/motorStayPricing.js';
 import {updateFamilyParty} from '../utils/familyParty.js';
-import {familyAgeFollowup} from '../utils/familyAges.js';
 import {currentPackage,packageEnded,retiredIndependence,endedPackageMarker,endedPackageAnswer} from '../utils/packageAvailability.js';
 import {packageDateRequest,readPackageDateRequest,packageDateRequestAnswer} from '../utils/packageDateRequest.js';
-import { WEEKEND_PRICES } from '../utils/pricing.js';
+import { WEEKEND_PRICES, SINGLE_OCCUPANCY_PRICES } from '../utils/pricing.js';
 import { packagePrices, packageRecommendation, packageOfferSummary, packageGroupCombination, type PackageSaleTerms } from '../utils/packageReply.js';
 import { childPolicyQuestion, childAgeFollowup, packageChildReply } from '../utils/packageChildInquiry.js';
 import { stayDateClarification } from '../utils/stayDuration.js';
@@ -41,12 +40,12 @@ import { paymentStatusInquiry } from '../utils/paymentStatus.js';
 import { paymentSupportInquiry } from '../utils/paymentSupport.js';
 import {arrivalTimeQuestion,arrivalTimeHandoff} from '../utils/conversationalStayDates.js';
 import { existingReservationInquiry } from '../utils/existingReservation.js';
-import { familyAccommodation, familyAgeQuestionFor, familyRoomRule, familyRoomExplanation, baseRoomCapacity } from '../utils/familyAccommodation.js';
+import { familyAccommodation, familyAgeQuestionFor, baseRoomCapacity } from '../utils/familyAccommodation.js';
 import {readMultiRoomHandoff,multiRoomGuidanceText} from '../utils/multiRoomHandoff.js';
 import {multiRoomRequest,roomAlternativeComparison} from '../utils/lodgingScope.js';
 import {restaurantHoursAnswer} from '../utils/diningPolicy.js';
 import {explicitHumanRequest,stripNegatedHumanRequests} from '../utils/humanIntent.js';
-import {closingTurn,assistantBefore,closingAnswer,declined} from '../utils/conversationClosers.js';
+import {closingTurn,assistantBefore,closingAnswer,thanksAnswer,declined} from '../utils/conversationClosers.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -405,7 +404,7 @@ async function packageCombination(state: any): Promise<string | undefined> {
 const combinationSent = (state: any) => {
   const guests = Number(state?.facts?.guests) || 0;
   return (Array.isArray(state?.turns) ? state.turns : []).slice(-10).some((turn: any) => turn?.role === 'assistant'
-    && /A combinação mais em conta:/.test(String(turn.text || '')) && String(turn.text).includes(`· ${guests} hóspedes`));
+    && /A combinação mais em conta:|vocês têm duas opções:/.test(String(turn.text || '')) && String(turn.text).includes(`· ${guests} hóspedes`));
 };
 // remember_response keeps no catalogue text while a multi-room offer is open;
 // the card is still what the customer read, so it is the assistant turn.
@@ -447,6 +446,19 @@ async function namedRoomCapacity(message: string, state: any): Promise<string | 
       : ` Para os ${guests} hóspedes, ${pronoun} não comporta o grupo todo em um apartamento.`);
 }
 
+// "1 apartamento dá pra todos?" after the card (audit 07/10/2026 got the
+// internal policy text): a plain yes/no with the option already indicated.
+function occupancyAnswer(guests: number, family: {key?: string; eligible: number}, before: string) {
+  if (!family.key || guests > 5) return 'Cada apartamento comporta até 4 pessoas, mais 1 criança de até 6 anos em cortesia. Me diga quantos adultos e quantas crianças vão, com as idades, que eu indico a melhor opção para vocês.';
+  if (guests > 4 + Math.min(1, family.eligible))
+    return 'Em um apartamento cabem até 4 pessoas, mais 1 criança de até 6 anos em cortesia. Para 5 pessoas, dá para colocar uma bicama na Suíte Quádruplo (fica mais apertado) ou dividir o grupo em 2 apartamentos.';
+  const indicated = /Indicada para vocês?: ([^*]+)\* — \*(R\$ [\d.,]+)\*/.exec(before);
+  const room = indicated?.[1].trim();
+  return `Sim! ${guests === 1 ? 'Você fica' : `Os ${guests} cabem`} em um apartamento`
+    + (family.eligible ? ', com 1 criança de até 6 anos em cortesia (berço ou cama extra sem custo, conforme disponibilidade).' : '.')
+    + (room ? ` ${/^su[ií]te/i.test(room) ? 'A' : 'O'} ${room} (${indicated![2]} o pacote completo) já atende vocês.` : '');
+}
+
 // Asking the same group question twice in a row (audit 05/10/2026: "Seria o
 // casal" got "Quantas pessoas vão se hospedar?" three times): the team takes over.
 const groupQuestionKind = (text: string) =>
@@ -476,6 +488,7 @@ async function regularPriceTable(): Promise<string | undefined> {
   return [`${priceTableTitle}, por apartamento e já com café da manhã ☕`, '', '*Sexta e sábado:*',
     ...list.map(room => `• ${room.name}${room.capacity ? ` (até ${room.capacity} ${room.capacity === 1 ? 'pessoa' : 'pessoas'})` : ''}: R$ ${whole(room.weekend)}`),
     '', '*Domingo a quinta:*', ...list.map(room => `• ${room.name}: R$ ${whole(room.weekday)}`), '',
+    `Apartamento individual (1 pessoa): R$ ${whole(SINGLE_OCCUPANCY_PRICES.weekend)} na sexta e no sábado, R$ ${whole(SINGLE_OCCUPANCY_PRICES.weekday)} de domingo a quinta.`, '',
     'Uma criança de até 6 anos por apartamento não paga. Parcelamos em até 3x sem juros no cartão.', '',
     'Em férias e feriados os valores mudam. Me diga as datas e quantas pessoas vão que eu confirmo para você. Se preferir, também dá para reservar pelo site: https://reservas.hotelsolar.tur.br',
   ].join('\n');
@@ -489,7 +502,9 @@ function repeatedQuestionHandoff(payload: any, sourceState: any, message: string
   try { state = typeof sourceState === 'string' ? JSON.parse(sourceState) : sourceState; } catch { return payload; }
   if (groupQuestionKind(assistantBefore(state, message)) !== kind) return payload;
   // A partial answer ("uma tem 2 anos", "4 pessoas") is progress, not a loop.
-  if (kind === 'ages' ? /\d/.test(message) || familyAgeFollowup(message) : updateFamilyParty(message, undefined, Date.now()).handled) return payload;
+  // Ages count only when one more was understood (audit 07/10/2026: "0",
+  // "42, 33 e 52 e 0" and "Crianças de 11 anos" got the same question).
+  if (kind === 'ages' ? state?.ages_progress === true : updateFamilyParty(message, undefined, Date.now()).handled) return payload;
   // A repeated "quantas pessoas?" about a price gets the table once; after it, the team.
   const table = kind === 'people' && priceTable && !priceTableSent(state) ? priceTable : undefined;
   const answer = table || repeatedQuestionAnswer;
@@ -555,7 +570,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // for the customer's own away message, nothing is sent (ROOM_DONE).
   const closingCandidate=!req.query?.operation&&!isAudioInput(incomingMessage)
     ?closingTurn(serviceMessage,assistantBefore(earlyState,serviceMessage)):undefined;
-  const closing=closingCandidate?.kind==='closing'&&earlyState?.package_context&&earlyState?.topic==='package_info'
+  const closing=closingCandidate?.kind==='closing'&&closingCandidate.answer!==thanksAnswer&&earlyState?.package_context&&earlyState?.topic==='package_info'
     &&packageAcknowledgment(serviceMessage)?undefined:closingCandidate;
   if(closing){
     if(closing.kind!=='closing')return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',
@@ -842,8 +857,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ...control({operation:'remember_response',state:routed.state,response_text:roomCapacity})});
     const answer=withFullPeriodNote(family.pending?familyAgeQuestionFor(state)
       :guests===5&&!family.key?'Para conferir se as 5 pessoas cabem em um apartamento, quantos são adultos e quantos são crianças? Informe a idade de cada criança; só podemos considerar a ocupação adicional com uma criança de até 6 anos.'
-      :family.key&&guests<=5?familyRoomExplanation(guests,family.eligible)+' A categoria compatível e a disponibilidade ainda precisam ser conferidas; não há preço, período ou reserva confirmados por esta orientação.'
-      :familyRoomRule+' A categoria compatível e a disponibilidade ainda precisam ser conferidas; esta orientação não confirma preço, período ou reserva.',
+      :occupancyAnswer(guests,family,assistantBefore(earlyState,serviceMessage)),
       serviceMessage,state);
     return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
       can_collect:'NAO',confirmation_text:'',matched:false,match_type:'package_followup',availability_checked:false,

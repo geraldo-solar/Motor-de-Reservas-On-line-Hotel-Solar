@@ -16,7 +16,7 @@ import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage, audioSourceHash, readAudi
 import { isAttachmentInput, analyzeAttachment, type AttachmentKind } from '../utils/attachmentAnalysis.js';
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
 import { packageCardChoice } from '../utils/packageReply.js';
-import { closingTurn, assistantBefore } from '../utils/conversationClosers.js';
+import { closingTurn, assistantBefore, thanksAnswer } from '../utils/conversationClosers.js';
 import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageAcknowledgment, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, packageResumeRequest, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {newYearSalesTurn,newYearCampaignSeed,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,newYearPolicyContext,newYearSiteLink,newYearCampaignFocus,type NewYearStayRequest} from '../utils/newYearSales.js';
@@ -55,7 +55,9 @@ import {splitStayDates,splitStayFollowup,declaredRelativeStay,readArrivalTime,ar
 type Facts = { check_in?: string; check_out?: string; guests?: number; extras: string[]; children_pending?: boolean };
 type Quote = { version: number; id: string; created_at: number; check_in: string; check_out: string; guests: number; family_key?: string; extras: string[]; options: { name: string; capacity: number; total: number; child_allowance?: number }[] };
 type GuestInquiryState = { kind: GuestInquiry; at: number };
-type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPartyResult['clarification'];package_stay_query?:PackageStayQuery;party_confirmed_at?:number };
+type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPartyResult['clarification'];package_stay_query?:PackageStayQuery;party_confirmed_at?:number;
+  // This turn's message added a child's age (read by the repeated-question guard).
+  ages_progress?: true };
 type ExistingReservationState = { flexible_stay?:FlexibleStay;existing_reservation?: {at: number};payment_support?:{at:number;topics?:PaymentSupportSupplementaryTopic[]};assistant_disclosure?:AssistantDisclosure;multi_room?:MultiRoomHandoff;checkout_question?:{at:number;key:string};arrival_time?:ArrivalTimePending;package_date_request?:PackageDateRequest };
 type State = ExistingReservationState & FamilyState & { massage_context?: {at:number}; programming_pending?: {question: string; at: number}; recent_package?: PackageContext; campaign?: 'RV27'; full_period_extended?: NewYearStayRequest; package_choice?: {option: string; at: number} } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -208,13 +210,22 @@ function safeAudioText(value: string): string {
 // the customer typed; the greeting's words are not the customer's question.
 const quotedAd = /^\s*an[uú]ncio do (?:instagram|facebook)\s*(?:mostrar detalhes)?\s*/i;
 const quotedAdGreeting = /^(?:ol[aá]!?\s*(?:👋\s*)?)?que bom que voc[eê] quer virar o ano com a gente no hotel solar\.?\s*para (?:eu )?te mandar os valores certinhos,?\s*me conta:?\s*/i;
+const internalPromptEcho = (answer: string, message: string) =>
+  /["“']?\bContexto\s*:|\b(?:fatos_informados|pacote_em_foco|ultima_mensagem|primeira_resposta|regra\s*:)/i.test(answer)
+  && !/\bcontexto\b/i.test(message);
 function withoutQuotedAd(value: string): string {
   const typed = String(value || '').replace(quotedAd, '');
   if (!quotedAdGreeting.test(typed)) return typed === value ? value : typed.trim() || value;
   return typed.replace(quotedAdGreeting, '').replace(/\s*\(com a idade das crian[cç]as\)\??/i, '? ').trim() || value;
 }
+// "Recellion", "reveion", "revelion"... (audit 07/10/2026: a misspelling got
+// "ainda não temos pacote de Réveillon"). Spell it so every parser sees it.
+const reveillonTypo = /(^|[^\p{L}])[Rr][EeÉéÊêAaIiYy]{1,2}[VvCcBb][EeÉéIiYy]{1,3}[Ll]{0,2}[Hh]?[Ii]?[OoÓó][NnMm](?![\p{L}])/gu;
+export function withReveillonSpelling(value: string): string {
+  return String(value || '').replace(reveillonTypo, (all, lead: string) => all.length - lead.length >= 6 ? `${lead}réveillon` : all);
+}
 export function safeTypedMessage(value: string): string {
-  const typed = withoutQuotedAd(value);
+  const typed = withReveillonSpelling(withoutQuotedAd(value));
   return personal(typed) ? safeAudioText(typed) : typed;
 }
 
@@ -250,7 +261,8 @@ function loadState(value: unknown, now = Date.now()): State {
     ...(readEvent(parsed.event) ? {event:readEvent(parsed.event)} : {}),
     ...(readMassageContext(parsed.massage_context,now)?{massage_context:readMassageContext(parsed.massage_context,now)}:{}),
     ...(readFamilyParty(parsed.family_party, now) ? {family_party:readFamilyParty(parsed.family_party, now),
-      ...(['party_composition','child_ages','age_reference'].includes(parsed.family_clarification) ? {family_clarification:parsed.family_clarification} : {})} : {}),
+      ...(['party_composition','child_ages','age_reference'].includes(parsed.family_clarification) ? {family_clarification:parsed.family_clarification} : {}),
+      ...(parsed.ages_progress === true ? {ages_progress: true as const} : {})} : {}),
     ...(Number.isFinite(parsed.party_confirmed_at)&&parsed.party_confirmed_at>0&&parsed.party_confirmed_at<=now&&now-parsed.party_confirmed_at<=30*60000
       ?{party_confirmed_at:parsed.party_confirmed_at}:{}),
     ...(['room_photos', 'room_info', 'extra_photos', 'extra_info', 'photo_clarification', 'public_events', 'package_info'].includes(parsed.topic) ? {topic: parsed.topic, topic_at: Number(parsed.topic_at) || 0} : {}),
@@ -639,6 +651,7 @@ function updateFacts(state: State, message: string, now: number) {
   if(state.arrival_time&&arrivalTimeReply(message)!==undefined){updateStayDates(state,message,now);state.changed=arrivalBefore!==JSON.stringify(state.arrival_time);return;}
   const extraActions=extraSelectionActions(message);
   if (extraCodes(s).length && question(s) && !extraActions.length && !/\b(diarias?|hospedagem|reservar|reserva|cotacao|aptos?|loft|suite)\b/.test(s)) { state.changed=false; return; }
+  const agesBefore = state.family_party?.ages_months.length || 0;
   const family = updateFamilyParty(message, state.family_party, now, state.facts.guests);
   const group = s.match(new RegExp(`\\b(?:somos|seremos|vamos em|agora somos)\\s+${numberPattern}\\b`));
   const shortCount = s.match(new RegExp(`^(?:para\\s+)?${numberPattern}[.!]?$`));
@@ -646,6 +659,7 @@ function updateFacts(state: State, message: string, now: number) {
     state.party_confirmed_at=now;
     state.family_party = family.party;
     state.family_clarification = family.clarification;
+    if ((family.party?.ages_months.length || 0) > agesBefore) state.ages_progress = true;
     if (family.guests) state.facts.guests = family.guests;
     else if (family.clarification === 'party_composition' || family.party?.children !== undefined) delete state.facts.guests;
     if (family.party?.children !== undefined || state.facts.children_pending !== undefined || family.clarification)
@@ -1293,6 +1307,7 @@ function controlTurn(body: any, now = Date.now()) {
     // The adapter supplies a fresh transcription for this turn. Older audio
     // must not be used if the user changes subject or sends another recording.
     delete state.audio;
+    delete state.ages_progress;
     state.first_turn = !state.greeted;
     state.greeted = true;
     delete state.pending; // Any new typed message invalidates an older confirmation card.
@@ -1561,7 +1576,7 @@ function controlTurn(body: any, now = Date.now()) {
   // a short closing, or nothing after a goodbye (see conversationClosers).
   // "Entendi"/"Ótimo" about the package in focus keeps its own short reply.
   const closingCandidate=!choiceAccepted&&!cardChoice?closingTurn(raw,assistantBefore(state,raw)):undefined;
-  const closing=closingCandidate?.kind==='closing'&&state.package_context&&state.topic==='package_info'&&packageAcknowledgment(raw)
+  const closing=closingCandidate?.kind==='closing'&&closingCandidate.answer!==thanksAnswer&&state.package_context&&state.topic==='package_info'&&packageAcknowledgment(raw)
     ?undefined:closingCandidate;
   if (raw === AUDIO_UNAVAILABLE) {
     answer = AUDIO_RETRY;
@@ -1759,6 +1774,10 @@ function controlTurn(body: any, now = Date.now()) {
   if (decision === 'NOQUOTE' && photoRetryRequest(publicMessage)) answer = PHOTO_CLARIFY;
   else if(decision==='NOQUOTE'&&retiredIndependence(answer,now))answer=endedPackageAnswer;
   else if (decision === 'NOQUOTE' && photoDeliveryClaim(answer)) answer = mediaRequest(norm(publicMessage)) ? PHOTO_LOOKUP : PHOTO_CLARIFY;
+  // The model quoting our internal prompt ('Vejo que enviou "Contexto:"',
+  // audit 07/10/2026) after a sticker or an empty message.
+  else if (decision === 'NOQUOTE' && internalPromptEcho(answer, raw)) answer = raw.trim() && /[\p{L}\p{N}]/u.test(raw)
+    ? 'Como posso ajudar? 😊' : 'Recebi sua mensagem, mas não consegui ler o conteúdo por aqui. Pode me escrever sua dúvida?';
   if (decision === 'NOQUOTE') awaitPhotoSubject(state, answer, now);
   if (decision !== 'COLETAR') confirmationText = '';
   if(state.stay_date_pending?.reason==='relative_checkout' && answer===stayDateClarification(state.stay_date_pending))

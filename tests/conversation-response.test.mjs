@@ -215,15 +215,17 @@ function assertSameAmounts(legacy, conversational) {
   assert.doesNotMatch(conversational, /98100|wa\.me|ligue|pelo WhatsApp/i);
 }
 
-test('motor público mantém valores, ordenação premium, extras e formato legado', async () => {
+test('motor público mantém valores, ordenação premium, extras e formato legado; WhatsApp mostra a mais em conta primeiro', async () => {
   const handler = await loadHandler('api/get-prices.ts');
   const result = await request(handler, { checkIn: '2026-09-20', checkOut: '2026-09-25', guests: 2, extras: ['BARCO', 'MESA'] });
-  assertSameAmounts(result.whatsapp_text, result.conversation_text);
+  const options = JSON.parse(result.quote_state).options;
+  for (const option of options) assert.ok(result.conversation_text.includes(`R$ ${Math.round(option.total).toLocaleString('pt-BR')}`), option.name);
+  assert.doesNotMatch(result.conversation_text, /98100|wa\.me|ligue|pelo WhatsApp/i);
   assert.match(result.whatsapp_text, /98100-0800/);
-  assert.match(result.conversation_text, /Qual acomodação você prefere/);
-  assert.match(result.conversation_text, /Primeiro confirmaremos sua escolha/);
-  assert.equal(JSON.parse(result.quote_state).options[0].name, 'Loft');
-  assert.ok(result.conversation_text.indexOf('Loft') < result.conversation_text.indexOf('Suíte Casal'));
+  assert.match(result.conversation_text, /Qual opção você prefere/);
+  assert.equal(options[0].name, 'Loft');
+  // Audit 07/10/2026: the WhatsApp quote lists the most affordable option first.
+  assert.ok(result.conversation_text.indexOf('Suíte Casal') < result.conversation_text.indexOf('Loft'));
   assert.equal(result.availability_checked, false);
   assert.equal(result.extras_total, 530);
 });

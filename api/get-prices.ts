@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { withDailyGreeting } from '../utils/dailyGreeting.js';
 import { familyAccommodation, baseRoomCapacity, familyAgeQuestionFor, familyRoomExplanation, coupleRoomConfigurationText } from '../utils/familyAccommodation.js';
 import { explicitPackageBoatBenefit, safeBoatPackageCopy } from '../utils/extraMedia.js';
-import {motorStayPrice,motorStayRestriction,requiresFullPackagePeriod} from '../utils/motorStayPricing.js';
+import {motorStayPrice,motorStayRestriction,requiresFullPackagePeriod,singleOccupancyStayPrice} from '../utils/motorStayPricing.js';
 import {readPackageStayQuery} from '../utils/packageStayQuery.js';
 import {packageToday} from '../utils/packageAvailability.js';
 import {readStayDatePending,stayDateClarification} from '../utils/stayDuration.js';
@@ -270,17 +270,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       total + (extra.code === 'BARCO' && packageIncludesBoat ? 0 : extra.price)
     ), 0);
 
-    const allRoomQuotes: Array<{ name: string; capacity: number; base_capacity: number; finalPrice: number }> = [];
+    const allRoomQuotes: Array<{ name: string; capacity: number; base_capacity: number; finalPrice: number; single?: boolean }> = [];
 
     for (const room of permittedRooms) {
       const base_capacity = baseRoomCapacity(Number(room.capacity || 0));
       if (!base_capacity) continue;
       const capacity = base_capacity + Math.min(1, family.eligible);
 
-      const finalPrice=motorStayPrice(room,checkIn,checkOut,exactPackage);
+      // One guest in the Suíte Casal outside packages: the single rate the
+      // team quotes ("apartamento individual", owner-confirmed 07/10/2026).
+      const single=guestCount===1&&!activePackage&&base_capacity===2&&/\bcasal\b/.test(normalize(String(room.name||'')));
+      const finalPrice=single?singleOccupancyStayPrice(room,checkIn,checkOut):motorStayPrice(room,checkIn,checkOut,exactPackage);
       if(!Number.isFinite(finalPrice)||finalPrice<=0)continue;
 
-      allRoomQuotes.push({ name: room.name, capacity, base_capacity, finalPrice });
+      allRoomQuotes.push({ name: room.name, capacity, base_capacity, finalPrice, ...(single?{single}:{}) });
     }
     if(!allRoomQuotes.length)return res.status(500).json({error:'No valid room tariffs for the requested stay.'});
 
@@ -290,11 +293,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const coupleWithChild = guestCount === 3 && family.children === 1 && family.eligible === 1;
     roomQuotes.sort((a, b) => (coupleWithChild ? Number(b.base_capacity === 2) - Number(a.base_capacity === 2) : 0) || b.finalPrice - a.finalPrice);
     const quoteOptions: Array<{ name: string; capacity: number; total: number; child_allowance?: number }> = [];
-    // ManyChat's plain-text block has a 2,000-character budget. Keep the
-    // complete policy/extra/next-step paragraphs, but describe shared columns
-    // and category groups once instead of repeating them beside every price.
-    // Legacy summary/WhatsApp fields and all calculated quote data stay intact.
-    let compactRoomText = '*Hospedagem no período:*\n';
 
     if (roomQuotes.length === 0) {
       const maxCapacity = Math.max(...allRoomQuotes.map(room => room.base_capacity));
@@ -335,7 +333,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .slice(0, 3);
 
       whatsappText += `Para acomodar bem ${guestCount} hóspedes, estas são as combinações com melhor aproveitamento dos apartamentos:\n\n`;
-      compactRoomText += `Combinações para ${guestCount} hóspedes:\n`;
       recommendedCombinations.forEach((combination, index) => {
         const roomCounts = combination.rooms.reduce<Record<string, number>>((counts, room) => {
           counts[room.name] = (counts[room.name] || 0) + 1;
@@ -347,7 +344,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const combinedTotal = combination.finalPrice + extrasTotal;
         quoteOptions.push({ name: description, capacity: combination.capacity, total: combinedTotal,
           ...(family.eligible ? {child_allowance:Math.min(combination.rooms.length,family.eligible)} : {}) });
-        compactRoomText += `${index === 0 ? '⭐ Recomendação premium\n' : ''}• ${description}: *R$ ${money(combination.finalPrice)}*${extrasTotal > 0 ? `; com extras: *R$ ${money(combinedTotal)}*` : ''}\n`;
 
         summaryText += `- ${index === 0 ? '⭐ Recomendação premium — ' : ''}${description}: R$ ${money(combination.finalPrice)} em hospedagem`;
         whatsappText += `${index === 0 ? '⭐ *Recomendação premium*\n' : ''}• ${description}: *R$ ${money(combination.finalPrice)}* em hospedagem`;
@@ -364,11 +360,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ...(family.eligible ? {child_allowance:1} : {}) });
         const label = coupleWithChild ? (room.base_capacity === 2 ? 'Categoria Casal, com a criança em cortesia' : 'Categoria maior opcional') : index === 0 ? '⭐ Recomendação premium' : '';
         const capacityLabel = family.eligible ? `até ${room.base_capacity} pessoas mais 1 criança de até 6 anos em cortesia` : `até ${room.capacity} pessoas`;
-        if (coupleWithChild && (index === 0 || (room.base_capacity === 2) !== (roomQuotes[index - 1].base_capacity === 2)))
-          compactRoomText += `*${room.base_capacity === 2 ? 'Categoria Casal, com a criança em cortesia' : 'Categoria maior opcional'}*\n`;
-        else if (!coupleWithChild && index === 0) compactRoomText += '⭐ Recomendação premium\n';
-        const compactCapacity = family.eligible ? `até ${room.base_capacity} pessoas + 1 criança` : `até ${room.capacity} pessoas`;
-        compactRoomText += `• ${room.name} (${compactCapacity}): *R$ ${money(room.finalPrice)}*${extrasTotal > 0 ? `; com extras: *R$ ${money(room.finalPrice + extrasTotal)}*` : ''}\n`;
         summaryText += `- ${label ? label+' — ' : ''}${room.name} (${capacityLabel}): R$ ${money(room.finalPrice)} em hospedagem`;
         whatsappText += `${label ? '*'+label+'*\n' : ''}• ${room.name} (${capacityLabel}): *R$ ${money(room.finalPrice)}* em hospedagem`;
         if (extrasTotal > 0) {
@@ -379,19 +370,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         whatsappText += '.\n\n';
       });
     }
-    compactRoomText += '\n';
 
-    let compactFamilyText = '';
     if (family.children) {
       const explanation = familyRoomExplanation(guestCount, family.eligible, roomQuotes.length === 0);
       summaryText += explanation + '\n';
       whatsappText += explanation + '\n\n';
-      compactFamilyText = family.eligible && roomQuotes.length > 0
-        ? 'A capacidade indicada soma no máximo 1 criança de até 6 anos em cortesia por apartamento; as demais pessoas contam na ocupação normal. Casal + 1 criança nessa faixa pode usar a categoria Casal pelo valor de casal; categoria maior é opcional.\n'
-          + 'O berço é gratuito; para a criança de até 6 anos em cortesia há cama extra gratuita, sem obrigatoriedade de dividir cama. Solicite à recepção, que confere a disponibilidade dos itens e a compatibilidade com o apartamento. Nenhum item está reservado ou instalado.\n\n'
-        : explanation + '\n\n';
     }
-    const familyTextEnd = whatsappText.length;
 
     if (quoteOptions.some(option => /\bcasal\b/.test(normalize(option.name)))) {
       summaryText += coupleRoomConfigurationText + '\n';
@@ -453,12 +437,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       + (choiceInstallments ? ` — em até ${choiceInstallments}x de R$ ${cents(choice.total / choiceInstallments)} no cartão` : '')
       + (choiceCash ? `${choiceInstallments ? ' ou' : ' —'} R$ ${cents(choice.total * (1 - choiceCash / 100))} à vista (${choiceCash}% de desconto)` : '')
       + '\n\nResponda *sim* que eu preparo o resumo para você confirmar. Depois, a recepção confere a disponibilidade e finaliza a reserva com você por aqui.' : '';
-    const conversationText = choiceText || `☀️ Simulação: ${formatDate(checkIn)} a ${formatDate(checkOut)} · ${nights} ${nights === 1 ? 'diária' : 'diárias'} · ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}.\n\n`
-      + (activePackage ? `🎉 Pacote especial: ${activePackage.name}\n\n` : '')
-      + (fullPeriodNote ? fullPeriodNote + '\n\n' : '')
-      + compactRoomText + compactFamilyText + whatsappText.slice(familyTextEnd)
-      + 'Simulação sem confirmação de disponibilidade.\n\n'
-      + 'Qual acomodação você prefere? Primeiro confirmaremos sua escolha; só depois pediremos os dados para a recepção continuar por aqui.';
+    // WhatsApp quote (audit 07/10/2026): the most affordable option first,
+    // no internal wording, the payment terms and the site with these dates.
+    const byPrice = [...quoteOptions].sort((a, b) => a.total - b.total);
+    const optionName = (name: string) => name + (allRoomQuotes.find(room => room.name === name)?.single ? ' (individual)' : '');
+    const installments = Number(activePackage?.max_installments || 0) > 1 ? Number(activePackage!.max_installments) : 3;
+    const familyLine = !family.children ? ''
+      : family.eligible ? '👶 1 criança de até 6 anos por apartamento não paga; berço ou cama extra sem custo, conforme disponibilidade.'
+      : 'Todos contam na ocupação normal do apartamento; a cortesia é só para criança de até 6 anos.';
+    const extraNames = configuredExtras.filter(extra => !(extra.code === 'BARCO' && packageIncludesBoat))
+      .map(extra => extra.code === 'BARCO' ? 'passeio de barco (sob consulta)' : `${extra.name} (R$ ${money(extra.price)})`);
+    const extrasLine = selectedExtras.length ? `✨ Valores já com os extras escolhidos: ${selectedExtras.map(extra => extra.name).join(', ')}. Total dos extras: R$ ${money(extrasTotal)}.`
+      : extraNames.length ? `✨ Extras opcionais: ${extraNames.join(', ')}.` : '';
+    const conversationText = choiceText || [
+      `☀️ ${formatDate(checkIn)} a ${formatDate(checkOut)} · ${nights} ${nights === 1 ? 'diária' : 'diárias'} · ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'} · com café da manhã`,
+      ...(activePackage ? [`🎉 Pacote especial: ${activePackage.name}`] : []),
+      ...(fullPeriodNote ? [fullPeriodNote] : []),
+      '',
+      ...(roomQuotes.length === 0 ? [`Para ${guestCount} pessoas, vocês precisam de mais de um apartamento:`] : []),
+      ...byPrice.map((option, index) => index === 0
+        ? `⭐ *${optionName(option.name)}* — *R$ ${money(option.total)}*`
+        : `• ${optionName(option.name)} — R$ ${money(option.total)}`),
+      `💳 Em até ${installments}x sem juros no cartão.`,
+      ...(familyLine ? [familyLine] : []),
+      '',
+      ...(extrasLine ? [extrasLine] : []),
+      '🚲 Bicicletas de cortesia para hóspedes.',
+      '',
+      `👉 Reserve pelo site: https://reservas.hotelsolar.tur.br/?checkIn=${checkIn}&checkOut=${checkOut}`,
+      'Valores por apartamento, sujeitos à disponibilidade.',
+      'Qual opção você prefere? Depois mostro um resumo para você confirmar.',
+    ].join('\n');
 
     const handoffText = 'Esta é uma simulação de valores e não confirma disponibilidade. Para consultar vagas e finalizar a reserva, fale com a recepção pelo WhatsApp: (91) 98100-0800.';
     summaryText += `\n${handoffText}`;

@@ -58,9 +58,12 @@ export function closingTurn(message: string, lastAssistant = ''): ClosingTurn | 
   if (!ack && !decline) return;
   const last = lastAssistant.replace(/https?:\/\/\S+/g, 'link').trim();
   if (farewell(last)) return {kind: 'silent', answer: ''};
+  // A thank-you never answers the question ("Obrigada!" after the price
+  // summary got "Continuamos falando do pacote", audit 07/10/2026).
+  const thanks = /\b(?:obrigad|brigad|obg|valeu|vlw|grat)/.test(words(message));
   // Turns are stored up to 900 characters: a cut text may end in a question.
-  if (decline !== 'firm' && (lastAssistant.length >= 880 || /\?[^?]{0,140}$/.test(last))) return;
-  return {kind: 'closing', answer: /\b(?:obrigad|brigad|obg|valeu|vlw|grat)/.test(words(message)) ? thanksAnswer : closingAnswer};
+  if (decline !== 'firm' && !(ack && thanks) && (lastAssistant.length >= 880 || /\?[^?]{0,140}$/.test(last))) return;
+  return {kind: 'closing', answer: thanks ? thanksAnswer : closingAnswer};
 }
 
 /** The assistant turn just before the customer's current message. */

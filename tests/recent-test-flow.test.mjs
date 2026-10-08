@@ -146,7 +146,8 @@ test('replay 14/09: áudio, correção, escolha, foto, troca de assunto, pacote,
   assert.doesNotMatch(family.response.quote_request,/^PACKAGE_ID\|/);
   // The cheapest combination of two apartments and the team right away.
   assert.equal(family.response.quote_request,'HUMANO');
-  assert.match(family.text,/vocês precisam de 2 apartamentos/);
+  // Owner, 07/10/2026: five people also get the Quádruplo with a sofa bed.
+  assert.match(family.text,/vocês têm duas opções:[\s\S]*com bicama para a 5ª pessoa[\s\S]*Ou 2 apartamentos/);
   assert.doesNotMatch(family.text,/Quais são as idades/);
   const loft=await chat.say('Loft dá para todos nós?');
   assertFamily(loft.state);assert.equal(loft.response.quote_request,'ROOM_LIST');
@@ -180,7 +181,7 @@ test('recusa da oferta humana não encaminha; Sim posterior não reaproveita aut
   const {chat,offer}=await packageOfferConversation();
   assert.equal(offer.state.multi_room?.status,'offered');
   // With package prices the offer is the combination card, already with the team.
-  assert.equal(offer.response.quote_request,'HUMANO');assert.match(offer.text,/combinação mais em conta/);
+  assert.equal(offer.response.quote_request,'HUMANO');assert.match(offer.text,/vocês têm duas opções|combinação mais em conta/);
   const declined=await chat.say('Não, obrigado');
   assert.notEqual(declined.routed.quote_request,'HUMANO');assert.equal(declined.routed.can_collect,'NAO');
   assert.notEqual(declined.response.quote_request,'HUMANO');

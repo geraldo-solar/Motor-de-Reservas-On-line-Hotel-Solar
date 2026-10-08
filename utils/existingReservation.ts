@@ -51,7 +51,12 @@ export function existingReservationInquiry(message: string, contextual = false):
   const existingStatus = /\b(?:minha|nossa|essa|esta) (?:solicitacao de )?reserva\b.{0,60}\b(?:situacao|status|confirmada|ativa|valida|cancelada|vencida|localizar|conferir|verificar|pendente)\b/.test(s)
     || /\b(?:minha|nossa) reserva esta no nome\b/.test(s)
     || /\b(?:localizar|conferir|verificar|consultar) (?:a )?(?:minha|nossa) (?:solicitacao de )?reserva\b/.test(s)
-    || /\b(?:situacao|status|localizacao) (?:atual )?(?:da|de) (?:minha|nossa|essa|esta) reserva\b/.test(s);
+    || /\b(?:situacao|status|localizacao) (?:atual )?(?:da|de) (?:minha|nossa|essa|esta) reserva\b/.test(s)
+    // "Está confirmada minha reserva?", "poderia cancelar a minha reserva"
+    // (audit 07/10/2026: both got "Para quantas pessoas será a estadia?").
+    || /\b(?:confirmada|cancelada|ativa|pendente)\s+(?:a\s+|o\s+)?(?:minha|nossa) reserva\b/.test(s)
+    || /\b(?:confirmar|cancelar|cancela|desmarcar|remarcar|adiar|antecipar|transferir)\s+(?:a\s+|o\s+)?(?:minha|nossa|essa|esta) (?:reserva|hospedagem|estadia)\b/.test(s)
+    || /\b(?:cancelamento|remarcacao|estorno|reembolso) (?:da|de) (?:minha|nossa|essa|esta) (?:reserva|hospedagem|estadia|compra)\b/.test(s);
   if (existingStatus) return true;
   // A known reservation may be mentioned in an ordinary FAQ. That remains
   // informational; merely mentioning it does not authorize a new handoff.

@@ -225,6 +225,25 @@ function memberListDeclaration(s: string): {adults:number;children:number;ages_m
 // crianças de 3a e 6a", "uma moça de 14 anos um rapaz de 8", "casal e
 // crianças, de 15 e 12 anos". People are only counted next to adults/couple.
 const countBefore=(text: string)=>new RegExp(`\\b${number}\\s*$`).test(text);
+// "2 adultos 2 crianças e 1 avó" (audit 07/10/2026): grandparents, in-laws,
+// uncles/aunts or elderly people named after an explicit adult count (or a
+// couple) are additional adults. "Mãe"/"pai" may already be among the counted
+// adults, and an explanatory list ("sendo", parentheses) is left alone.
+function withRelativeAdults(s: string): string {
+  const adults=[...s.matchAll(new RegExp(`\\b${number}\\s*adult[oa]s?\\b`,'g'))];
+  const couple=!adults.length&&/\bcasal\b/.test(s)&&!/\bcasais\b/.test(s);
+  if(adults.length>1||!adults.length&&!couple||/\b(?:sendo|incluindo|inclusive|dentre|entre eles)\b|[(:]/.test(s))return s;
+  let extra=0;
+  const relative=new RegExp(`\\s*(?:,|\\be\\b|\\bmais\\b|\\bcom\\b)\\s*(?:(${number})\\s+|(?:a|o|as|os|minha|meu|minhas|meus|nossa|nosso|nossas|nossos|sua|seu)\\s+)?(bisav[oa]s?|avos?|vovos?|sogr[oa]s?|tias?|tios?|idos[oa]s?)\\b(?!\\s*(?:de|com)\\s+\\d)`,'g');
+  const rest=s.replace(relative,(_all,count:string|undefined,who:string)=>{
+    extra+=count!==undefined?quantity(count):/s$/.test(who)?2:1;
+    return '';
+  });
+  if(!extra||extra>20)return s;
+  return adults.length
+    ? rest.replace(adults[0][0],`${quantity(adults[0][1])+extra} adultos`)
+    : rest.replace(/(?:\b(?:um|1)\s+)?\bcasal\b/,`${2+extra} adultos`);
+}
 function informalComposition(s: string): string {
   s=s.replace(/\banod\b/g,'anos').replace(/\bd (?=\d{1,2} (?:anos?|meses?|a)\b)/g,'de ')
     // The ad's greeting quoted back and filled in: "quantos adultos:07".
@@ -239,18 +258,38 @@ function informalComposition(s: string): string {
       });
   const people=/\b(?:criancas?|filh[oa]s?|bebes?|menin[oa]s?|mocas?|rapaz(?:es)?|garot[oa]s?|adolescentes?)\b/;
   if(people.test(s))s=s.replace(/\b(\d{1,2}) a\b(?=\s*(?:e\b|,|;|\.|!|$))/g,'$1 anos');
+  // "Dois meninos, sendo um de 12 anos e um de 3" (audit 07/10): the ages
+  // make them children even before the adults are mentioned.
+  s=s.replace(new RegExp(`\\b${number}\\s+(?:menin[oa]s|garot[oa]s)\\b(?=\\s*,?\\s*(?:sendo|de|com)\\s+(?:um|uma|1|\\d))`,'g'),'$1 criancas');
   if(!/\badult[oa]s?\b|\bcasa(?:l|is)\b|\bpessoas\b|\beu\b/.test(s))return s;
+  s=withRelativeAdults(s);
+  // A baby is always under the courtesy age; the exact age is not needed.
+  s=s.replace(new RegExp(`\\b${number}\\s+bebes?\\b(?!\\s*,?\\s*(?:de|com)\\s+\\d)`,'g'),'$1 criancas de 1 ano');
   s=s.replace(new RegExp(`\\b${number}\\s+(?:menin[oa]s|mocas|rapazes|garot[oa]s|jovens)\\b`,'g'),'$1 criancas');
   const person='(?:adolescente|crianca|menina|menino|moca|rapaz|garota|garoto|bebe)';
   s=s.replace(new RegExp(`(^|[^\\w])((?:um|uma|a|o|1)\\s+)?${person}\\s+(?:de|com)\\s+(\\d{1,2})(?:\\s*(anos?|meses?))?\\b`,'g'),
     (all,lead:string,article:string|undefined,age:string,unit:string|undefined,offset:number,whole:string)=>
       !article&&(countBefore(whole.slice(0,offset+lead.length))||/\b(?:nossa|nosso|minha|meu|sua|seu)\s*$/.test(whole.slice(0,offset+lead.length)))
         ?all:`${lead}1 crianca de ${age} ${unit||'anos'}`);
-  s=s.replace(new RegExp(`(^|[^\\w])(?:um|uma|1)\\s+(?:menina|menino|moca|rapaz|garota|garoto|bebe)\\b(?!\\s+(?:de|com)\\s+\\d)`,'g'),(_all,lead:string)=>`${lead}1 crianca`);
+  s=s.replace(new RegExp(`(^|[^\\w])(?:um|uma|1)\\s+(?:menina|menino|moca|rapaz|garota|garoto)\\b(?!\\s+(?:de|com)\\s+\\d)`,'g'),(_all,lead:string)=>`${lead}1 crianca`);
   return s.replace(/(^|[^\w])(criancas|filh[oa]s|adolescentes)(\s*,?\s*(?:de|com)\s+)(\d{1,2}(?:\s*(?:,|e)\s*\d{1,2})+)(\s*anos?)\b/g,
     (all,lead:string,noun:string,middle:string,list:string,unit:string,offset:number,whole:string)=>
       countBefore(whole.slice(0,offset+lead.length))?all
         :`${lead}${list.split(/\s*(?:,|e)\s*/).length} ${noun==='adolescentes'?'criancas':noun}${middle}${list}${unit}`);
+}
+
+// "42, 33 e 52 e 0" or "31 anos, 29 anos, 11 e 3 anos" (audit 07/10/2026):
+// the ages of everyone in a known group. The children are the youngest, when
+// exactly that many are under 18 and all the others are adults.
+function everyonesAges(s: string, total: number, children: number): number[] | undefined {
+  const text=normalizeAgeNumbers(s).replace(/[.!]+$/,'').trim();
+  let months: number[] | undefined;
+  if(/^\d{1,3}(?:\s*(?:,|e)\s*\d{1,3})+$/.test(text))months=text.split(/\s*(?:,|e)\s*/).map(age=>Number(age)*12);
+  else if(familyAgeFollowup(text))months=declaredFamilyAges(text);
+  if(!months||months.length!==total||months.some(age=>!validCount(age,1440)))return;
+  const sorted=[...months].sort((a,b)=>a-b);
+  const kids=sorted.slice(0,children);
+  return kids.every(age=>age<18*12)&&sorted.slice(children).every(age=>age>=18*12)?kids:undefined;
 }
 
 export function updateFamilyParty(message: string, previous?: unknown, now=Date.now(), knownTotal?: number): FamilyPartyResult {
@@ -262,6 +301,12 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   s=s.replace(new RegExp(`\\b${number}\\s+adolescentes?\\b(?!\\s*,?\\s*(?:de|com)\\s+\\S+\\s+anos?)`,'g'),'$1 criancas de 13 anos')
     .replace(new RegExp(`\\b${number}\\s+adolescentes?\\b`,'g'),'$1 criancas');
   const old=readFamilyParty(previous,now);
+  // Pending ages answered as "duas de 10 e uma de 13" (audit 07/10/2026).
+  if(old?.children&&old.ages_months.length<old.children&&!/\b(?:dia|dias|ate|entrada|saida|data)\b|\//.test(s))
+    s=s.replace(new RegExp(`\\b${number}\\s+de\\s+(\\d{1,2})\\b(?!\\s*(?:meses|mes|\\/))`,'g'),(all,count:string,age:string)=>{
+      const n=quantity(count);
+      return n>=1&&n<=6?Array(n).fill(`1 de ${age}`).join(' e '):all;
+    });
   if(!s) return {handled:false,...(old?{party:old}:{})};
   const messageHash=createHash('sha256').update(s).digest('hex');
   if(old?.last_message_hash===messageHash)return result(old,old.clarification);
@@ -300,7 +345,7 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   // choice verb picks the Casal category ("prefiro o casal").
   const oneCouple=/^(?:casal)(?:\s+adult[oa]s?)?(?:\s*(?:[.,!?]|$)|\s+(?:e|com)\b)/.test(s)
     || [...s.matchAll(/(?:[:,;]\s*|\b(?:na verdade|corrigindo)\s+)casal(?=\s*(?:[.!?]|$)|\s+(?:e|com)\b)/g)].some(match=>!roomLinkedCouple(s,match.index!))
-    || [...s.matchAll(/\b(?:somos|para|pra|vai|vamos|um|1|o|seria|sera|so|apenas|somente)\s+casal\b/g)].some(match=>/^somos\s/.test(match[0])
+    || [...s.matchAll(/\b(?:somos|para|pra|pro|vai|vamos|um|1|o|seria|sera|so|apenas|somente)\s+casal\b/g)].some(match=>/^somos\s/.test(match[0])
       ||!roomLinkedCouple(s,match.index!)&&!(/^o\s/.test(match[0])&&/\b(?:prefiro|quero|escolho|escolhi|fico com|vou de|vamos de|reservar|fechar|pode ser)\s*$/.test(s.slice(0,match.index))));
   const couple=pluralCouple?quantity(pluralCouple[1]):oneCouple?1:undefined;
   const offspringMention=/\bfilh[oa]s?\b/.test(s);
@@ -329,9 +374,21 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   if(sharedAge)ageValues.push(...Array(quantity(childMatches[0][1])-1).fill(ageValues[0]));
   const ageOnly=!countDeclaration&&familyAgeFollowup(ageText);
   const barePendingAge=!!old?.children&&old.ages_months.length<old.children&&/^\d{1,3}[.!]?$/.test(s);
+  // Also a correction of ages already known ("12 e 3" first, "11 e 3" now).
+  const everyone=!countDeclaration&&!!old?.children&&old.adults!==undefined
+    &&old.clarification!=='party_composition'?everyonesAges(s,old.adults+old.children,old.children):undefined;
+  if(everyone)return result({...old!,ages_months:everyone,updated_at:now,last_message_hash:messageHash});
   if(!countDeclaration && !(ageOnly&&old?.children) && !barePendingAge) return {handled:false,...(old?{party:old}:{})};
   const party:FamilyParty=old?{...old,ages_months:[...old.ages_months],updated_at:now,last_message_hash:messageHash}:{ages_months:[],updated_at:now,last_message_hash:messageHash};
-  if(barePendingAge)return result(party,'age_reference');
+  if(barePendingAge){
+    // Right after "Quais são as idades?" about a single child, a lone number
+    // is that age ("0" for a baby). With two or more children it stays ambiguous.
+    const age=Number(s.replace(/[.!]$/,''));
+    if(party.children!==1||party.ages_months.length||age>17)return result(party,'age_reference');
+    party.ages_months.push(age*12);
+    rememberIncrement(party,messageHash);
+    return result(party);
+  }
   if(adultMatches.length>1||totalMatches.length>1) return result(party,'party_composition');
   const component=[...childMatches,...adultMatches].sort((a,b)=>a.index!-b.index!)[0];
   const componentPrefix=component?s.slice(0,component.index!).trim():'';
@@ -441,6 +498,10 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   // An explicit corrected component invalidates an old total, not another
   // separately known component. A new explicit total stays authoritative.
   if(!hasTotal&&!explainsTotal&&(correction&&countDeclaration||adultMatches.length||couple!==undefined))delete party.total;
+  // "Crianças de 11 anos", "as duas têm 11": one age for every pending child.
+  if(ageValues.length===1&&!childMatches.length&&(party.children||0)>1&&party.ages_months.length===0
+    &&/\b(?:criancas|filh[oa]s|meninos|meninas|as duas|os dois|ambas|ambos|todas|todos|elas|eles)\b/.test(s))
+    ageValues.push(...Array(party.children!-1).fill(ageValues[0]));
   if(ageValues.length) {
     if(ageValues.some(age=>!validCount(age,1440))||party.children===undefined||ageValues.length>party.children)return result(party,'child_ages');
     if(childMatches.length||ageValues.length===party.children||party.children===1)party.ages_months=ageValues;

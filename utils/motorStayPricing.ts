@@ -1,4 +1,4 @@
-import {getNightlyPrice} from './pricing.js';
+import {getNightlyPrice,SINGLE_OCCUPANCY_PRICES} from './pricing.js';
 
 type MotorRoom={id?:string;name?:string;base_price?:number;overrides?:Array<{dateIso?:string;date_iso?:string;price?:number;noCheckIn?:boolean;noCheckOut?:boolean;isClosed?:boolean}>};
 type MotorPackage={start_iso_date?:string;end_iso_date?:string;room_prices?:Array<{roomId?:string;room_id?:string;price?:number}>;full_period_discount_pct?:number};
@@ -35,4 +35,20 @@ export function motorStayPrice(room:MotorRoom,checkIn:string,checkOut:string,pkg
   total=fixed>0?fixed:Math.round(total);
   const discount=exact?Number(pkg?.full_period_discount_pct||0):0;
   return total-Math.round(total*Math.max(0,Math.min(100,discount))/100);
+}
+
+/** One guest in the Suíte Casal ("apartamento individual"): the single rate
+ * on regular nights; a night with a registered price keeps that price. */
+export function singleOccupancyStayPrice(room:MotorRoom,checkIn:string,checkOut:string):number {
+  const from=day(checkIn),to=day(checkOut),nights=(to.getTime()-from.getTime())/86400000;
+  if(!Number.isInteger(nights)||nights<1||nights>30)return NaN;
+  let total=0;
+  for(let i=0;i<nights;i++){
+    const date=new Date(from.getTime()+i*86400000),iso=date.toISOString().slice(0,10);
+    const override=(room.overrides||[]).find(o=>(o.dateIso||o.date_iso)===iso);
+    if(override?.price!==undefined){total+=Number(override.price);continue;}
+    const weekday=date.getUTCDay();
+    total+=weekday===5||weekday===6?SINGLE_OCCUPANCY_PRICES.weekend:SINGLE_OCCUPANCY_PRICES.weekday;
+  }
+  return Math.round(total);
 }

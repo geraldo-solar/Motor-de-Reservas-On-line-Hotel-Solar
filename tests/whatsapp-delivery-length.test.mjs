@@ -83,18 +83,16 @@ function checkText(t,label,text,{nonempty=true,manychat=true}={}){
 function checkCompleteQuote(payload){
   const quote=JSON.parse(payload.quote_state);
   for(const option of quote.options){
-    const line=payload.conversation_text.split('\n').find(line=>line.startsWith('• '+option.name+' ('));
+    // Audit 07/10/2026: one short line per option, the most affordable first.
+    const line=payload.conversation_text.split('\n').find(line=>line.startsWith('⭐ *'+option.name+'* — ')||line.startsWith('• '+option.name+' — '));
     assert.ok(line,`Missing full category: ${option.name}`);
-    assert.ok(line.includes(`*R$ ${Math.round(option.total).toLocaleString('pt-BR')}*`),`Missing full total for ${option.name}`);
+    assert.ok(line.includes(`R$ ${Math.round(option.total).toLocaleString('pt-BR')}`),`Missing full total for ${option.name}`);
   }
-  assert.match(payload.conversation_text,/máximo 1 criança de até 6 anos em cortesia por apartamento/);
-  assert.match(payload.conversation_text,/berço é gratuito/);
-  assert.match(payload.conversation_text,/cama extra gratuita/);
-  assert.match(payload.conversation_text,/disponibilidade dos itens e a compatibilidade/);
-  assert.match(payload.conversation_text,/Nenhum item está reservado ou instalado/);
-  assert.match(payload.conversation_text,/confirmar a configuração e a disponibilidade/);
-  assert.match(payload.conversation_text,/sem confirmação de disponibilidade/);
-  assert.match(payload.conversation_text,/Primeiro confirmaremos sua escolha; só depois pediremos os dados/);
+  assert.match(payload.conversation_text,/1 criança de até 6 anos por apartamento não paga/);
+  assert.match(payload.conversation_text,/berço ou cama extra sem custo, conforme disponibilidade/);
+  assert.match(payload.conversation_text,/sujeitos à disponibilidade/);
+  assert.match(payload.conversation_text,/Qual opção você prefere\? Depois mostro um resumo para você confirmar/);
+  assert.doesNotMatch(payload.conversation_text,/Nenhum item está reservado|Recomendação premium|Simulação sem confirmação/);
   assert.doesNotMatch(payload.conversation_text,/…|\.\.\./);
   assert.ok(payload.conversation_text.includes(ASSISTANT_DISCLOSURE)
     ||payload.conversation_text.includes(ASSISTANT_DISCLOSURE_COMPACT),'First-response presentation must also fit');
@@ -111,9 +109,8 @@ test('três hóspedes e seis categorias cabem no texto simples, não no bloco co
     checkCompleteQuote(payload);
     assert.equal(payload.guests,3);assert.equal(payload.availability_checked,false);
     assert.match(payload.conversation_text,/criança.*cortesia/s);
-    assert.match(payload.conversation_text,/sem confirmação de disponibilidade/);
-    assert.match(payload.conversation_text,/Qual acomodação você prefere/);
-    assert.ok(payload.conversation_text.length>1024,'fixture must reproduce a long quote, not a trivial short response');
+    assert.match(payload.conversation_text,/sujeitos à disponibilidade/);
+    assert.ok(payload.conversation_text.length>500,'fixture must reproduce a full quote, not a trivial short response');
     checkText(t,`get-prices / extras ${extras.join(',')||'NONE'} / conversation_text`,payload.conversation_text);
     checkText(t,`get-prices / extras ${extras.join(',')||'NONE'} / whatsapp_text legado`,payload.whatsapp_text,{manychat:false});
   }
@@ -127,7 +124,6 @@ test('cotação de pacote integral com seis categorias e extras conserva final e
   checkCompleteQuote(payload);
   assert.deepEqual(payload.selected_extras,['MESA','LUA']);
   assert.match(payload.conversation_text,/Réveillon Solar 2027/);
-  assert.match(payload.conversation_text,/Primeiro confirmaremos sua escolha/);
   assert.match(payload.conversation_text,/Total dos extras/);
   checkText(t,'get-prices / pacote integral + MESA,LUA / conversation_text',payload.conversation_text);
   checkText(t,'get-prices / pacote integral + MESA,LUA / whatsapp_text legado',payload.whatsapp_text,{manychat:false});

@@ -136,6 +136,9 @@ export function packageOfferSummary(pkg: PackagePricingRecord, rooms: PackageRoo
  * combination of apartments, each with its normal occupancy plus at most 1
  * child up to 6 in courtesy. The caller hands the conversation to the team,
  * who confirm availability and the distribution of the people. */
+/** Sofa bed for the fifth person in a four-person apartment, per package. */
+export const extraBedPackagePrice = 800;
+
 export function packageGroupCombination(
   pkg: PackagePricingRecord,
   rooms: PackageRoomRecord[],
@@ -179,11 +182,24 @@ export function packageGroupCombination(
   const combination = [...counts].map(([name, count]) => count > 1 ? `${count} × ${name}` : name).join(' + ');
   const start = displayDate(pkg.start_iso_date), end = displayDate(pkg.end_iso_date), nights = packageNights(pkg);
   const text = [`🎉 *${displayText(pkg.name || 'Pacote especial', 150)}*`,
-    `📅 ${start && end ? `${start} a ${end}${nights > 0 ? ` · ${nights} ${nights === 1 ? 'noite' : 'noites'}` : ''} · ` : ''}${group} hóspedes`, '',
-    `Para ${group} pessoas, vocês precisam de ${best.length} apartamentos. A combinação mais em conta:`,
-    `⭐ *${combination}* — *${money(total)}*`];
-  const pay = paymentLine(pkg, total, terms);
-  if (pay) text.push(pay);
+    `📅 ${start && end ? `${start} a ${end}${nights > 0 ? ` · ${nights} ${nights === 1 ? 'noite' : 'noites'}` : ''} · ` : ''}${group} hóspedes`, ''];
+  // Owner-confirmed on 07/10/2026: five people without a courtesy child can
+  // stay in the Suíte Quádruplo with a sofa bed for the fifth (the team's
+  // R$ 8.200 in the Réveillon). It is tighter, so two apartments stay listed.
+  const quad = group === 5 && !family.eligible
+    ? options.filter(item => /qu[aá]druplo/i.test(String(item.name))).sort((a, b) => a.price - b.price)[0] : undefined;
+  if (quad) {
+    const bed = quad.price + extraBedPackagePrice;
+    text.push('Para 5 pessoas, vocês têm duas opções:', `⭐ *${displayText(quad.name, 120)} com bicama para a 5ª pessoa* — *${money(bed)}*`);
+    const pay = paymentLine(pkg, bed, terms);
+    if (pay) text.push(pay);
+    text.push('Com a bicama o apartamento fica mais apertado.', `• Ou 2 apartamentos, *${combination}* — ${money(total)}`);
+  } else {
+    text.push(`Para ${group} pessoas, vocês precisam de ${best.length} apartamentos. A combinação mais em conta:`,
+      `⭐ *${combination}* — *${money(total)}*`);
+    const pay = paymentLine(pkg, total, terms);
+    if (pay) text.push(pay);
+  }
   if (family.eligible) text.push('👶 1 criança de até 6 anos em cortesia por apartamento (não paga).');
   // Five people of unknown ages may include a courtesy child.
   const party = (state as any)?.family_party;
