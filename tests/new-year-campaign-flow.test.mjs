@@ -636,6 +636,14 @@ test('auditoria 07/10: idades, avó, bebê, pro casal, obrigada, reserva existen
   assert.match(quote.text,/checkIn=2026-10-06&checkOut=2026-10-07/);
   assert.doesNotMatch(quote.text,/Recomendação premium|Simulação sem confirmação/);
 
+  // The panel registers the regular rate on most dates: that is still a
+  // regular night; a different (holiday) price stays as registered.
+  const {singleOccupancyStayPrice}=await import('data:text/javascript;base64,'+Buffer.from((await build({stdin:{contents:`export {singleOccupancyStayPrice} from './utils/motorStayPricing.ts';`,resolveDir:process.cwd()},bundle:true,write:false,platform:'node',format:'esm'})).outputFiles[0].text).toString('base64'));
+  const casal={name:'Suíte Casal',base_price:410,overrides:[{dateIso:'2026-10-20',price:410},{dateIso:'2026-10-23',price:610},{dateIso:'2026-10-12',price:700}]};
+  assert.equal(singleOccupancyStayPrice(casal,'2026-10-20','2026-10-21'),370);
+  assert.equal(singleOccupancyStayPrice(casal,'2026-10-23','2026-10-24'),410);
+  assert.equal(singleOccupancyStayPrice(casal,'2026-10-12','2026-10-13'),700);
+
   const echo=control({operation:'route',user_message:'Oi',proposed:'NOQUOTE',ai_response:'Vejo que enviou "Contexto:". Posso ajudar?'},now);
   assert.doesNotMatch(echo.answer,/Contexto/);
 });
