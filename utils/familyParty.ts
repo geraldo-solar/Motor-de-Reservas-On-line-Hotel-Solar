@@ -200,6 +200,15 @@ function memberListDeclaration(s: string): {adults:number;children:number;ages_m
     const who=member.replace(/#\d+#/g,'').trim().replace(/^(?:(?:a|o|as|os|minha|meu|minhas|meus|nossa|nosso|nossas|nossos|tambem|mais)\s+)+/,'');
     if(/^eu$/.test(who)||/^(?:esposa|esposo|marido|mulher|companheira|companheiro|namorada|namorado|noiva|noivo|mae|pai|sogra|sogro|avo|madrasta|padrasto)$/.test(who)){adults++;continue;}
     if(/^(?:pais|sogros|avos)$/.test(who)){adults+=2;continue;}
+    // "eu e 2 filhos adultos" (audit 16/10/2026): grown-up offspring are
+    // adults; asking their ages again stalled the Réveillon quote.
+    const grown=new RegExp(`^(?:(${listNumber})\\s+)?(filh[oa]s?|net[oa]s?|entead[oa]s?)\\s+(?:(?:ja\\s+)?(?:adult[oa]s?|maior(?:es)?(?:\\s+de\\s+idade)?))$`).exec(who);
+    if(grown&&!tokens.length){
+      const many=/s$/.test(grown[2]);
+      const grownCount=grown[1]?listQuantity(grown[1]):many?undefined:1;
+      if(!grownCount||grownCount>20)return;
+      adults+=grownCount;continue;
+    }
     const group=new RegExp(`^(?:(${listNumber})\\s+)?(filh[oa]s|criancas|bebes|net[oa]s|entead[oa]s)$`).exec(who);
     const single=/^(filh[oa]|crianca|bebe|net[oa]|entead[oa])$/.exec(who);
     if(!group&&!single)return;

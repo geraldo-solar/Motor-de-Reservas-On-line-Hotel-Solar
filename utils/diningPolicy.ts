@@ -107,7 +107,28 @@ export function reservaHoursAnswer(message: string, now=Date.now()): string | un
 /** "O restaurante está funcionando hoje?" without naming one: the regular
  * hours of both restaurants (audit 05/10/2026: only the Reserva Solar was
  * mentioned, and the Solar 73, open that day, was left out). */
+// Audit 16/10/2026: "Restaurante do hotel aberto para não hóspedes?" got only
+// the hours; the yes/no comes first, then the details.
+const visitorQuestion=(s: string)=>/\b(?:nao hosped\w*|publico|visitantes?|de fora|quem nao (?:esta|estiver|for|fica|ficar)\w* hosped\w*|sem (?:estar |ficar |me |nos )?hosped\w*)\b/.test(s);
+const VISITOR_YES='Sim! Nossos restaurantes são abertos ao público, inclusive para quem não está hospedado.';
 export function restaurantHoursAnswer(message: string, now=Date.now()): string | undefined {
+  const text=normalize(stripNegatedHumanRequests(message));
+  const visitor=visitorQuestion(text);
+  let answer=restaurantHoursOnly(message,now);
+  // "Posso ir no Reserva Solar sem estar hospedado?": no hours word, still a
+  // yes/no about the restaurants (pools, rooms and menus keep their routes).
+  if (!answer && visitor && /\b(?:restaurantes?|reserva solar|solar 73|almocar|jantar)\b/.test(text)
+    && !/\b(?:piscinas?|cardapio|menu|fotos?|imagens?|hospedagem|diarias?|quartos?|day ?use|festa|evento|casamento|aniversario|pagamento)\b/.test(text)) {
+    const hour=(value: string)=>value.replace(':00','h');
+    const solar=confirmedDiningPolicy.hours.solar_73, h=confirmedDiningPolicy.hours.reserva_solar.low_season;
+    answer=`O Solar 73 funciona das ${hour(solar.opens)} às ${hour(solar.closes)}, e o Reserva Solar, pé na areia, habitualmente de sexta a domingo, das ${hour(h.opens)} às ${hour(h.closes)}, na baixa temporada. Horários especiais precisam ser conferidos com a recepção.`;
+  }
+  if (!answer) return;
+  if (!visitor) return answer;
+  const admission=confirmedDiningPolicy.reserva_solar_admission.authorized_charge_dates.length?'':' A entrada no Reserva Solar é gratuita.';
+  return `${VISITOR_YES} ${answer}${admission}`;
+}
+function restaurantHoursOnly(message: string, now=Date.now()): string | undefined {
   const reserva=reservaHoursAnswer(message,now);
   if (reserva) return reserva;
   const s=normalize(stripNegatedHumanRequests(message));

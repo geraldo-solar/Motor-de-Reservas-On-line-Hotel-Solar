@@ -95,8 +95,23 @@ function marketingOptOut(s: string): boolean {
 const reservationChange = (s: string) => !/\bnao (?:vamos|vou|quero|preciso|desejo)\s+(?:mais )?(?:reagendar|remarcar|alterar|mudar|trocar)\b/.test(s)
   && (/\b(?:reagendar|remarcar)\b/.test(s) && /\b(?:quero|preciso|gostaria|podemos|posso|pode|conseguimos|consigo|minha|nossa)\b/.test(s)
     || /\b(?:alterar|mudar|trocar)\b.{0,65}\b(?:minha|nossa) reserva\b/.test(s));
+// Audit 16/10/2026: "tenho uma reserva que iniciava hoje, farei o check-in
+// amanhã" got the early check-in fee. A guest announcing a later arrival
+// must reach the reception, which records it on the booking.
+export const lateArrivalNotice = (s: string) => /\b(?:(?:tenho|temos|tinha|tinhamos|fiz|fizemos|minha|nossa|ja tenho|estou com|estamos com) (?:uma |a )?reserva(?! solar)|reserva (?:em (?:meu |nosso )?nome|confirmada|feita|(?:pra|para) hoje|que (?:comeca|comecava|iniciava|inicia|era))|reservad[oa]s? (?:para|pra) hoje|(?:farei|faremos|vou fazer|vamos fazer) o check ?-?in)\b/.test(s)
+  && !/\b(?:quero|queria|gostaria de|preciso|desejo) (?:fazer |de )?(?:uma )?(?:nova )?reserva\b/.test(s)
+  && !/\b(?:posso|podemos|daria|da pra|tem como|seria possivel)\b[^.!]*\b(?:chegar|check ?-?in)\b[^.!]*\?/.test(s)
+  && /\b(?:(?:so|somente|apenas) (?:vou|vamos|irei|iremos|vou conseguir|vamos conseguir) (?:chegar|fazer|ir)|(?:vou|vamos|irei|iremos|devo|devemos) chegar (?:amanha|mais tarde|so amanha|depois|atrasad[oa]s?|dia \d)|cheg(?:o|amos|arei|aremos) (?:so )?(?:amanha|mais tarde|atrasad[oa]s?|dia \d)|(?:farei|faremos|vou fazer|vamos fazer) o check ?-?in (?:so )?(?:amanha|mais tarde|dia \d)|(?:vou|vamos) atrasar|atraso na (?:chegada|viagem)|nao (?:vou|vamos) conseguir chegar (?:hoje|a tempo))\b/.test(s);
+const LATE_ARRIVAL_CONTEXT = '[Cliente com reserva avisa que vai chegar depois do previsto.]';
+export const lateArrivalAnswer = 'Obrigado por avisar! Vou chamar a recepção agora para registrar sua chegada na reserva e confirmar com você por aqui. Se preferir, ligue para (91) 98100-0800.';
 const human = (s: string) => marketingOptOut(s) || paymentDispute(s) || reservationChange(s) || multiRoomRequest(s) || roomAlternativeComparison(s)
   || /\b(reclamacao|quero reclamar|cancelar minha reserva|reembolso)\b/.test(s) || explicitHumanRequest(s);
+// Audit 16/10/2026: asked "qual a baixa temporada de vocês", the model
+// invented months. There is no published season calendar to quote.
+const seasonQuestion = (s: string) => /\b(?:baixa|alta) temporada\b/.test(s)
+  && /\b(?:qual|quais|quando|que (?:mes|meses|periodo|epoca)|meses|periodo|epoca|comeca|termina|vai de|e (?:a|qual))\b|\?/.test(s)
+  && !/\b\d{1,2}\s*(?:\/|de\s+(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez))/.test(s);
+const SEASON_ANSWER = 'Não temos um calendário fixo de baixa e alta temporada para informar: o valor da diária muda conforme a data, e feriados e o fim de ano costumam ter pacotes próprios. Me diga as datas de entrada e saída (e quantas pessoas), que eu consulto o valor exato.';
 const greeting = (s: string) => /^(oi|ola|bom dia|boa tarde|boa noite|tudo bem)([ ,.!?]*(tudo bem|bom dia|boa tarde|boa noite))?[ ,.!?]*$/.test(s);
 // Asking to see something is informational, even with "quero" and a room name.
 const mediaRequest = (s: string) => !photoSessionInquiry(s) && /\b(fotos?|fotografias?|imagem|imagens|videos?|galeria|album)\b/.test(s);
@@ -948,6 +963,32 @@ function controlTurn(body: any, now = Date.now()) {
   // This is only short-lived conversational intent, never a verified booking.
   // A new subject releases the handoff context without changing stay facts.
   if (raw && !existingRequest && ['prepare','route','confirm'].includes(body.operation)) delete state.existing_reservation;
+  if (lateArrivalNotice(norm(raw)) && ['prepare','route','confirm'].includes(body.operation)) {
+    // Not a new stay: keep the facts out of it and let the reception record
+    // the arrival on the booking (it was announced in writing, so the team
+    // decides; the assistant never confirms or cancels anything).
+    state.changed = false;
+    clearStayDuration(state);
+    delete state.pending; delete state.awaiting; delete state.topic; delete state.topic_at;
+    delete state.package_context; delete state.guest_inquiry; delete state.subject;
+    delete state.extra_photo_subjects; delete state.event; delete state.programming_pending;
+    delete state.multi_room; delete state.arrival_time;
+    state.resolved_message = LATE_ARRIVAL_CONTEXT;
+    if (body.operation === 'prepare') {
+      delete state.audio;
+      state.first_turn = !state.greeted;
+      state.greeted = true;
+      state.history = [...state.history, LATE_ARRIVAL_CONTEXT].slice(-12);
+      remember(state, 'user', LATE_ARRIVAL_CONTEXT);
+      return {state:JSON.stringify(state), can_collect:'NAO', quote_request:'NOQUOTE',
+        context:JSON.stringify({primeira_resposta:state.first_turn, ultima_mensagem:LATE_ARRIVAL_CONTEXT,
+          interpretacao_da_ultima_mensagem:LATE_ARRIVAL_CONTEXT, aviso_chegada_tardia:true,
+          cotacao_valida_para_estes_dados:null, assunto_ativo:'',
+          regra:'O hóspede com reserva avisa que chegará depois do previsto. Não falar de taxa de early check-in, não cotar e não confirmar, alterar ou cancelar a reserva. A recepção registra o aviso. Responda somente: '+lateArrivalAnswer})};
+    }
+    return {state:JSON.stringify(state), resolved_message:LATE_ARRIVAL_CONTEXT,
+      quote_request:'HUMANO', can_collect:'NAO', confirmation_text:'', answer:lateArrivalAnswer};
+  }
   if (paymentStatusInquiry(raw, state.history.at(-1)) && ['prepare', 'route', 'confirm'].includes(body.operation)) {
     // A customer report is not proof of receipt. Keep lodging facts, but
     // invalidate stale booking consent and never let a model affirm payment.
@@ -1620,6 +1661,10 @@ function controlTurn(body: any, now = Date.now()) {
   else if (continuingEvent && state.event) {answer=state.event.answer;delete state.pending;}
   else if (weekdayQuestion) {
     answer = weekdayQuestion;
+    delete state.pending;
+  }
+  else if (seasonQuestion(s)) {
+    answer = SEASON_ANSWER;
     delete state.pending;
   }
   else if (facilityAnswer) {
