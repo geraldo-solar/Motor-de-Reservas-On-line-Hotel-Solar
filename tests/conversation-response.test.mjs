@@ -191,17 +191,20 @@ test('programação Heraldo responde antes de pacotes/extras/lead privado sem ac
   assert.match(first.conversation_text,/^Olá!/);
 });
 
-test('Reserva Solar possui duas fotos próprias, fila finita e eventos não viram pacotes ou extras', async () => {
+test('Reserva Solar possui fotos próprias, fila finita e eventos não viram pacotes ou extras', async () => {
   const handler=await loadHandler('api/resolve-package.ts',[],[]);
   const r=await request(handler,{user_message:'Vc tem fotos do restaurante reserva solar?'});
-  assert.equal(r.quote_request,'SITE_ID|RESERVA_1|RESERVA_2');
+  // 17/10/2026: four official photos (deck, varanda, trapiche, aérea).
+  assert.equal(r.quote_request,'SITE_ID|RESERVA_1|RESERVA_2,RESERVA_TRAPICHE,RESERVA_AEREA');
   assert.match(r.conversation_text,/Reserva Solar/); assert.doesNotMatch(r.conversation_text,/Loft|piscina/);
   let next;
   const response={status(){return this;},json(v){next=v;return v;}};
   await handler({method:'POST',query:{operation:'next'},body:{user_message:r.quote_request}},response);
-  assert.equal(next.quote_request,'SITE_ID|RESERVA_2');
-  await handler({method:'POST',query:{operation:'next'},body:{user_message:next.quote_request}},response);
-  assert.equal(next.quote_request,'ROOM_DONE');
+  assert.equal(next.quote_request,'SITE_ID|RESERVA_2|RESERVA_TRAPICHE,RESERVA_AEREA');
+  for (const expected of ['SITE_ID|RESERVA_TRAPICHE|RESERVA_AEREA','SITE_ID|RESERVA_AEREA','ROOM_DONE']) {
+    await handler({method:'POST',query:{operation:'next'},body:{user_message:next.quote_request}},response);
+    assert.equal(next.quote_request,expected);
+  }
   const event=await request(handler,{user_message:'Orçamento de aniversário para 50 pessoas',state:{version:2,history:[],facts:{extras:[]},turns:[{role:'assistant',text:'Sugiro Mesa Posta'}]}});
   assert.equal(event.quote_request,'ROOM_LIST'); assert.match(event.conversation_text,/5591991654050/);
   assert.equal((event.conversation_text.match(/5591991654050/g)||[]).length,1);
@@ -236,13 +239,15 @@ test('foto específica vem da categoria cadastrada, sem preço ou disponibilidad
   const room = { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', name: 'LOFT', images: [image] };
   const quad = { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', name: 'Suíte Quádruplo', images: [image] };
   const handler = await loadHandler('api/resolve-package.ts', [], [room, quad]);
-  for (const [message, expected] of [['Quero ver fotos do apto loft', room], ['Quero imagens do quádruplo', quad], ['Me mande fotos dos aptos', room]]) {
+  for (const [message, expected] of [['Quero ver fotos do apto loft', room], ['Quero imagens do quádruplo', quad]]) {
     const r = await request(handler, { user_message: message });
     assert.equal(r.quote_request, `ROOM_ID|${expected.id}`);
     assert.equal(r.room_name, expected.name);
     assert.equal(r.availability_checked, false);
     assert.doesNotMatch(r.conversation_text, /R\$|Confirmar opção|CPF|disponível/);
   }
+  // 17/10/2026: a generic request shows every category, not only the Loft.
+  assert.equal((await request(handler, {user_message: 'Me mande fotos dos aptos'})).quote_request, `ROOM_ID|${room.id}|${quad.id}`);
   for (const message of ['Fotos da suíte presidencial']) {
     const r = await request(handler, {user_message: message});
     assert.equal(r.quote_request, 'ROOM_LIST');

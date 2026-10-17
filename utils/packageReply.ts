@@ -92,7 +92,7 @@ const money = (value: number) => value.toLocaleString('pt-BR', {
 }).replace(/\u00a0/g, ' ');
 
 /** Sale conditions the caller confirmed for this package (e.g. Réveillon 10% à vista). */
-export type PackageSaleTerms = { cashDiscountPct?: number; siteUrl?: string; highlights?: string };
+export type PackageSaleTerms = { cashDiscountPct?: number; siteUrl?: string; highlights?: string; extrasLine?: string };
 
 const packageNights = (pkg: PackagePricingRecord) => pkg.start_iso_date && pkg.end_iso_date
   ? Math.round((Date.parse(`${pkg.end_iso_date}T12:00:00Z`) - Date.parse(`${pkg.start_iso_date}T12:00:00Z`)) / 86400000) : 0;
@@ -271,6 +271,7 @@ export function packageRecommendation(
   const site = terms.siteUrl || `https://reservas.hotelsolar.tur.br/?pacote=${encodeURIComponent(pkg.id)}`;
   const closing = [
     '', 'Valores por apartamento (não por pessoa), para o pacote completo, sujeitos à disponibilidade.',
+    ...(terms.extrasLine ? [terms.extrasLine] : []),
     `👉 Reserve pelo site: ${site}`,
     `Prefere a ${bestName} ou outra opção? Me diga qual que eu preparo o resumo para você confirmar.`,
   ].join('\n');

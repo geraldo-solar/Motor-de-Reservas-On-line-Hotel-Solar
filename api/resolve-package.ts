@@ -1,7 +1,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { MANYCHAT_TEXT_TRANSPORT, withManyChatTextEnvelope } from '../utils/manychatText.js';
 import { createClient } from '@supabase/supabase-js';
-import { resolveRoomMedia, nextRoomMedia, roomDetailInquiry, roomDetailAnswer } from '../utils/roomMedia.js';
+import { resolveRoomMedia, nextRoomMedia, roomDetailInquiry, roomDetailAnswer, recommendedRoomName } from '../utils/roomMedia.js';
 import { control, safeTypedMessage } from './conversation-control.js';
 import { withDailyGreeting, belemClock } from '../utils/dailyGreeting.js';
 import {stripAssistantDisclosure} from '../utils/assistantDisclosure.js';
@@ -356,6 +356,20 @@ const saleTermsFor = (pkg: PackageRecord): PackageSaleTerms => pkg.id === newYea
   ? {cashDiscountPct: newYearSalesPolicy.cash_discount_pct, siteUrl: newYearSiteLink(String(pkg.start_iso_date), String(pkg.end_iso_date)),
     highlights: 'Festa da Virada com ceia, open bar, Banda Zona Rural e DJ, passeio de barco e café da manhã todos os dias'}
   : {};
+
+/** Paid extras offered beside a package price card, as in the regular quote.
+ * A boat already included in the package is not offered again. */
+const packageExtrasLine = (extras: {name?: string; price?: number; active?: boolean}[], includedBoat: boolean) => {
+  const names = ['BARCO', 'MESA', 'LUA'].flatMap(code => {
+    if (code === 'BARCO' && includedBoat) return [];
+    const extra = extras.find(item => item.active !== false && extraCodes(item.name || '')[0] === code);
+    if (!extra) return [];
+    const price = Number(extra.price);
+    return [code === 'BARCO' ? 'passeio de barco (sob consulta)'
+      : `${String(extra.name).slice(0, 60)}${Number.isFinite(price) && price > 0 ? ` (R$ ${price.toLocaleString('pt-BR')})` : ''}`];
+  });
+  return [names.length ? `✨ Extras opcionais: ${names.join(', ')}.` : '', '🚲 Bicicletas de cortesia para hóspedes.'].filter(Boolean).join('\n');
+};
 
 /** The group stated in this very message ("Qual valor do Réveillon para 4 pessoas?"). */
 const groupInMessage = (message: string, state: any) => {
@@ -1038,7 +1052,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.query?.operation === 'next' && userMessage.startsWith('SITE_ID|')) return res.status(200).json(sitePhotoResult(true,userMessage));
   if (!req.query?.operation && reservaPhotoRequest(userMessage)) {
-    const result=sitePhotoResult();
+    const result=sitePhotoResult(false,'',userMessage);
     return res.status(200).json({...result,...control({operation:'remember_response',state:req.body?.state,response_text:result.conversation_text,clear_subject:true})});
   }
   if (!req.query?.operation && eventInquiry(userMessage) && !/fotos?|imagens|galeria/i.test(userMessage)) {
@@ -1066,9 +1080,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     || focusedPackage.id === newYearCampaignPackage.id && endOfYearMention(userMessage))
     && (!namedPackageInquiry(userMessage)||focusedPackageNameReference(userMessage,focusedPackage)
       ||packageOccupancyFollowup(userMessage,focusedPackage))) {
-    const [{data: packages,error: packageError},{data: rooms,error: roomError}] = await Promise.all([
+    const [{data: packages,error: packageError},{data: rooms,error: roomError},{data: packageExtras}] = await Promise.all([
       supabase.from('packages').select('*').eq('active',true),
       supabase.from('room_types').select('*').eq('active',true),
+      supabase.from('extras').select('*').eq('active',true),
     ]);
     if (packageError || roomError) return res.status(500).json({error:'Unable to load package information.'});
     const catalogPackage = (packages || []).find((item: PackageRecord) => currentPackage(item)&&item.id === focusedPackage.id);
@@ -1082,7 +1097,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Extra nights around the full package (31/12–04/01) are the same package.
     const differentDates = (facts.check_in && facts.check_in !== pkg.start_iso_date && !(facts.check_in < String(pkg.start_iso_date) && (!facts.check_out || facts.check_out >= String(pkg.end_iso_date))))
       || (facts.check_out && facts.check_out !== pkg.end_iso_date && !(facts.check_out > String(pkg.end_iso_date) && (!facts.check_in || facts.check_in <= String(pkg.start_iso_date))));
-    const saleTerms = saleTermsFor(pkg);
+    const saleTerms = {...saleTermsFor(pkg), extrasLine: packageExtrasLine(packageExtras || [], explicitPackageBoatBenefit(catalogPackage))};
     // 5+ people who need several apartments get the cheapest combination and
     // the team; a deposit with the balance later is the team's decision too.
     let handoff = false;
@@ -1153,7 +1168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   ]);
 
   if (roomError) return res.status(500).json({ error: roomError.message });
-  const media = resolveRoomMedia(userMessage, rooms || []);
+  const media = resolveRoomMedia(userMessage, rooms || [], recommendedRoomName(conversationState?.turns));
   const remember = (response_text: string, room_name = '', clear_subject = false) => control({operation:'remember_response', state:req.body?.state, response_text, room_name, clear_subject});
   if (media) {
     const gallery = ['room_gallery','room_comparison_gallery','room_comparison_information','room_gallery_information'].includes(media.match_type);

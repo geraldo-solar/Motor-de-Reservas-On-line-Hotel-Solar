@@ -91,12 +91,16 @@ const MANYCHAT_MEDIA: Record<string,string> = {
 };
 // Official photos visually verified on 2026-09-08 in estrutura.html, the
 // homepage and experiencias.html. This is not a per-message web search.
-const OFFICIAL_MEDIA: Record<string,string> = {
-  PARQUE:'https://www.hotelsolar.tur.br/assets/images/parquinho.webp',
-  PISCINA:'https://www.hotelsolar.tur.br/assets/images/editada-piscina.webp',
+const OFFICIAL_MEDIA: Record<string,string[]> = {
+  PARQUE:['https://www.hotelsolar.tur.br/assets/images/parquinho.webp','/media/parquinho.jpg'],
+  PISCINA:['https://www.hotelsolar.tur.br/assets/images/editada-piscina.webp','/media/piscina.jpg'],
   // This photo shows one of the two hydro pools, not both.
-  HIDRO:'https://www.hotelsolar.tur.br/assets/images/hidromassagem.webp',
-  BIKE:'https://www.hotelsolar.tur.br/assets/images/bike.webp',
+  HIDRO:['https://www.hotelsolar.tur.br/assets/images/hidromassagem.webp','/media/hidromassagem.jpg'],
+  BIKE:['https://www.hotelsolar.tur.br/assets/images/bike.webp','/media/bicicletas.jpg'],
+  // Site copies (experiencias.html), checked 17/10/2026; catalog images win.
+  BARCO:['/media/passeio-de-barco.jpg'],
+  MESA:['/media/mesa-posta.jpg'],
+  LUA:['/media/kit-lua-de-mel.jpg'],
 };
 function validImageUrl(image:string) {
   if (/^\/[^/\s]/.test(image)) return true;
@@ -105,7 +109,7 @@ function validImageUrl(image:string) {
   catch {return false;}
 }
 export const extraImages = (extra?:ExtraRecord,code='') => [...new Set([
-  extra?.image_url,extra?.imageUrl,MANYCHAT_MEDIA[code],OFFICIAL_MEDIA[code],
+  extra?.image_url,extra?.imageUrl,MANYCHAT_MEDIA[code],...(OFFICIAL_MEDIA[code]||[]),
 ].filter((image):image is string=>typeof image==='string').map(image=>image.trim()).filter(validImageUrl))];
 export const extraImage = (extra?:ExtraRecord,code='') => extraImages(extra,code)[0] || '';
 export function extraCaption(code:string,extras:ExtraRecord[],includedBoat=false) {
@@ -142,7 +146,11 @@ export function requestedExtraCodes(message:string,_assistant:string,requestedBe
 }
 export function extraMediaResult(codes:string[],extras:ExtraRecord[],includedBoat=false) {
   const active=extras.filter(e=>e.active!==false);
-  const withPhotos=codes.filter(code=>extraImage(active.find(e=>extraCode(e.name||'')===code),code));
+  // A paid service absent from (or inactive in) the catalog gets no photo.
+  const withPhotos=codes.filter(code=>{
+    const extra=active.find(e=>extraCode(e.name||'')===code);
+    return (extra||!['MESA','LUA'].includes(code)) && extraImage(extra,code);
+  });
   const without=codes.filter(code=>!withPhotos.includes(code));
   const chosen=withPhotos[0];
   const missingText=without.map(code=>extraCaption(code,active,includedBoat)+'\nAinda não há foto cadastrada desse serviço para enviar.').join('\n\n');

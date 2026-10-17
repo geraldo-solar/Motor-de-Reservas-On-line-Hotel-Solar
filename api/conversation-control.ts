@@ -8,7 +8,8 @@ import {rejectedStayDates} from '../utils/stayDateRefusal.js';
 import {alternativeStayDates} from '../utils/alternativeStayDates.js';
 import {readFlexibleStay,readFlexibleResults,updateFlexibleStay,flexibleStayAnswer,flexibleStaySelection,type FlexibleStay} from '../utils/flexibleStay.js';
 import { PHOTO_CLARIFY, PHOTO_LOOKUP, documentPhotoInquiry, photoClarificationQuestion, photoDeliveryClaim, photoRetryRequest, shortPhotoRetry } from '../utils/photoIntent.js';
-import { eventInquiry, eventContactText } from '../utils/hotelInfo.js';
+import { eventInquiry, eventContactText, sitePhotoKeys, siteSubjectOnly } from '../utils/hotelInfo.js';
+import { recommendedRoomName } from '../utils/roomMedia.js';
 import { advanceEvent, readEvent, eventFieldReply, type EventState } from '../utils/eventInquiry.js';
 import { publicEventInquiry, publicEventFollowup, publicEventContext, publicEventAnswer } from '../utils/publicEvents.js';
 import { isAudioInput, transcribeAudio } from '../utils/audioTranscription.js';
@@ -59,7 +60,7 @@ type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPa
   // This turn's message added a child's age (read by the repeated-question guard).
   ages_progress?: true };
 type ExistingReservationState = { flexible_stay?:FlexibleStay;existing_reservation?: {at: number};payment_support?:{at:number;topics?:PaymentSupportSupplementaryTopic[]};assistant_disclosure?:AssistantDisclosure;multi_room?:MultiRoomHandoff;checkout_question?:{at:number;key:string};arrival_time?:ArrivalTimePending;package_date_request?:PackageDateRequest };
-type State = ExistingReservationState & FamilyState & { massage_context?: {at:number}; programming_pending?: {question: string; at: number}; recent_package?: PackageContext; campaign?: 'RV27'; full_period_extended?: NewYearStayRequest; package_choice?: {option: string; at: number} } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
+type State = ExistingReservationState & FamilyState & { massage_context?: {at:number}; programming_pending?: {question: string; at: number}; recent_package?: PackageContext; campaign?: 'RV27'; full_period_extended?: NewYearStayRequest; package_choice?: {option: string; at: number} } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'site_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
 const json = (v: unknown): any => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
 const months = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -280,7 +281,7 @@ function loadState(value: unknown, now = Date.now()): State {
       ...(parsed.ages_progress === true ? {ages_progress: true as const} : {})} : {}),
     ...(Number.isFinite(parsed.party_confirmed_at)&&parsed.party_confirmed_at>0&&parsed.party_confirmed_at<=now&&now-parsed.party_confirmed_at<=30*60000
       ?{party_confirmed_at:parsed.party_confirmed_at}:{}),
-    ...(['room_photos', 'room_info', 'extra_photos', 'extra_info', 'photo_clarification', 'public_events', 'package_info'].includes(parsed.topic) ? {topic: parsed.topic, topic_at: Number(parsed.topic_at) || 0} : {}),
+    ...(['room_photos', 'room_info', 'extra_photos', 'site_photos', 'extra_info', 'photo_clarification', 'public_events', 'package_info'].includes(parsed.topic) ? {topic: parsed.topic, topic_at: Number(parsed.topic_at) || 0} : {}),
     ...(readPackageContext(parsed.package_context, now) ? {package_context:readPackageContext(parsed.package_context, now)} : {}),
     ...(readPackageContext(parsed.recent_package, now) ? {recent_package:readPackageContext(parsed.recent_package, now)} : {}),
     ...(parsed.campaign === 'RV27' ? {campaign:'RV27' as const} : {}),
@@ -347,7 +348,11 @@ function awaitPhotoSubject(state: State, response: string, now: number) {
 
 // Resolve short follow-ups only within an explicit, recent photo conversation.
 // New topics and booking choices must not inherit the previous photo intent.
-function resolveFollowup(state: State, raw: string, now: number): string {
+// The highlighted (cheapest) category of the current date quote.
+const quotedRoomName = (quote: Quote | null) => quote?.options?.length
+  ? String([...quote.options].sort((a, b) => a.total - b.total)[0].name || '') : '';
+
+function resolveFollowup(state: State, raw: string, now: number, quotedRoom = ''): string {
   raw = reservaRestaurantMessage(raw);
   const s = norm(raw);
   if(photoSessionInquiry(raw)){
@@ -365,7 +370,7 @@ function resolveFollowup(state: State, raw: string, now: number): string {
   // An expired/malformed topic must not be revived by this legacy migration.
   const activeRooms = state.topic === 'room_photos' || (!hadTopic && !state.turns?.length && mediaRequest(previous) && roomWords.test(previous));
   const clarifying = state.topic === 'photo_clarification';
-  const active = activeRooms || state.topic === 'extra_photos' || clarifying;
+  const active = activeRooms || state.topic === 'extra_photos' || state.topic === 'site_photos' || clarifying;
   const shortChoice = shortPhotoChoice(s);
   const directExtras = extraCodes(s);
   // Restrict implicit requests to a list of subjects/connectors. Price, rules,
@@ -377,15 +382,25 @@ function resolveFollowup(state: State, raw: string, now: number): string {
   // A clarification has no previous subject: "todas" alone cannot choose a
   // gallery. A named room or facility can answer the question directly.
   let resolved = active && !mediaRequest(s) && ((shortChoice && (!clarifying || roomWords.test(s))) || shortExtraChoice) ? `Fotos de ${raw}` : raw;
+  // "Restaurante" / "e da quadra?" answering a photo question or continuing a
+  // photo conversation names another hotel area, not a new information topic.
+  if (resolved === raw && active && !mediaRequest(s) && siteSubjectOnly(raw)) resolved = `Fotos de ${raw}`;
   if (active && (photoRetryRequest(raw) || shortPhotoRetry(raw))) {
     if (state.topic === 'extra_photos' && state.extra_photo_subjects?.length) resolved = `Fotos de ${state.extra_photo_subjects.map(code => photoSubjectLabels[code]).join(' e ')}`;
     else if (activeRooms && state.subject) resolved = `Fotos de ${state.subject}`;
   }
   if (state.topic === 'extra_photos' && state.extra_photo_subjects?.length && shortChoice && /\btod[oa]s\b/.test(s) && !roomWords.test(s)) resolved = `Fotos de ${state.extra_photo_subjects.map(code => photoSubjectLabels[code]).join(' e ')}`;
+  const recommended = quotedRoom || recommendedRoomName(state.turns);
+  // "Me manda foto do quarto" after a quote: one generic room, no category.
+  if (recommended && extraPhotoRequest(s) && !directExtras.length && s.split(' ').length <= 9
+    && /\b(?:quarto|apartamento|apto|acomodacao|suite)\b/.test(s)
+    && !/\b(?:quartos|apartamentos|aptos|acomodacoes|suites|tod[oa]s|loft|casal|triplo|quadruplo|varanda|terreo|sacada)\b/.test(s)) resolved = `Fotos de ${recommended}`;
   const genericPhotos = extraPhotoRequest(s) && /^(?:(?:e|agora|tambem|tem|voces|voce|vc|vcs|ha|pode|podem|poderia|poderiam|me|mande|manda|mandar|enviar|envie|envia|mostrar|quero|gostaria|queria|ver|de|a|as|o|os|um|uma|umas|uns|alguma|algumas|algum|alguns|mais|todos|todas|dess[ae]s?|dest[ae]s?|del[ae]s?|por favor|pfv|fotos?|fotografias?|imagem|imagens|galeria|album)[\s,/.!?-]*)+$/.test(s);
   if (extraPhotoRequest(s) && !directExtras.length && (genericPhotos || /\b(dess[ae]s?|dest[ae]s?|del[ae]s?)\b/.test(s))) {
     if ((state.topic === 'extra_photos' || state.topic === 'extra_info') && state.extra_photo_subjects?.length && genericPhotos) resolved = `Fotos de ${state.extra_photo_subjects.map(code => photoSubjectLabels[code]).join(' e ')}`;
     else if (state.subject && !restaurantInquiry(s)) resolved = `Fotos de ${state.subject}`;
+    // "Tem foto?" right after a quote: the category the quote recommended.
+    else if (!state.subject && genericPhotos && recommended) resolved = `Fotos de ${recommended}`;
   }
   const resolvedExtras = extraCodes(resolved);
   if (extraPhotoRequest(resolved) && resolvedExtras.length) {
@@ -395,6 +410,9 @@ function resolveFollowup(state: State, raw: string, now: number): string {
     state.topic = 'room_photos'; state.topic_at = now;
     delete state.extra_photo_subjects;
     if (/\btod[oa]s\b/.test(s)) resolved = 'Fotos de todos os apartamentos';
+  } else if (mediaRequest(norm(resolved)) && sitePhotoKeys(resolved).length) {
+    state.topic = 'site_photos'; state.topic_at = now;
+    delete state.subject; delete state.extra_photo_subjects;
   } else if (directExtras.length && !mediaRequest(s) && !lodging(s) && !restaurantInquiry(s) && (question(s) || shortExtraChoice)) {
     // Remember the facility mentioned by the customer, not something offered
     // by the assistant. This is informational until they explicitly ask photos.
@@ -1426,7 +1444,7 @@ function controlTurn(body: any, now = Date.now()) {
       delete state.subject; delete state.extra_photo_subjects; delete state.event; delete state.guest_inquiry;
       updateFacts(state, state.resolved_message, now);
     } else {
-      state.resolved_message = personal(raw) ? '[Dado pessoal omitido]' : resolveFollowup(state, diningFollowupMessage(state,raw), now);
+      state.resolved_message = personal(raw) ? '[Dado pessoal omitido]' : resolveFollowup(state, diningFollowupMessage(state,raw), now, quotedRoomName(validQuote(body.quote_state, state, now)));
       const inquiry = currentGuestInquiry(state, state.resolved_message,now);
       const extraSelection = extraSelectionActions(raw).length>0;
       if (inquiry || human(s) || mediaRequest(norm(state.resolved_message)) || eventInquiry(raw)
@@ -1737,7 +1755,7 @@ function controlTurn(body: any, now = Date.now()) {
     // mistaken QUOTE proposal caused by the word "reserva" in the venue name.
     delete state.pending;
   }
-  else if (mediaRequest(s) || mediaRequest(norm(publicMessage)) && (state.topic === 'room_photos' || state.topic === 'extra_photos')) {
+  else if (mediaRequest(s) || mediaRequest(norm(publicMessage)) && (state.topic === 'room_photos' || state.topic === 'extra_photos' || state.topic === 'site_photos')) {
     // Continue to ManyChat's media branch; do not quote, select or collect data.
     delete state.pending;
   }

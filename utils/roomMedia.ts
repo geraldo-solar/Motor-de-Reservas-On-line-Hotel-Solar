@@ -126,7 +126,7 @@ function roomComparison(selected: MediaRoom[]): string {
 }
 
 // Reuse the existing dynamic image transport without treating rooms as packages.
-export function resolveRoomMedia(message: string, rooms: MediaRoom[]) {
+export function resolveRoomMedia(message: string, rooms: MediaRoom[], preferredRoom = '') {
   const s = norm(message);
   if (!photoWords.test(s) || /\b(pacotes?|feriados?)\b/.test(s)) return null;
   const matches = rooms.filter(room => roomMentioned(s,room));
@@ -156,7 +156,15 @@ export function resolveRoomMedia(message: string, rooms: MediaRoom[]) {
     if (available.length) return roomPhotoResult(available, true);
   }
   const generic = /\b(aptos?|apartamentos?|quartos?|acomodacoes|acomodacao)\b/.test(s) && !/\b(suites?|lofts?)\b/.test(s);
-  const chosen = matches.length === 1 ? matches[0] : matches.length === 0 && generic ? rooms.find(room => norm(room.name || '') === 'loft') : undefined;
+  // "Foto do quarto" right after a quote is the category just recommended;
+  // "fotos dos quartos" (or no recommendation) shows every category.
+  const preferred = !matches.length && generic && !/\b(aptos|apartamentos|quartos|acomodacoes)\b/.test(s)
+    ? rooms.find(room => preferredRoom && norm(room.name || '') === norm(preferredRoom)) : undefined;
+  if (!matches.length && generic && !preferred) {
+    const available = rooms.filter(room => roomImages(room).length > 0).slice(0,20);
+    if (available.length) return roomPhotoResult(available, true);
+  }
+  const chosen = matches.length === 1 ? matches[0] : preferred;
   const hasImage = chosen && roomImages(chosen).length > 0;
   if (hasImage) return roomPhotoResult([chosen!]);
   const text = chosen
@@ -171,4 +179,17 @@ export function resolveRoomMedia(message: string, rooms: MediaRoom[]) {
     room_id: chosen?.id || '', room_name: chosen?.name || '',
     availability_checked: false,
   };
+}
+
+/** The category highlighted (⭐) in the latest quote among recent assistant
+ * turns: "⭐ *Suíte Casal* — *R$ …*" or "⭐ *Indicada para vocês: LOFT* — …".
+ * Combinations of several apartments are not a single category. */
+export function recommendedRoomName(turns: unknown): string {
+  if (!Array.isArray(turns)) return '';
+  for (const turn of turns.slice(-6).reverse()) {
+    if (!turn || (turn as any).role !== 'assistant') continue;
+    const match = /⭐ \*(?:Indicada para vocês?: )?([^*\n]{2,80}?)(?: \(individual\))?\* — \*/.exec(String((turn as any).text || ''));
+    if (match) return /[×+]|\bcom bicama\b/.test(match[1]) ? '' : match[1].trim();
+  }
+  return '';
 }
