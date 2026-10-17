@@ -63,6 +63,13 @@ test('Réveillon price card offers the paid extras; the included boat is not off
   assert.equal(photo.result.quote_request,'ROOM_ID|casal');
 });
 
+test('a group stated with the Réveillon question also gets the extras',async()=>{
+  now=Date.parse('2026-10-17T11:00:00-03:00');
+  const card=await conversation(SEED)('Quais os valores do réveillon para 2 adultos?');
+  assert.match(card.text,/Indicada para vocês: Suíte Casal/);
+  assert.match(card.text,/✨ Extras opcionais: Mesa Posta \(R\$ 180\), Kit Lua de Mel \/ Celebração \(R\$ 350\)\./);
+});
+
 test('a generic room photo after a date quote is the highlighted category; plural is every category',async()=>{
   now=Date.parse('2026-10-17T11:00:00-03:00');
   const say=conversation();

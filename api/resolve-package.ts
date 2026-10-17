@@ -1261,7 +1261,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // pessoas?") goes straight to the card for that group.
   const statedGroup=!nextPackage?groupInMessage(userMessage,conversationState):0;
   if(statedGroup&&!familyAccommodation(conversationState,statedGroup).pending){
-    const terms=saleTermsFor(pkg);
+    const {data:groupExtras}=await supabase.from('extras').select('*').eq('active',true);
+    const terms={...saleTermsFor(pkg),extrasLine:packageExtrasLine(groupExtras||[],explicitPackageBoatBenefit(best.pkg))};
     const combination=packageGroupCombination(pkg,(rooms||[]) as RoomRecord[],statedGroup,conversationState,terms);
     const answer=combination||packageRecommendation(pkg,(rooms||[]) as RoomRecord[],statedGroup,conversationState,terms);
     return res.status(200).json({quote_request:combination?'HUMANO':'ROOM_LIST',quote_text:answer,conversation_text:answer,
