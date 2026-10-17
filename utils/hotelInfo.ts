@@ -59,7 +59,7 @@ const siteSubjects: {re: RegExp; keys: string[]}[] = [
   {re: /\bcapela\b/, keys: ['CAPELA']},
   {re: /\b(?:auditorio|salao de eventos|espacos? (?:para|de) eventos?|eventos? corporativos?|coffee break)\b/, keys: ['AUDITORIO', 'AUDITORIO_2', 'COFFEE']},
   {re: /\b(?:fachada|entrada|hall|recepcao)\b/, keys: ['HOTEL_FACHADA', 'HOTEL_HALL']},
-  {re: /\b(?:hotel|estrutura|dependencias|areas? comuns?|areas? de lazer|lazer|espacos?|ambientes?)\b/, keys: ['HOTEL_AEREA', 'HOTEL_PISCINA', 'HOTEL_FACHADA', 'HOTEL_HALL', 'S73_PISCINA', 'RESERVA_1', 'PRAIA', 'HOTEL_NOITE']},
+  {re: /\b(?:hotel|estrutura|dependencias|areas? comuns?|areas? de lazer|lazer|espacos?|ambientes?)\b/, keys: ['HOTEL_AEREA', 'HOTEL_PISCINA', 'HOTEL_HALL', 'PRAIA']},
 ];
 const sitePhotoWords = /\b(fotos?|fotografias?|imagem|imagens|galeria|album|video|videos)\b/;
 const otherMediaSubjects = /\b(aptos?|apartamentos?|quartos?|acomodac(?:ao|oes)|suites?|lofts?|piscinas?|hidro\w*|parquinhos?|parque infantil|playground|biciclet\w*|bikes?|barcos?|catamara|passeio|mesa posta|lua de mel|kit)\b/;
@@ -80,7 +80,8 @@ export function sitePhotoKeys(message: string): string[] {
     if (subject.keys[0] === 'RESERVA_1' || subject.keys[0] === 'S73_SALAO') rest = rest.replace(/\brestaurantes?\b/g, m => ' '.repeat(m.length));
   }
   if (!found.length) return [];
-  return [...new Set(found.sort((a, b) => a.index - b.index).flatMap(item => item.keys))].slice(0, 8);
+  // ManyChat delivers at most 4 photos per request.
+  return [...new Set(found.sort((a, b) => a.index - b.index).flatMap(item => item.keys))].slice(0, 4);
 }
 /** A short reply that only names hotel areas ("restaurante", "e da quadra?"). */
 export function siteSubjectOnly(message: string) {

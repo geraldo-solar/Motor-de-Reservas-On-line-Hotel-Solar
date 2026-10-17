@@ -76,7 +76,10 @@ test('a generic room photo after a date quote is the highlighted category; plura
   const quote=await say('Quanto fica a diária de 20/11 a 22/11 para 2 pessoas?');
   assert.match(quote.text,/⭐ \*Suíte Casal\*/);
   assert.equal((await say('me manda foto do quarto')).result.quote_request,'ROOM_ID|casal');
-  assert.match((await say('tem fotos dos quartos?')).result.quote_request,/^ROOM_ID\|casal\|triplo,loft,sacada,quadruplo,varanda$/);
+  // ManyChat delivers 4 photos per request: the other categories are named.
+  const gallery=await say('tem fotos dos quartos?');
+  assert.equal(gallery.result.quote_request,'ROOM_ID|casal|triplo,loft,sacada');
+  assert.match(gallery.text,/Seguem fotos de 4 categorias\. Também temos Suíte Quádruplo e Suíte Varanda Térreo; se quiser ver, é só pedir\./);
   const fresh=conversation();
   assert.equal((await fresh('Pode me mandar fotos dos quartos?')).result.match_type,'room_gallery');
 });
@@ -97,7 +100,7 @@ test('hotel areas have official photos, continue as a sequence and accept short 
   await ask('manda fotos');
   assert.match((await ask('restaurante')).result.quote_request,/^SITE_ID\|S73_SALAO/);
   const tour=conversation();
-  assert.match((await tour('manda fotos do hotel')).result.quote_request,/^SITE_ID\|HOTEL_AEREA\|/);
+  assert.equal((await tour('manda fotos do hotel')).result.quote_request,'SITE_ID|HOTEL_AEREA|HOTEL_PISCINA,HOTEL_HALL,PRAIA');
   assert.equal((await tour('fotos da piscina do hotel')).result.quote_request,'EXTRA_ID|PISCINA||PAID');
   assert.equal((await tour('fotos do reserva solar')).result.quote_request,'SITE_ID|RESERVA_1|RESERVA_2,RESERVA_TRAPICHE,RESERVA_AEREA');
   assert.equal((await tour('foto do café da manhã')).result.quote_request,'SITE_ID|CAFE');

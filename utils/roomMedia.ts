@@ -45,6 +45,18 @@ export function nextRoomMedia(reference: string, rooms: MediaRoom[]) {
   return roomPhotoResult(selected, true);
 }
 
+// The ManyChat photo loop delivers at most 4 photos per request (WhatsApp
+// test of 17/10/2026): a longer gallery names the rest instead of losing it.
+const MAX_GALLERY = 4;
+function galleryResult(available: MediaRoom[]) {
+  const shown = available.slice(0, MAX_GALLERY), rest = available.slice(MAX_GALLERY);
+  const result = roomPhotoResult(shown, true);
+  if (!rest.length) return result;
+  const names = rest.map(room => String(room.name || '').slice(0, 60));
+  const note = `Seguem fotos de ${shown.length} categorias. Também temos ${names.length > 1 ? names.slice(0, -1).join(', ') + ' e ' + names.at(-1) : names[0]}; se quiser ver, é só pedir.\n\n`;
+  return {...result, quote_text: note + result.quote_text, conversation_text: note + result.conversation_text};
+}
+
 function roomPhotoResult(selected: MediaRoom[], gallery = false) {
   const chosen = selected[0];
   const remaining = selected.slice(1);
@@ -142,7 +154,7 @@ export function resolveRoomMedia(message: string, rooms: MediaRoom[], preferredR
     const intro=[comparison?roomComparison(requested):'',!photoRequested.length?'Tudo bem, não vou enviar fotos.':'',missing.length?`Não encontrei fotos cadastradas de ${missing.map(room=>room.name).join(', ').slice(0,180)} para enviar agora.`:''].filter(Boolean).join('\n\n');
     if(!available.length)return {quote_request:'ROOM_LIST',quote_text:intro,conversation_text:intro,matched:true,
       match_type:comparison?'room_comparison_information':'room_gallery_information',room_name:'',room_names:requested.map(room=>room.name),availability_checked:false};
-    const result=roomPhotoResult(available,true);
+    const result=galleryResult(available);
     const text=[intro,result.conversation_text].filter(Boolean).join('\n\n').slice(0,1900);
     return {...result,quote_text:text,conversation_text:text,room_names:requested.map(room=>room.name),
       match_type:comparison?'room_comparison_gallery':'room_gallery'};
@@ -153,7 +165,7 @@ export function resolveRoomMedia(message: string, rooms: MediaRoom[], preferredR
   }
   if (/\btod[oa]s\b/.test(s)) {
     const available = rooms.filter(room => roomImages(room).length > 0).slice(0,20);
-    if (available.length) return roomPhotoResult(available, true);
+    if (available.length) return galleryResult(available);
   }
   const generic = /\b(aptos?|apartamentos?|quartos?|acomodacoes|acomodacao)\b/.test(s) && !/\b(suites?|lofts?)\b/.test(s);
   // "Foto do quarto" right after a quote is the category just recommended;
@@ -162,7 +174,7 @@ export function resolveRoomMedia(message: string, rooms: MediaRoom[], preferredR
     ? rooms.find(room => preferredRoom && norm(room.name || '') === norm(preferredRoom)) : undefined;
   if (!matches.length && generic && !preferred) {
     const available = rooms.filter(room => roomImages(room).length > 0).slice(0,20);
-    if (available.length) return roomPhotoResult(available, true);
+    if (available.length) return galleryResult(available);
   }
   const chosen = matches.length === 1 ? matches[0] : preferred;
   const hasImage = chosen && roomImages(chosen).length > 0;
