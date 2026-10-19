@@ -2,7 +2,8 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { MANYCHAT_TEXT_TRANSPORT, withManyChatTextEnvelope } from '../utils/manychatText.js';
 import { createClient } from '@supabase/supabase-js';
 import { resolveRoomMedia, nextRoomMedia, roomDetailInquiry, roomDetailAnswer, recommendedRoomName } from '../utils/roomMedia.js';
-import { control, safeTypedMessage } from './conversation-control.js';
+import { control, safeTypedMessage, handleConversation } from './conversation-control.js';
+import { instagramTurn, instagramContent } from '../utils/instagramTurn.js';
 import { withDailyGreeting, belemClock } from '../utils/dailyGreeting.js';
 import {stripAssistantDisclosure} from '../utils/assistantDisclosure.js';
 import { PHOTO_CLARIFY, documentPhotoInquiry, photoClarificationQuestion, photoRetryRequest } from '../utils/photoIntent.js';
@@ -537,7 +538,29 @@ function repeatedQuestionHandoff(payload: any, sourceState: any, message: string
 const teamPromise = (text: string) =>
   /\b(?:vou|irei|vamos) (?:confirmar|verificar|consultar|checar|conferir)\b[^.!?]{0,60}\bcom (?:a |nossa )?(?:equipe|recepção)\b|\baguarde\b[^.!?]{0,40}\benquanto (?:confirmo|verifico|consulto|confiro)\b|\bencaminh(?:ei|arei|aremos)\b|\b(?:vou|irei) (?:encaminhar|repassar)\b/i.test(text);
 
+// Runs a handler in-process for the Instagram turn (no extra function: the
+// Vercel plan counts each file in api/).
+async function invoke(target: (req: VercelRequest, res: VercelResponse) => unknown, query: Record<string, string>, body: any) {
+  let output: any; let status = 200;
+  const res: any = {status(code: number) { status = code; return res; }, json(value: any) { output = value; return res; },
+    send(value: any) { output = value; return res; }, setHeader() { return res; }, end() { return res; }};
+  await target({method: 'POST', query, body, headers: {}} as any, res);
+  return status >= 400 ? {...(output || {}), error: output?.error || 'Request failed'} : output;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.query?.operation === 'instagram' || req.query?.operation === 'instagram-render') {
+    res.setHeader?.('Cache-Control', 'no-store');
+    if (req.method !== 'POST') return res.status(405).json({error: 'Use POST'});
+    if (req.query.operation === 'instagram-render')
+      return res.status(200).json(instagramContent(req.body?.payload, String(req.query?.flow || '')));
+    return res.status(200).json(await instagramTurn(req.body || {}, {
+      route: body => handleConversation(body, req.headers?.authorization || ''),
+      // Loaded on demand: get-prices requires its credentials at import time.
+      prices: async (query, body) => invoke((await import('./get-prices.js')).default, query, body),
+      resolve: (query, body) => invoke(handler, query, body),
+    }));
+  }
   // Only the first response of a user turn: carousel pages / suggested media
   // are internal continuations and must not send the greeting again.
   let priceTable: string | undefined;
