@@ -305,6 +305,13 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   let s=informalComposition(norm(message));
   // "Dois idosos" are two adults ("casal de idosos" stays a couple).
   s=s.replace(/\bidos([oa])s\b/g,'adult$1s').replace(/\bidos([oa])\b/g,'adult$1');
+  // "3 crianças (10,5,3)" / "2 crianças: 8 e 4": a list matching the count,
+  // right after it, is the children's ages even without "anos" (19/10/2026).
+  s=s.replace(new RegExp(`\\b${number}\\s*(criancas?|filh[oa]s?)\\s*(?:\\(\\s*|:\\s*|de\\s+|com\\s+)(\\d{1,2}(?:\\s*(?:,|e)\\s*\\d{1,2})*)\\s*\\)?(?!\\s*(?:anos?|meses?|mes|\\/|\\d|pessoas?|adult))`,'g'),
+    (all,count:string,word:string,list:string)=>{
+      const ages=list.split(/\s*(?:,|\be\b)\s*/).filter(Boolean);
+      return ages.length===quantity(count)&&ages.every(age=>Number(age)<=17)?`${count} ${word} de ${ages.join(', ')} anos`:all;
+    });
   // "2 adultos e 1 adolescente": a teenager occupies a normal place (no
   // under-6 courtesy). Without a stated age, count it as a child of 13.
   s=s.replace(new RegExp(`\\b${number}\\s+adolescentes?\\b(?!\\s*,?\\s*(?:de|com)\\s+\\S+\\s+anos?)`,'g'),'$1 criancas de 13 anos')

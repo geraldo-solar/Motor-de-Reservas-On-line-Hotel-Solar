@@ -106,3 +106,28 @@ test('hotel areas have official photos, continue as a sequence and accept short 
   assert.equal((await tour('foto do café da manhã')).result.quote_request,'SITE_ID|CAFE');
   assert.equal(sitePhotoUrl('SITE_ID|NOPE'),undefined);
 });
+
+test('Inbox 19/10: ages in parentheses and a full group in the price question get the card',async()=>{
+  now=Date.parse('2026-10-19T09:34:00-03:00');
+  const split=conversation();
+  await split('Quais os valores do Réveillon?');
+  await split('2 adultos');
+  const card=await split('3 crianças (10,5,3)');
+  assert.match(card.text,/Indicada para vocês: Suíte Quádruplo\* — \*R\$ 7\.400,00/);
+  const joined=await conversation()('Quais os valores do Réveillon?\n2 adultos\n3 crianças (10,5,3)');
+  assert.match(joined.text,/Indicada para vocês: Suíte Quádruplo/);
+  // A child-charge question keeps the policy answer.
+  const policy=conversation();
+  await policy('Quais os valores do Réveillon?');
+  assert.match((await policy('Criança de 5 anos paga?')).text,/não paga a hospedagem/);
+});
+
+test('Inbox 19/10: "não queremos hospedagem, somente participar da virada" is the party-only ticket',async()=>{
+  now=Date.parse('2026-10-19T09:53:00-03:00');
+  const say=conversation();
+  await say('Quais os valores do Réveillon?');
+  const answer=await say('Nao queremos hospedagem, somente participar da virada. É possivel?');
+  assert.equal(answer.r.quote_request,'HUMANO');
+  assert.match(answer.text,/pulseira: R\$ 800 por pessoa/);
+  assert.match((await conversation()('Quero só o pacote do réveillon para 2 adultos')).text,/Indicada para vocês: Suíte Casal/);
+});

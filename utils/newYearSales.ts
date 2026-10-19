@@ -70,7 +70,9 @@ export function newYearPartyOnlyInquiry(message: string, context?: unknown, now 
   const wristband = /\b(?:pulseiras?|ingressos?)\b/.test(s);
   const withoutLodging = /\b(?:so|somente|apenas)\s+(?:(?:a|na|pra|para a|para)\s+)?festa\b/.test(s)
     || /\bsem (?:ficar |me |nos |estar )?(?:hospedad[oa]s?|hospedagem|hospedar|estadia|dormir|pernoitar)\b/.test(s)
-    || /\bnao (?:vou|vamos|quero|queremos|pretendo|pretendemos|precisamos|preciso) (?:ficar hospedad[oa]s?|me hospedar|nos hospedar|de hospedagem|dormir|pernoitar)\b/.test(s)
+    || /\bnao (?:vou|vamos|quero|queremos|pretendo|pretendemos|precisamos|preciso) (?:ficar hospedad[oa]s?|me hospedar|nos hospedar|(?:de )?hospedagem|dormir|pernoitar)\b/.test(s)
+    // "Somente participar da virada" (Inbox 19/10/2026).
+    || /\b(?:so|somente|apenas)\s+(?:para\s+|pra\s+)?(?:participar|ir|curtir|aproveitar)\s+(?:d[ao]|n[ao]|a|o)\s+(?:festa|virada)\b/.test(s)
     || /\bfesta\b.{0,40}\b(?:avuls[oa]|separad[oa]|sem hospedagem|sem estadia)\b/.test(s);
   if (!wristband && !withoutLodging) return false;
   return wristband && (newYearWords.test(s) || /\bfesta\b/.test(s) || focusedOnNewYear(context, now) || /\bpulseiras?\b/.test(s))
