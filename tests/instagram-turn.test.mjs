@@ -114,3 +114,10 @@ test('Dynamic block renders Instagram content with the handoff button flow',()=>
   assert.equal(plain.content.messages[2].buttons,undefined);
   assert.deepEqual(instagramContent('lixo').content.messages,[]);
 });
+
+test('one room for 2 adults and another for 4 goes to the reception, not to a children question',async()=>{
+  now=Date.parse('2026-10-19T08:46:00-03:00');
+  const out=await instagram()('1 quarto para duas pessoas adultas e outro para 4 pessoas adultas também.');
+  assert.equal(out.ig_acao,'HUMANO');
+  assert.doesNotMatch(out.texts.join('\n'),/idades das crianças/);
+});

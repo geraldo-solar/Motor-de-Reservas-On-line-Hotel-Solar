@@ -22,6 +22,9 @@ export function multiRoomRequest(message: string): boolean {
   if (roomAlternativeComparison(message)) return false;
   if (eventInquiry(message) || /\b(fotos?|fotografias?|imagem|imagens|videos?|galeria|album|politica|capacidade)\b/.test(s)) return false;
   if (/\bnao (?:quero|preciso|desejo|vamos|vou)\b|\b(?:apenas|somente|so) (?:um|1) (?:quarto|apartamento|apto|suite)\b/.test(s)) return false;
+  // "1 quarto para 2 adultos e outro para 4" (audit 19/10/2026) asks for two
+  // rooms without a room count; it was read as one party with children.
+  if (/\b(?:um|uma|1)\s+(?:quarto|apartamento|apto|suite)\b.{0,80}?\b(?:outro|outra|mais um|mais uma)\b(?:\s+(?:quarto|apartamento|apto|suite))?\s+(?:para|pra|com|de)\b/.test(s)) return true;
   const roomCount=/\b(\d{1,2}|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)\s+(?:quartos?|apartamentos?|aptos?|suites?)\b/g;
   const requests=[...s.matchAll(roomCount)];
   if (!requests.some(m=>(values[m[1]] || Number(m[1]))>1)) return false;
