@@ -70,14 +70,12 @@ const imageUrl = (code: string) => IMAGE_BASE + encodeURIComponent(code);
 export type InstagramTurn = {
   ig_acao: InstagramAction;
   ig_payload: string;
-  ig_botao_exibido: 'SIM' | 'NAO';
   state?: string;
   quote_state?: string;
 };
 
 export async function instagramTurn(body: any, deps: InstagramDependencies): Promise<InstagramTurn> {
   const message = text(body?.user_message);
-  const buttonShown = text(body?.ig_botao_exibido) === 'SIM';
   let state = body?.state;
   let quoteState = body?.quote_state;
   const messages: InstagramMessage[] = [];
@@ -149,16 +147,21 @@ export async function instagramTurn(body: any, deps: InstagramDependencies): Pro
     footer = 'NAO';
   }
   if (action !== 'HUMANO' && !messages.length && action !== 'VAZIO') { say(INSTAGRAM_FALLBACK); footer = 'NAO'; }
-  const withFooter = footer === 'SEMPRE' || footer === 'UMA_VEZ' && !buttonShown;
+  // General answers carry the reception button once a day, with the first
+  // reply of the day (WhatsApp keeps a tag for this; here the state says it).
+  let firstOfDay = false;
+  try { firstOfDay = JSON.parse(String(state || '{}'))?.daily_greeting?.first === true; } catch { /* keep false */ }
+  const withFooter = footer === 'SEMPRE' || footer === 'UMA_VEZ' && firstOfDay;
   if (withFooter && action !== 'HUMANO' && messages.length) messages.push({t: 'footer'});
   // Keep the Dynamic block within its message limit, preserving the footer.
   const footerItem = messages.at(-1)?.t === 'footer' ? messages.pop() : undefined;
   const capped = messages.slice(0, INSTAGRAM_MAX_MESSAGES - (footerItem ? 1 : 0));
   if (footerItem) capped.push(footerItem);
+  const finalAction: InstagramAction = action !== 'HUMANO' && !capped.length ? 'VAZIO' : action;
   return {
-    ig_acao: action !== 'HUMANO' && !capped.length ? 'VAZIO' : action,
-    ig_payload: JSON.stringify({v: 1, m: capped}),
-    ig_botao_exibido: buttonShown || withFooter && action !== 'HUMANO' ? 'SIM' : 'NAO',
+    ig_acao: finalAction,
+    // The action travels inside the payload too, so ManyChat branches on one field.
+    ig_payload: JSON.stringify({v: 1, a: finalAction, m: capped}),
     ...(typeof state === 'string' ? {state} : {}),
     ...(typeof quoteState === 'string' ? {quote_state: quoteState} : {}),
   };

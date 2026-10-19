@@ -36,12 +36,12 @@ const {control,resolver,instagramText,splitInstagramText,instagramContent,INSTAG
 const WRONG_AI='Não aceitamos pets, incluindo RDC. Parcelamos em até 3 vezes.';
 async function call(operation,body,query={}){let output;await resolver({method:'POST',body,query:{operation,...query},headers:{}},{status(code){assert.equal(code,200);return this;},json(v){output=v;return v;},setHeader(){}});return output;}
 function instagram(seed){
-  let state=seed,quote,shown='';
+  let state=seed,quote;
   return async function say(message,ai=WRONG_AI){
     now+=60000;
     const p=control({operation:'prepare',user_message:message,state,quote_state:quote},now);
-    const out=await call('instagram',{user_message:message,state:p.state,quote_state:quote,ai_response:ai,ig_botao_exibido:shown,subscriber_id:'1'});
-    state=out.state||state;quote=out.quote_state||quote;shown=out.ig_botao_exibido;
+    const out=await call('instagram',{user_message:message,state:p.state,quote_state:quote,ai_response:ai,subscriber_id:'1'});
+    state=out.state||state;quote=out.quote_state||quote;
     const payload=JSON.parse(out.ig_payload);
     return {...out,messages:payload.m,texts:payload.m.filter(m=>m.t==='text').map(m=>m.v),images:payload.m.filter(m=>m.t==='image').map(m=>m.v)};
   };
@@ -68,7 +68,6 @@ test('Réveillon card on Instagram, then the quoted category photo with the butt
   assert.match(card.texts.join('\n'),/Indicada para vocês: Suíte Casal/);
   for(const t of card.texts){assert.ok(t.length<=1000);assert.doesNotMatch(t,/\*[^*\n]+\*/);}
   assert.equal(card.messages.at(-1).t,'footer');
-  assert.equal(card.ig_botao_exibido,'SIM');
   const photo=await say('tem foto?');
   assert.equal(photo.images.length,1);
   assert.match(photo.images[0],/package-image\?code=ROOM_ID%7Ccasal/);
@@ -99,6 +98,7 @@ test('asking for the reception hands off; an empty answer is never rendered',asy
   now=Date.parse('2026-10-17T11:00:00-03:00');
   const out=await instagram()('Quero falar com a recepção, por favor');
   assert.equal(out.ig_acao,'HUMANO');
+  assert.match(out.ig_payload,/"a":"HUMANO"/);
   assert.ok(!out.messages.some(m=>m.t==='footer'));
 });
 
