@@ -45,9 +45,10 @@ export function nextRoomMedia(reference: string, rooms: MediaRoom[]) {
   return roomPhotoResult(selected, true);
 }
 
-// The ManyChat photo loop delivers at most 4 photos per request (WhatsApp
-// test of 17/10/2026): a longer gallery names the rest instead of losing it.
-const MAX_GALLERY = 4;
+// The ManyChat photo loop delivers at most 4 photos per request, and with 4
+// the closing "Falar com a recepção" step is cut (WhatsApp tests 17 and
+// 19/10/2026). Galleries send 3 and name the rest.
+const MAX_GALLERY = 3;
 function galleryResult(available: MediaRoom[]) {
   const shown = available.slice(0, MAX_GALLERY), rest = available.slice(MAX_GALLERY);
   const result = roomPhotoResult(shown, true);

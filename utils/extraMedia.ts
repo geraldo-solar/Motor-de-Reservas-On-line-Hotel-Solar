@@ -147,13 +147,17 @@ export function requestedExtraCodes(message:string,_assistant:string,requestedBe
 export function extraMediaResult(codes:string[],extras:ExtraRecord[],includedBoat=false) {
   const active=extras.filter(e=>e.active!==false);
   // A paid service absent from (or inactive in) the catalog gets no photo.
-  const withPhotos=codes.filter(code=>{
+  const photographed=codes.filter(code=>{
     const extra=active.find(e=>extraCode(e.name||'')===code);
     return (extra||!['MESA','LUA'].includes(code)) && extraImage(extra,code);
   });
-  const without=codes.filter(code=>!withPhotos.includes(code));
+  // 3 photos per request (ManyChat loop limit); the 4th service goes as text.
+  const withPhotos=photographed.slice(0,3);
+  const textOnly=photographed.slice(3);
+  const without=codes.filter(code=>!photographed.includes(code));
   const chosen=withPhotos[0];
-  const missingText=without.map(code=>extraCaption(code,active,includedBoat)+'\nAinda não há foto cadastrada desse serviço para enviar.').join('\n\n');
+  const missingText=[...textOnly.map(code=>extraCaption(code,active,includedBoat)),
+    ...without.map(code=>extraCaption(code,active,includedBoat)+'\nAinda não há foto cadastrada desse serviço para enviar.')].join('\n\n');
   const caption=chosen ? extraCaption(chosen,active,includedBoat)+(missingText?'\n\n'+missingText:'') : missingText;
   return {quote_request:chosen?`EXTRA_ID|${chosen}|${withPhotos.slice(1).join(',')}|${includedBoat?'INCLUDED':'PAID'}`:'ROOM_LIST',quote_text:caption,conversation_text:caption,matched:true,match_type:'extra_media',extra_codes:codes,photo_codes:withPhotos,availability_checked:false};
 }

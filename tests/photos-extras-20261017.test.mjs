@@ -78,8 +78,8 @@ test('a generic room photo after a date quote is the highlighted category; plura
   assert.equal((await say('me manda foto do quarto')).result.quote_request,'ROOM_ID|casal');
   // ManyChat delivers 4 photos per request: the other categories are named.
   const gallery=await say('tem fotos dos quartos?');
-  assert.equal(gallery.result.quote_request,'ROOM_ID|casal|triplo,loft,sacada');
-  assert.match(gallery.text,/Seguem fotos de 4 categorias\. Também temos Suíte Quádruplo e Suíte Varanda Térreo; se quiser ver, é só pedir\./);
+  assert.equal(gallery.result.quote_request,'ROOM_ID|casal|triplo,loft');
+  assert.match(gallery.text,/Seguem fotos de 3 categorias\. Também temos Suíte Sacada Vista Mar, Suíte Quádruplo e Suíte Varanda Térreo; se quiser ver, é só pedir\./);
   const fresh=conversation();
   assert.equal((await fresh('Pode me mandar fotos dos quartos?')).result.match_type,'room_gallery');
 });
@@ -88,10 +88,10 @@ test('hotel areas have official photos, continue as a sequence and accept short 
   now=Date.parse('2026-10-17T11:00:00-03:00');
   const say=conversation();
   const rest=await say('Tem fotos do restaurante?');
-  assert.equal(rest.result.quote_request,'SITE_ID|S73_SALAO|S73_PISCINA,RESERVA_1,RESERVA_2');
+  assert.equal(rest.result.quote_request,'SITE_ID|S73_SALAO|S73_PISCINA,RESERVA_1');
   assert.equal(sitePhotoUrl(rest.result.quote_request),'/media/solar73-salao.jpg');
   const second=await next(rest.result.quote_request);
-  assert.equal(second.quote_request,'SITE_ID|S73_PISCINA|RESERVA_1,RESERVA_2');
+  assert.equal(second.quote_request,'SITE_ID|S73_PISCINA|RESERVA_1');
   assert.equal((await next('SITE_ID|RESERVA_2')).quote_request,'ROOM_DONE');
   assert.equal((await next('SITE_ID|RESERVA_1|RESERVA_2')).quote_request,'SITE_ID|RESERVA_2');
   assert.equal((await say('e do bar?')).result.quote_request,'SITE_ID|BAR|BAR_LOUNGE');
@@ -100,9 +100,9 @@ test('hotel areas have official photos, continue as a sequence and accept short 
   await ask('manda fotos');
   assert.match((await ask('restaurante')).result.quote_request,/^SITE_ID\|S73_SALAO/);
   const tour=conversation();
-  assert.equal((await tour('manda fotos do hotel')).result.quote_request,'SITE_ID|HOTEL_AEREA|HOTEL_PISCINA,HOTEL_HALL,PRAIA');
+  assert.equal((await tour('manda fotos do hotel')).result.quote_request,'SITE_ID|HOTEL_AEREA|HOTEL_PISCINA,HOTEL_HALL');
   assert.equal((await tour('fotos da piscina do hotel')).result.quote_request,'EXTRA_ID|PISCINA||PAID');
-  assert.equal((await tour('fotos do reserva solar')).result.quote_request,'SITE_ID|RESERVA_1|RESERVA_2,RESERVA_TRAPICHE,RESERVA_AEREA');
+  assert.equal((await tour('fotos do reserva solar')).result.quote_request,'SITE_ID|RESERVA_1|RESERVA_2,RESERVA_AEREA');
   assert.equal((await tour('foto do café da manhã')).result.quote_request,'SITE_ID|CAFE');
   assert.equal(sitePhotoUrl('SITE_ID|NOPE'),undefined);
 });

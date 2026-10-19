@@ -48,9 +48,9 @@ const photos: Record<string, {url: string; caption: string}> = {
 // Subjects in the customer's own words. Rooms, pools, bicycles, the boat and
 // the paid extras keep their own media flows.
 const siteSubjects: {re: RegExp; keys: string[]}[] = [
-  {re: /\breserva\s+solar\b|\brestaurantes? (?:da|na|de) praia\b|\bpe na areia\b|\btrapiche\b/, keys: ['RESERVA_1', 'RESERVA_2', 'RESERVA_TRAPICHE', 'RESERVA_AEREA']},
+  {re: /\breserva\s+solar\b|\brestaurantes? (?:da|na|de) praia\b|\bpe na areia\b|\btrapiche\b/, keys: ['RESERVA_1', 'RESERVA_2', 'RESERVA_AEREA']},
   {re: /\bsolar\s*73\b/, keys: ['S73_SALAO', 'S73_EXTERNA', 'S73_PISCINA']},
-  {re: /\brestaurantes?\b|\bgastronomia\b/, keys: ['S73_SALAO', 'S73_PISCINA', 'RESERVA_1', 'RESERVA_2']},
+  {re: /\brestaurantes?\b|\bgastronomia\b/, keys: ['S73_SALAO', 'S73_PISCINA', 'RESERVA_1']},
   {re: /\bcafe da manha\b/, keys: ['CAFE']},
   {re: /\bbar\b/, keys: ['BAR', 'BAR_LOUNGE']},
   {re: /\bpraias?\b/, keys: ['PRAIA', 'PRAIA_2']},
@@ -59,7 +59,7 @@ const siteSubjects: {re: RegExp; keys: string[]}[] = [
   {re: /\bcapela\b/, keys: ['CAPELA']},
   {re: /\b(?:auditorio|salao de eventos|espacos? (?:para|de) eventos?|eventos? corporativos?|coffee break)\b/, keys: ['AUDITORIO', 'AUDITORIO_2', 'COFFEE']},
   {re: /\b(?:fachada|entrada|hall|recepcao)\b/, keys: ['HOTEL_FACHADA', 'HOTEL_HALL']},
-  {re: /\b(?:hotel|estrutura|dependencias|areas? comuns?|areas? de lazer|lazer|espacos?|ambientes?)\b/, keys: ['HOTEL_AEREA', 'HOTEL_PISCINA', 'HOTEL_HALL', 'PRAIA']},
+  {re: /\b(?:hotel|estrutura|dependencias|areas? comuns?|areas? de lazer|lazer|espacos?|ambientes?)\b/, keys: ['HOTEL_AEREA', 'HOTEL_PISCINA', 'HOTEL_HALL']},
 ];
 const sitePhotoWords = /\b(fotos?|fotografias?|imagem|imagens|galeria|album|video|videos)\b/;
 const otherMediaSubjects = /\b(aptos?|apartamentos?|quartos?|acomodac(?:ao|oes)|suites?|lofts?|piscinas?|hidro\w*|parquinhos?|parque infantil|playground|biciclet\w*|bikes?|barcos?|catamara|passeio|mesa posta|lua de mel|kit)\b/;
@@ -80,8 +80,8 @@ export function sitePhotoKeys(message: string): string[] {
     if (subject.keys[0] === 'RESERVA_1' || subject.keys[0] === 'S73_SALAO') rest = rest.replace(/\brestaurantes?\b/g, m => ' '.repeat(m.length));
   }
   if (!found.length) return [];
-  // ManyChat delivers at most 4 photos per request.
-  return [...new Set(found.sort((a, b) => a.index - b.index).flatMap(item => item.keys))].slice(0, 4);
+  // ManyChat delivers 3 photos plus the closing button per request.
+  return [...new Set(found.sort((a, b) => a.index - b.index).flatMap(item => item.keys))].slice(0, 3);
 }
 /** A short reply that only names hotel areas ("restaurante", "e da quadra?"). */
 export function siteSubjectOnly(message: string) {
