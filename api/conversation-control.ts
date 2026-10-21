@@ -922,6 +922,9 @@ function controlTurn(body: any, now = Date.now()) {
     delete state.subject;delete state.extra_photo_subjects;delete state.event;delete state.programming_pending;
     delete state.package_date_request;
     if(!state.package_context&&state.recent_package)state.package_context={...state.recent_package,updated_at:now};
+    // The party price offers the package too: "2 adultos" next is about it.
+    if(newYearSale.kind==='party_price'&&!state.package_context)state.package_context={id:newYearCampaignPackage.id,name:newYearCampaignPackage.name,
+      start_date:newYearCampaignPackage.start_date,end_date:newYearCampaignPackage.end_date,updated_at:now};
     if(state.package_context){state.topic='package_info';state.topic_at=now;}
     state.resolved_message=raw;
     if(body.operation==='prepare'){

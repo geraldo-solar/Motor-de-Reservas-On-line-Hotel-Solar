@@ -106,3 +106,28 @@ test('"Somente eu e minha filha" são 2 pessoas e pede a idade (Lilian)',()=>{
     assert.deepEqual([r.guests,r.party.adults,r.party.children,r.children_pending],[2,1,1,true],message);
   }
 });
+
+test('preço da festa sem falar de hospedagem: festa avulsa e pacote, e pergunta (Lisiany)',async()=>{
+  now=Date.parse('2026-10-21T17:51:00-03:00');
+  for(const message of ['E na noite da virada, qto tá a festa','Quanto custa a festa da virada?','qual o valor da festa do réveillon?']){
+    const say=conversation();
+    const t=await say(message);
+    assert.equal(t.r.quote_request,'NOQUOTE',message);
+    assert.match(t.text,/pulseira de R\$ 800 por pessoa/,message);
+    assert.match(t.text,/a festa já está incluída no pacote do Réveillon/,message);
+    assert.match(t.text,/Você quer só a festa ou a festa com hospedagem\?/,message);
+    assert.doesNotMatch(t.text,/a partir de R\$ 5\.600|Vou chamar nossa equipe/,message);
+    // "Só a festa" afterwards: the team sends the payment.
+    const only=await say('Só a festa');
+    assert.equal(only.r.quote_request,'HUMANO',message);
+    assert.match(only.text,/R\$ 800 por pessoa/);
+  }
+  // A group or lodging word keeps the package flow; "só a festa" stays as it was.
+  for(const message of ['Quanto fica o pacote com a festa da virada para 2 pessoas?','Quanto é a festa de aniversário?','A festa está inclusa no pacote?'])
+    assert.notEqual(newYearSalesReply(message,undefined,now)?.kind,'party_price',message);
+  assert.equal(newYearSalesReply('Quanto é só a festa da virada?',undefined,now)?.kind,'party_only');
+  // "2 adultos" next is about the package offered with the party price.
+  const say=conversation();
+  await say('E na noite da virada, qto tá a festa');
+  assert.match((await say('2 adultos')).text,/Réveillon Solar 2027[\s\S]*Indicada para vocês: Suíte Casal\* — \*R\$ 5\.600,00/);
+});
