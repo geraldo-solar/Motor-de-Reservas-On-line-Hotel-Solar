@@ -302,7 +302,10 @@ function everyonesAges(s: string, total: number, children: number): number[] | u
 }
 
 export function updateFamilyParty(message: string, previous?: unknown, now=Date.now(), knownTotal?: number): FamilyPartyResult {
-  let s=informalComposition(norm(message));
+  // "Somente eu e minha filha" is "eu e minha filha" when no group is known
+  // yet (audit 21/10/2026); with a known group it may be a partial plan.
+  const fresh=!readFamilyParty(previous,now);
+  let s=informalComposition(norm(message).replace(fresh?/^(?:(?:somente|so|apenas|seria|seremos|sera|vai ser|vamos)\s+)+(?=eu\s+(?:e|com)\s+(?:minha|meu|minhas|meus)\s+(?:filh|net|sobrinh|entead))/:/$^/,''));
   // "Dois idosos" are two adults ("casal de idosos" stays a couple).
   s=s.replace(/\bidos([oa])s\b/g,'adult$1s').replace(/\bidos([oa])\b/g,'adult$1');
   // "3 crianças (10,5,3)" / "2 crianças: 8 e 4": a list matching the count,

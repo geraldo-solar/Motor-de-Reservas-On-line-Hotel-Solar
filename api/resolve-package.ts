@@ -479,7 +479,8 @@ function occupancyAnswer(guests: number, family: {key?: string; eligible: number
 const groupQuestionKind = (text: string) =>
   /Quantas pessoas vão se hospedar|Para quantas pessoas será a (?:estadia|hospedagem|reserva)|preciso saber para quantas pessoas/i.test(text) ? 'people'
   : /Quais são as idades/.test(text) ? 'ages' : undefined;
-const repeatedQuestionAnswer = 'Para não te fazer repetir, vou chamar nossa equipe para calcular o valor para vocês nesta conversa.';
+const stayDateMention = (text: string) => /\b\d{1,2}\s*\/\s*\d{1,2}\b|\b(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b|\bdias?\s+\d{1,2}\b|\b(?:amanha|hoje|fim de semana|final de semana|feriado)\b/.test(normalize(text));
+const repeatedQuestionAnswer ='Para não te fazer repetir, vou chamar nossa equipe para calcular o valor para vocês nesta conversa.';
 
 // The customer asked the price again without the group or dates (audit
 // 05/10/2026, "Estou tentando mas não consigo saber o valor"): the regular
@@ -520,6 +521,16 @@ function repeatedQuestionHandoff(payload: any, sourceState: any, message: string
   // Ages count only when one more was understood (audit 07/10/2026: "0",
   // "42, 33 e 52 e 0" and "Crianças de 11 anos" got the same question).
   if (kind === 'ages' ? state?.ages_progress === true : updateFamilyParty(message, undefined, Date.now()).handled) return payload;
+  // Dates are progress too (audit 21/10/2026: "Dia 23/10 para 24/10?" after
+  // "Para quantas pessoas?" went to the team instead of asking the group).
+  if (kind === 'people' && stayDateMention(message)) {
+    let facts: any;
+    try { facts = JSON.parse(payload.state)?.facts; } catch { /* Keep the question as is. */ }
+    const br = (iso: unknown) => typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '';
+    const noted = br(facts?.check_in) && br(facts?.check_out) && /^Para quantas pessoas será a estadia\?$/.test(String(payload.conversation_text || '').trim())
+      ? `Anotei as datas: ${br(facts.check_in)} a ${br(facts.check_out)}. Para quantas pessoas será a estadia? Se houver crianças, me diga as idades.` : '';
+    return noted ? {...payload, quote_text: noted, conversation_text: noted} : payload;
+  }
   // A repeated "quantas pessoas?" about a price gets the table once; after it, the team.
   const table = kind === 'people' && priceTable && !priceTableSent(state) ? priceTable : undefined;
   const answer = table || repeatedQuestionAnswer;
@@ -1249,8 +1260,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // campaign package, not the list of December packages (audit 05/10/2026).
   const campaignPackage=!nextPackage&&endOfYearMention(userMessage)&&newYearCampaignFocus(conversationState?.campaign,conversationState?.facts)
     ?(currentPackages as PackageRecord[]).find(pkg=>pkg.id===newYearCampaignPackage.id):undefined;
-  const best = nextPackage?{pkg:nextPackage,score:scorePackage(userMessage,nextPackage)}
+  let best = nextPackage?{pkg:nextPackage,score:scorePackage(userMessage,nextPackage)}
     :campaignPackage?{pkg:campaignPackage,score:100}:ranked[0];
+  // Natal + Réveillon only when the customer asks for Christmas too (audit
+  // 21/10/2026: Réveillon dates written out got the 10-night package).
+  const bothHolidays = (item: PackageRecord) => /\bnatal\b/.test(normalize(String(item.name || ''))) && /\b(?:reveillon|ano novo|virada)\b/.test(normalize(String(item.name || '')));
+  if (!nextPackage && bothHolidays(best.pkg) && !/\bnatal(?:ino|ina)?\b/.test(normalize(userMessage))) {
+    const single = ranked.find(item => !bothHolidays(item.pkg) && item.score >= 20);
+    if (single) best = single;
+  }
 
   if (best.score < 20&&!nextPackage) {
     return res.status(200).json({

@@ -259,6 +259,16 @@ function loadState(value: unknown, now = Date.now()): State {
   const lastMessage = String(parsed.history.at(-1) || '');
   if (eventInquiry(lastMessage) && new RegExp(`\\b${facts.guests}\\s*(pessoas|convidados|participantes)\\b`).test(norm(lastMessage))) delete facts.guests;
   if (typeof f.children_pending === 'boolean') facts.children_pending = f.children_pending;
+  // Audit 21/10/2026 (Suziane): "a criança tem 5 anos" two hours after "Quais
+  // são as idades das crianças?" lost the group and went to the team as a
+  // repeated question. While our last message still waits for the ages, the
+  // group stays for up to a day.
+  const lastAssistant = Array.isArray(parsed.turns) ? [...parsed.turns].reverse().find((t: any) => t?.role === 'assistant') : undefined;
+  const waitingAges = /Quais são as idades/.test(String(lastAssistant?.text || ''));
+  const party = parsed.family_party;
+  if (waitingAges && party && !readFamilyParty(party, now) && Number.isFinite(party.updated_at) && party.updated_at > 0
+    && party.updated_at <= now && now - party.updated_at <= 24 * 3600000 && readFamilyParty(party, party.updated_at))
+    parsed.family_party = {...party, updated_at: now};
   const stayDatePending = readStayDatePending(parsed.stay_date_pending, now);
   // Expiry must not restore a checkout that was deliberately left unconfirmed.
   if (parsed.stay_date_pending) delete facts.check_out;
@@ -434,7 +444,16 @@ function parseDates(s: string, now: number): { dates: string[]; unclear?: boolea
   // "às 10.30" or a price such as "5.600" is not a date.
   s = s.replace(/(?<![\d.,/])(\d{1,2})\.(\d{2})(?:\.(\d{4}|\d{2}))?(?![\d.,])/g, (all, d: string, m: string, y: string | undefined, offset: number, whole: string) =>
     +d >= 1 && +d <= 31 && +m >= 1 && +m <= 12 && !/\b(?:as|das|a partir das)\s*$/.test(whole.slice(0, offset)) ? `${d}/${m}${y ? '/' + y : ''}` : all)
-    .replace(/(\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)(?=[a-z])/g, '$1 ');
+    .replace(/(\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)(?=[a-z])/g, '$1 ').replace(/\b(\d{1,2})(?=(?:manha|tarde|noite)\b)/g, '$1 ');
+  // Written months become numeric dates, so the rules below also cover month
+  // turns (audit 21/10/2026): "Dezembro 31 a 3 de janeiro" -> "31/12 a 3/1",
+  // "dia 30 de dezembro ... sair dia 2" -> "dia 30/12 ... sair dia 2".
+  const monthNumber = (name: string) => months.indexOf(name) + 1;
+  const notCount = '(?!\\s*(?:pessoas?|adult|crianc|hospedes?|noites?|diarias?|dias\\b|anos?|meses?|x\\b|vezes|quartos?|apart|suites?|h\\b|horas?))';
+  s = s.replace(new RegExp(`\\b(\\d{1,2})\\s+(?:de\\s+)?(${months.join('|')})(?:\\s+(?:de\\s+)?(20\\d{2}))?\\b`, 'g'),
+    (all, d: string, m: string, y?: string) => +d >= 1 && +d <= 31 ? `${d}/${monthNumber(m)}${y ? '/' + y : ''}` : all)
+    .replace(new RegExp(`\\b(${months.join('|')})\\s+(?:dia\\s+)?(\\d{1,2})\\b(?![\\d/])${notCount}`, 'g'),
+      (all, m: string, d: string) => +d >= 1 && +d <= 31 ? `${d}/${monthNumber(m)}` : all);
   const today = new Date(now - 3 * 3600000).toISOString().slice(0, 10);
   const currentYear = Number(today.slice(0, 4));
   const yearNumber = (value?: string) => value ? Number(value.length === 2 ? `20${value}` : value) : currentYear;
@@ -491,7 +510,7 @@ function parseDates(s: string, now: number): { dates: string[]; unclear?: boolea
   // month, or the next month when it is not after the entry day.
   if (numeric.length === 1 && numeric[0].date) {
     const after = s.slice(numeric[0].end);
-    const exitDay = /^\s*,?\s*(?:e\s+)?(?:a|ao|ate|-|saida|sai|saio)\s+(?:(?:no|em|o)\s+)?(?:dia\s+)?(\d{1,2})\b(?![\/\d]|\s*(?:h\b|horas?|pessoas?|adult|crianc|hospedes?|noites?|diarias?|anos?|meses?|x\b|vezes))/.exec(after);
+    const exitDay = /^\s*,?\s*(?:(?:a|pela|de|na|no|com)\s+)?(?:(?:noite|tarde|manha)\s*,?\s*)?(?:e\s+)?(?:a|ao|ate|-|saida|sai|saio|sair|saindo|volta|voltando)\s+(?:(?:no|em|o)\s+)?(?:dia\s+)?(\d{1,2})\b(?![\/\d]|\s*(?:h\b|horas?|pessoas?|adult|crianc|hospedes?|noites?|diarias?|anos?|meses?|x\b|vezes))/.exec(after);
     if (exitDay) {
       const first = numeric[0].date;
       let year = +first.slice(0, 4), month = +first.slice(5, 7);
