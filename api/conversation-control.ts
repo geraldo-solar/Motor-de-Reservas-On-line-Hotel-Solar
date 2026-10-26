@@ -18,6 +18,7 @@ import { isAttachmentInput, analyzeAttachment, type AttachmentKind } from '../ut
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
 import { packageCardChoice } from '../utils/packageReply.js';
 import { closingTurn, assistantBefore, thanksAnswer } from '../utils/conversationClosers.js';
+import { menuDetailAnswer, bookingDenial, bookingHereAnswer } from '../utils/menuDetails.js';
 import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageAcknowledgment, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, packageResumeRequest, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {newYearSalesTurn,newYearCampaignSeed,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,newYearPolicyContext,newYearSiteLink,newYearCampaignFocus,type NewYearStayRequest} from '../utils/newYearSales.js';
@@ -76,10 +77,14 @@ const restaurantInquiry = (s: string) => !explicitLodgingRequest(s) && (/\breser
 const restaurantBookingText = 'No restaurante Reserva Solar, as mesas são por ordem de chegada: para uma visita comum não é preciso reservar. O café da manhã avulso durante a semana, eventos e a Mesa Posta precisam de agendamento com a recepção.';
 function restaurantBookingFollowup(message: string, state: any) {
   const s = norm(message);
-  if (!/^(?:e\s+|mas\s+)?(?:(?:precisa|preciso|tem que|temos que|e preciso|e necessario|necessita)\s+(?:de\s+)?(?:fazer\s+)?reserv(?:ar|a)|(?:da|pode|posso|tem como|consigo)\s+(?:para\s+|pra\s+)?reservar(?:\s+mesa)?|reserva(?:m)?\s+mesa)\s*\??$/.test(s)) return;
+  if (!/^(?:e\s+|mas\s+)?(?:(?:as\s+|e\s+as\s+)?reservas?|como (?:faco|faz|fazer) (?:para |pra )?reservar(?:\s+mesa)?|(?:precisa|preciso|tem que|temos que|e preciso|e necessario|necessita)\s+(?:de\s+)?(?:fazer\s+)?reserv(?:ar|a)|(?:da|pode|posso|tem como|consigo)\s+(?:para\s+|pra\s+)?reservar(?:\s+mesa)?|reserva(?:m)?\s+mesa)\s*\??$/.test(s)) return;
   const previous = [...(state.history || []).slice(-3, -1), assistantBefore(state, message)].map(norm).join(' ');
-  return /\b(?:cardapio|menu|restaurante|reserva solar|solar 73|almoco|almocar|jantar|jantares)\b/.test(previous)
-    && !/\b(?:hospedagem|diarias?|quartos?|apartamentos?|apto|suites?|pacote|reveillon)\b/.test(previous) ? restaurantBookingText : undefined;
+  if (!/\b(?:cardapio|menu|restaurante|reserva solar|solar 73|almoco|almocar|jantar|jantares)\b/.test(previous)
+    || /\b(?:hospedagem|diarias?|quartos?|apartamentos?|apto|suites?|pacote|reveillon)\b/.test(previous)) return;
+  // A bare "Reservas" may still mean a room: answer both (Rhavenne, 24/10).
+  return /^(?:e\s+)?(?:as\s+|e\s+as\s+)?reservas?\s*[?.!]*$/.test(s)
+    ? `${restaurantBookingText}\n\nSe for reserva de hospedagem, fazemos por aqui: me diga as datas de entrada e saída e quantas pessoas vão.`
+    : restaurantBookingText;
 }
 // "Sou vizinha, tenho apto no Atlântico Norte" (audit 26/10/2026) is not a
 // lodging request.
@@ -1721,7 +1726,8 @@ function controlTurn(body: any, now = Date.now()) {
   const occupancyFollowup=packageOccupancyFollowup(publicMessage,state.package_context,now);
   const inquiry = occupancyFollowup?undefined:currentGuestInquiry(state, publicMessage,now);
   const diningAnswer = diningPolicyAnswer(publicMessage) || restaurantHoursAnswer(publicMessage,now) || visitorBreakfastAnswer(publicMessage)
-    || restaurantBookingFollowup(publicMessage,state);
+    || restaurantBookingFollowup(publicMessage,state)
+    || menuDetailAnswer(publicMessage,[...(state.history||[]).slice(-3,-1),assistantBefore(state,publicMessage)].join(' '));
   const facilityAnswer = confirmedHotelAnswer(publicMessage) || (inquiry === 'lodging_faq' ? lodgingInclusionsAnswer(publicMessage) || guestFacilityAnswer(publicMessage) || locmilAnswer(publicMessage) : undefined);
   const weekdayQuestion = packageWeekdayClarification(publicMessage, state.package_context, now);
   const roomGuidance=multiRoomGuidanceText(state,publicMessage,now);
@@ -1958,6 +1964,9 @@ function controlTurn(body: any, now = Date.now()) {
     }
   }
   if (question(s)) delete state.pending;
+  // Audit 26/10/2026: "No momento, não realizamos reservas por aqui".
+  if (decision==='NOQUOTE' && answer===String(body.ai_response||'').slice(0,1800) && bookingDenial(answer))
+    answer = restaurantBookingFollowup('reservas', state) || bookingHereAnswer;
   if(decision==='NOQUOTE' && !inquiry && !restaurantInquiry(s) && !mediaRequest(norm(publicMessage))
     && !eventInquiry(publicMessage) && !publicEventInquiry(publicMessage)
     && answer===String(body.ai_response||'').slice(0,1800)

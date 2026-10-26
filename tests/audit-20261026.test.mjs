@@ -214,3 +214,30 @@ test('hóspedes e conversas sem reserva: sem "Para quantas pessoas?" nem equipe 
   now=Date.parse('2026-10-26T15:00:00-03:00');
   assert.equal((await plain('Tem disponibilidade p esse final d semana?','2')).r.quote_request,'QUOTE|2026-10-30|2026-11-01|2|NONE');
 });
+
+test('IA não inventa detalhes do cardápio nem diz que não reserva por aqui (item 5)',async()=>{
+  now=Date.parse('2026-10-24T11:36:00-03:00');
+  // Cynthia: portions and a "café da tarde" menu were invented by the model.
+  let say=conversationAI();
+  await say('Gostaria de ver o cardápio','Aqui está o cardápio do Restaurante Reserva Solar: https://cardapio-reserva-solar.vercel.app/');
+  for(const [msg,ai] of [['Os pratos do cardápio servem quantas pessoas?','Os pratos do cardápio do Reserva Solar são individuais.'],
+    ['Peixe inteiro que tem no cardápio é individual? Acredito que não','O peixe inteiro geralmente é servido para mais de uma pessoa.'],
+    ['Qual o cardápio para café da tarde no reserva solar?','O Restaurante Reserva Solar não possui um cardápio específico para café da tarde.']]){
+    const t=await say(msg,ai);
+    assert.match(t.text,/cardápio oficial/,msg);assert.match(t.text,/cardapio-reserva-solar\.vercel\.app/,msg);
+    assert.doesNotMatch(t.text,/individua|mais de uma pessoa|não possui/,msg);
+  }
+  // Rhavenne: "Reservas" after the menus; the model said bookings are not made here.
+  say=conversationAI();
+  await say('Cardápio','O cardápio do Restaurante Reserva Solar... Posso enviar o link?');
+  await say('Sim','Aqui estão os links dos cardápios: - Reserva Solar: https://cardapio-reserva-solar.vercel.app/ - Solar 73: https://cardapiohotelsolar.vercel.app/');
+  const rha=await say('Reservas','No momento, não realizamos reservas para hospedagem diretamente por aqui. Posso ajudar com informações sobre quartos?');
+  assert.doesNotMatch(rha.text,/não realizamos reservas/);assert.match(rha.text,/ordem de chegada/);assert.match(rha.text,/hospedagem, fazemos por aqui/);
+  say=conversationAI();
+  await say('Boa noite','Olá!');
+  const deny=await say('Como funciona aí?','No momento, não realizamos reservas por aqui. A recepção pode ajudar.');
+  assert.match(deny.text,/Fazemos a sua reserva por aqui, sim!/);
+  // Ordinary answers pass through.
+  say=conversationAI();
+  assert.match((await say('Qual o horário do café da manhã?','O café da manhã é servido das 7h às 10h.')).text,/7h às 10h/);
+});
