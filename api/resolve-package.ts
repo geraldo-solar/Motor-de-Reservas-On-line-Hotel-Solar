@@ -537,6 +537,8 @@ function repeatedQuestionHandoff(payload: any, sourceState: any, message: string
   let state: any;
   try { state = typeof sourceState === 'string' ? JSON.parse(sourceState) : sourceState; } catch { return payload; }
   if (groupQuestionKind(assistantBefore(state, message)) !== kind) return payload;
+  // The earlier question was on another day: asking again is not a loop.
+  try { if (JSON.parse(payload.state)?.daily_greeting?.first === true) return payload; } catch { /* Keep checking. */ }
   // A partial answer ("uma tem 2 anos", "4 pessoas") is progress, not a loop.
   // Ages count only when one more was understood (audit 07/10/2026: "0",
   // "42, 33 e 52 e 0" and "Crianças de 11 anos" got the same question).
@@ -637,7 +639,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // "Ok", "obrigado", "👍", "nenhuma": a short closing. After a goodbye, or
   // for the customer's own away message, nothing is sent (ROOM_DONE).
   const closingCandidate=!req.query?.operation&&!isAudioInput(incomingMessage)
-    ?closingTurn(serviceMessage,assistantBefore(earlyState,serviceMessage)):undefined;
+    ?closingTurn(serviceMessage,assistantBefore(earlyState,serviceMessage),earlyState?.daily_greeting?.first===true):undefined;
   const closing=closingCandidate?.kind==='closing'&&closingCandidate.answer!==thanksAnswer&&earlyState?.package_context&&earlyState?.topic==='package_info'
     &&packageAcknowledgment(serviceMessage)?undefined:closingCandidate;
   if(closing){

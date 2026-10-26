@@ -562,7 +562,8 @@ function parseDates(s: string, now: number): { dates: string[]; unclear?: boolea
     return {date:iso(+m[1],month,year),index:m.index!,end:m.index!+m[0].length};
   });
   if (written.length) return finish(written);
-  if (/\b(esse|este|proximo|neste|nesse)?\s*(final de semana|fim de semana)\b/.test(s)) {
+  // "esse final d semana", "fds" (audit 26/10/2026).
+  if (/\b(esse|este|proximo|neste|nesse)?\s*(final de semana|fim de semana|(?:final|fim) d semana|fds)\b/.test(s)) {
     const friday = new Date(`${today}T12:00:00Z`);
     let days = (5 - friday.getUTCDay() + 7) % 7;
     if (/proximo/.test(s) && days === 0) days = 7;
@@ -1737,7 +1738,7 @@ function controlTurn(body: any, now = Date.now()) {
   // "Entendi"/"Ótimo" about the package in focus keeps its own short reply.
   const lastAssistantText=assistantBefore(state,raw);
   const acceptedOffer=!choiceAccepted&&!cardChoice&&!state.multi_room&&offerAccepted(s)?modelOffer(lastAssistantText):undefined;
-  const closingCandidate=!choiceAccepted&&!cardChoice&&!acceptedOffer?closingTurn(raw,assistantBefore(state,raw)):undefined;
+  const closingCandidate=!choiceAccepted&&!cardChoice&&!acceptedOffer?closingTurn(raw,assistantBefore(state,raw),state.daily_greeting?.first===true):undefined;
   const closing=closingCandidate?.kind==='closing'&&closingCandidate.answer!==thanksAnswer&&state.package_context&&state.topic==='package_info'&&packageAcknowledgment(raw)
     ?undefined:closingCandidate;
   if (raw === AUDIO_UNAVAILABLE) {

@@ -273,6 +273,12 @@ function auditPhrases(s: string): string {
     (all, count: string, age: string) => { const total = countOf(count); return total && total >= 2 ? `${total - 1} adultos e 1 crianca de ${age} anos` : all; });
   // "3 adultos (casal e filho)": the count of adults stands.
   s = s.replace(new RegExp(`^${n}\\s+adult[oa]s?\\s*\\([^)]*\\)[.!]*$`), (all, count: string) => countOf(count) ? `${countOf(count)} adultos` : all);
+  // "Somos um casal e nossa filha de 14 anos" (audit 26/10/2026), "casal e
+  // 2 filhos de 10 e 12 anos": the couple plus the children named.
+  s = s.replace(/^(?:somos\s+|seremos\s+|sera\s+|e\s+)?(?:um\s+|o\s+)?casal\s*,?\s*(?:e|com|mais)\s+(?:a\s+|o\s+|nossa\s+|nosso\s+|uma\s+|um\s+|minha\s+|meu\s+)?filh[oa]\s+(?:de\s+|com\s+|que tem\s+)?(\d{1,2})\s*anos?\b[.!]*$/,
+    (all, age: string) => Number(age) >= 18 ? '3 adultos' : `2 adultos e 1 crianca de ${age} anos`);
+  s = s.replace(new RegExp(`^(?:somos\\s+|seremos\\s+)?(?:um\\s+|o\\s+)?casal\\s*,?\\s*(?:e|com|mais)\\s+(?:nossos\\s+|nossas\\s+|os\\s+|as\\s+)?${n}\\s+filh[oa]s\\s+(?:de\\s+|com\\s+)?(\\d{1,2})\\s*(?:anos?\\s*)?(?:,|e)\\s*(\\d{1,2})\\s*anos?\\b[.!]*$`),
+    (all, count: string, a: string, b: string) => countOf(count) === 2 && +a < 18 && +b < 18 ? `2 adultos e 2 criancas de ${a} e ${b} anos` : all);
   // "Casal, filho 23 anos (1 quarto)", "3 pessoas, o filho tem 23 anos":
   // grown children are adults.
   const grown = /\b(?:o|a)?\s*filh[oa]\s+(?:tem\s+|de\s+|com\s+)?(\d{1,2})\s*anos?\b/.exec(s);

@@ -187,3 +187,30 @@ test('festa sem hospedagem, mesa no restaurante e vizinha não viram cotação',
   const neighbour=await plain('Tudo perfeito, principalmente o repertório musical!','Sou vizinha de vcs. Tenho apto no Atlântico Norte!');
   assert.doesNotMatch(neighbour.text,/Para quantas pessoas/);assert.equal(neighbour.r.quote_request,'NOQUOTE');
 });
+
+test('hóspedes e conversas sem reserva: sem "Para quantas pessoas?" nem equipe por repetição (item 4)',async()=>{
+  // Abençoada/Edilene: confirms a booking, replies to the check-in welcome a
+  // week later and thanks for the stay after check-out.
+  now=Date.parse('2026-10-16T12:47:00-03:00');
+  const say=conversationAI();
+  await say('Bom dia');
+  const confirm=await say('Sou Edilene, gostaria de confirmar uma reserva!');
+  assert.equal(confirm.r.quote_request,'HUMANO');assert.doesNotMatch(confirm.text,/Para quantas pessoas/);
+  now=Date.parse('2026-10-23T19:10:00-03:00');
+  const fine=await say('Tudo certo');
+  assert.notEqual(fine.r.quote_request,'HUMANO');assert.match(fine.text,/Combinado!/);
+  now=Date.parse('2026-10-25T16:00:00-03:00');
+  const thanks=await say('Agradeço tbm a estadia, como sempre muito maravilhoso o atendimento!😉');
+  assert.match(thanks.text,/Nós que agradecemos/);assert.doesNotMatch(thanks.text,/Para quantas pessoas/);
+  for(const msg of ['Obrigada pela hospedagem, amamos tudo!','Chegamos bem em casa. Obrigado por tudo, voltaremos com certeza'])
+    assert.match((await plain(msg)).text,/Nós que agradecemos/,msg);
+  // A thank-you with a new request is not a goodbye.
+  assert.doesNotMatch((await plain('Obrigada pela estadia! Qual o valor para voltar no feriado?')).text,/Nós que agradecemos/);
+  // Valéria: "um casal e nossa filha de 14 anos" is 3 people with the age.
+  const valeria=await rv('Somos um casal e nossa filha de 14 anos');
+  assert.equal(valeria.state.facts.guests,3);assert.deepEqual(valeria.state.family_party.ages_months,[168]);
+  assert.match(valeria.text,/Indicada para vocês/);
+  // Ediane: "esse final d semana" is the coming weekend.
+  now=Date.parse('2026-10-26T15:00:00-03:00');
+  assert.equal((await plain('Tem disponibilidade p esse final d semana?','2')).r.quote_request,'QUOTE|2026-10-30|2026-11-01|2|NONE');
+});
