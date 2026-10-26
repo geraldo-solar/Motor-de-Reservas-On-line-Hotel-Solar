@@ -236,3 +236,13 @@ export function packageRecommendationInquiry(message: string) {
   if(roomDetailInquiry(message))return false;
   return /\b(indica|indicam|recomenda|recomendam|melhor|sugere|sugestao|pessoas|hospedes|adultos?|casal|filh[oa]s?|familia|valores?|precos?|custa|mais barato|mais economico|loft|suites?|quartos?|acomodacoes|acomodacao)\b/.test(norm(message));
 }
+
+/** "Sem ser réveillon, quanto fica a diária?", "fora do ano novo, em
+ * novembro" (test of 26/10/2026): a named holiday that is ruled out is not the
+ * subject. The phrase is removed before routing; idempotent. */
+export function neutralizeNegatedHolidays(text: string): string {
+  const value = String(text || '');
+  const out = value.replace(/(?:^|(?<=[\s,.;!?(]))(?:sem ser|fora d[oa]s?|que n[ãa]o seja|n[ãa]o (?:[ée]|seja|vai ser|ser[áa]) (?:para |pra |pro |no |na )?)\s*(?:o |a |no |na |do |da )?(?:per[íi]odo d[eoa] |[ée]poca d[eoa] )?(?:r[ée]v[ée]?ill?on|revel+ion|ano novo|virada|natal|carnaval|feriados?)(?=$|[\s,.;!?)])/giu, ' ')
+    .replace(/\s+([,.;!?])/g, '$1').replace(/^[\s,.;]+/, '').replace(/\s{2,}/g, ' ').trim();
+  return out === value.trim() ? value : out || 'outra data';
+}

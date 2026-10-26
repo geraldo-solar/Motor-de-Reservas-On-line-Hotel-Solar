@@ -241,3 +241,18 @@ test('IA não inventa detalhes do cardápio nem diz que não reserva por aqui (i
   say=conversationAI();
   assert.match((await say('Qual o horário do café da manhã?','O café da manhã é servido das 7h às 10h.')).text,/7h às 10h/);
 });
+
+test('teste do Geraldo no WhatsApp: "sem ser réveillon", "fora do ano novo" e "incluso na diária"',async()=>{
+  now=Date.parse('2026-10-26T20:26:00-03:00');
+  const say=conversationAI();
+  const m1=await say('Sem ser réveillon, quanto fica a diária?','Pode detalhar como podemos ajudar?');
+  assert.doesNotMatch(m1.text,/Réveillon Solar 2027/);assert.equal(m1.state.package_context,undefined);
+  const m2=await say('Quero ir fora do ano novo, em novembro','Pode detalhar como podemos ajudar com sua dúvida sobre o hotel?');
+  assert.match(m2.text,/Para quantas pessoas/);assert.doesNotMatch(m2.text,/Réveillon|Pode detalhar/);
+  assert.match((await say('Qual o valor do réveillon?')).text,/Réveillon Solar 2027/);
+  // Right after the Réveillon card, "incluso na diária" is about the package
+  // (rule kept from earlier); in a fresh conversation, the ordinary stay.
+  assert.match((await conversationAI()('O que está incluso na diária?','O café da manhã está incluso.')).text,/Na diária comum estão incluídos café da manhã/);
+  // Ana Luzia's second message.
+  assert.doesNotMatch((await conversationAI()('Sem ser período de réveillon','Certo.')).text,/Réveillon Solar 2027/);
+});

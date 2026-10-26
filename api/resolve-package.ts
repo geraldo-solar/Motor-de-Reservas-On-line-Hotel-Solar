@@ -16,7 +16,7 @@ import { isAudioInput } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage } from '../utils/audioInput.js';
 import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
 import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
-import { namedPackageInquiry, packageGeneralInclusionQuestion, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup,packageDiscoveryRequest,packageRoomDetailFollowup } from '../utils/packageContext.js';
+import { neutralizeNegatedHolidays, namedPackageInquiry, packageGeneralInclusionQuestion, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup,packageDiscoveryRequest,packageRoomDetailFollowup } from '../utils/packageContext.js';
 import {packageInclusionReply} from '../utils/packageInclusions.js';
 import {newYearSalesTurn,newYearStayRange,newYearFullPeriodNote,readNewYearStayRequest,newYearCampaignFocus,newYearCampaignPackage,newYearSalesPolicy,newYearSiteLink} from '../utils/newYearSales.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
@@ -597,6 +597,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only the first response of a user turn: carousel pages / suggested media
   // are internal continuations and must not send the greeting again.
   let priceTable: string | undefined;
+  // "Sem ser réveillon, …": a ruled-out holiday is not the subject (26/10/2026).
+  if (!req.query?.operation && req.body && typeof req.body === 'object') {
+    for (const key of ['user_message', 'message']) if (typeof req.body[key] === 'string') req.body[key] = neutralizeNegatedHolidays(req.body[key]);
+  }
   if (!req.query?.operation || req.query?.transport === MANYCHAT_TEXT_TRANSPORT) {
     const sendJson = res.json.bind(res);
     res.json = ((payload: any) => {

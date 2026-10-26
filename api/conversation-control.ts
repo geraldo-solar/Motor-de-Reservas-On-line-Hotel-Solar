@@ -19,7 +19,7 @@ import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachm
 import { packageCardChoice } from '../utils/packageReply.js';
 import { closingTurn, assistantBefore, thanksAnswer } from '../utils/conversationClosers.js';
 import { menuDetailAnswer, bookingDenial, bookingHereAnswer } from '../utils/menuDetails.js';
-import { packageInquiry, packageDiscoveryRequest, packageFollowup, packageAcknowledgment, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, packageResumeRequest, type PackageContext } from '../utils/packageContext.js';
+import { neutralizeNegatedHolidays, packageInquiry, packageDiscoveryRequest, packageFollowup, packageAcknowledgment, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, packageResumeRequest, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {newYearSalesTurn,newYearCampaignSeed,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,newYearPolicyContext,newYearSiteLink,newYearCampaignFocus,type NewYearStayRequest} from '../utils/newYearSales.js';
 import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
@@ -90,7 +90,9 @@ function restaurantBookingFollowup(message: string, state: any) {
 // lodging request.
 const ownHome = (s: string) => /\b(?:tenho|temos)\s+(?:um\s+|uma\s+|meu\s+|minha\s+)?(?:apto|apartamento|casa)\b|\bsou (?:sua |seu |de vcs |de voces )?vizinh[oa]s?\b|\bmoro (?:aqui|perto|ao lado|em frente|no|na)\b/.test(s)
   && !/\b(?:quero|queria|gostaria|preciso|reservar|valor|preco|quanto|disponibilidade|vaga)\b/.test(s);
-const lodging = (s: string) => !restaurantInquiry(s) && !ownHome(s) && /\b(vaga|vagas|disponibilidade|hospedagem|estadia|diaria|diarias|reservar|reserva|quarto|quartos|apto|apartamento|loft|suite|cotacao|orcamento|pessoas|hospedes|casal|adultos)\b/.test(s);
+// "Quero ir em novembro" (test of 26/10/2026): a trip without dates.
+const tripIntent = (s: string) => /\b(?:quero|queria|queremos|gostaria(?:mos)? de|pretendo|pretendemos|vamos|vou|penso em|pensando em)\s+(?:ir|ficar|passar|viajar|me hospedar|nos hospedar)\b.{0,40}\b(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro|uns dias|alguns dias|semana que vem|proxima semana|proximo mes|mes que vem)\b/.test(s);
+const lodging = (s: string) => !restaurantInquiry(s) && !ownHome(s) && tripIntent(s) || !restaurantInquiry(s) && !ownHome(s) && /\b(vaga|vagas|disponibilidade|hospedagem|estadia|diaria|diarias|reservar|reserva|quarto|quartos|apto|apartamento|loft|suite|cotacao|orcamento|pessoas|hospedes|casal|adultos)\b/.test(s);
 const recommendation = (s: string) => /\b(indica|indicam|indicaria|indicariam|indicado|recomenda|recomendam|recomendaria|recomendariam|melhor|sugere|sugestao)\b/.test(s);
 const question = (s: string) => s.includes('?') || /\b(qual|quais|quanto|quantos|como|onde|quando|indica|recomenda|poderia|pode me|gostaria de saber|tem vaga|tem disponibilidade|inclui|incluido)\b/.test(s);
 // Explicit billing disputes require a person. General payment policies and
@@ -2018,6 +2020,8 @@ function withRecentPackage<T>(result: T, body: any, now: number): T {
 }
 
 export function control(body: any, now = Date.now()) {
+  if (typeof body?.user_message === 'string' && body.operation !== 'remember_response')
+    body = {...body, user_message: neutralizeNegatedHolidays(body.user_message)};
   if(body.operation==='remember_response'&&typeof body.response_text==='string')
     body={...body,response_text:stripAssistantDisclosure(body.response_text)};
   const result = withRecentPackage(controlTurn(body, now), body, now);
