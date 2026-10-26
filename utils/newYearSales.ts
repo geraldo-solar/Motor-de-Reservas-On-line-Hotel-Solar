@@ -73,7 +73,12 @@ export function newYearPartyOnlyInquiry(message: string, context?: unknown, now 
     || /\bnao (?:vou|vamos|quero|queremos|pretendo|pretendemos|precisamos|preciso) (?:ficar hospedad[oa]s?|me hospedar|nos hospedar|(?:de )?hospedagem|dormir|pernoitar)\b/.test(s)
     // "Somente participar da virada" (Inbox 19/10/2026).
     || /\b(?:so|somente|apenas)\s+(?:para\s+|pra\s+)?(?:participar|ir|curtir|aproveitar)\s+(?:d[ao]|n[ao]|a|o)\s+(?:festa|virada)\b/.test(s)
-    || /\bfesta\b.{0,40}\b(?:avuls[oa]|separad[oa]|sem hospedagem|sem estadia)\b/.test(s);
+    || /\bfesta\b.{0,40}\b(?:avuls[oa]|separad[oa]|sem hospedagem|sem estadia)\b/.test(s)
+    // Audit 26/10/2026: "não estando hospedado", "só o show e a ceia, tenho
+    // casa", "moro perto".
+    || /\bnao\s+(?:estando|sendo|estar|ficando|ficar)\s+hospedad[oa]s?\b/.test(s)
+    || /\b(?:so|somente|apenas)\s+(?:o\s+|a\s+)?(?:show|ceia|jantar)(?:\s+(?:e|com)\s+(?:o\s+|a\s+)?(?:show|ceia|festa|jantar))?\b/.test(s)
+    || /\b(?:tenho|temos)\s+(?:casa|apartamento|apto)\b|\bmoro\s+(?:perto|aqui|em salinas|na orla)\b/.test(s) && /\b(?:festa|ceia|show|virada|reveillon)\b/.test(s);
   if (!wristband && !withoutLodging) return false;
   return wristband && (newYearWords.test(s) || /\bfesta\b/.test(s) || focusedOnNewYear(context, now) || /\bpulseiras?\b/.test(s))
     || withoutLodging && (newYearWords.test(s) || /\bfesta\b/.test(s) || focusedOnNewYear(context, now));
@@ -114,6 +119,12 @@ export function newYearStayRange(message: string): Range | undefined {
   return newYearRange(norm(message));
 }
 function newYearRange(s: string): Range | undefined {
+  // "check-in dia 31 de dezembro e check-out dia 02 de janeiro" (audit 26/10).
+  const spelled = s.match(/\b(\d{1,2}) de dezembro\b.{1,50}?\b(\d{1,2}) de janeiro\b/);
+  if (spelled) {
+    const start = `2026-12-${spelled[1].padStart(2, '0')}`, end = `2027-01-${spelled[2].padStart(2, '0')}`;
+    if (+spelled[1] >= 20 && +spelled[1] <= 31 && +spelled[2] >= 1 && +spelled[2] <= 15) return {start, end};
+  }
   const m = s.match(/\b(?:dia\s+)?(\d{1,2})(?:\/(\d{1,2})(?:\/(?:20)?2[67])?)?\s*(?:a|ate|ao|-)\s*(?:o\s+)?(?:dia\s+)?(\d{1,2})(?:\/(\d{1,2})(?:\/(?:20)?2[67])?)?(?!\s*(?:anos?|meses?|pessoas?|criancas?|adultos?|hospedes?|horas?|h\b|x\b|vezes))(?:\s+de\s+(dezembro|janeiro))?\b/);
   if (!m) return;
   const month = (day: number, explicit?: string) => explicit ? Number(explicit) : m[5] === 'janeiro' ? 1 : m[5] === 'dezembro' ? 12 : day >= 20 ? 12 : 1;
@@ -226,6 +237,13 @@ export const newYearFullPeriodNote = (asked: NewYearStayRequest) =>
   `📌 Você pediu ${formatDay(asked.requested_check_in)} a ${formatDay(asked.requested_check_out)}, mas no Réveillon a hospedagem é vendida somente no pacote completo. Por isso os valores já consideram ${formatDay(newYearFullPeriod(asked.requested_check_in, asked.requested_check_out)?.check_in || newYearSalesPolicy.package_start)} a ${formatDay(newYearFullPeriod(asked.requested_check_in, asked.requested_check_out)?.check_out || newYearSalesPolicy.package_end)}.`;
 
 const partyMention = /\b(?:\d{1,2}|uma|um|duas|dois|tres|quatro|cinco|seis|sete|oito|nove|dez)\s+(?:pessoas?|adultos?|hospedes?)\b|\bcasal\b/;
+
+/** "31/12 a 02/01, somos 10 pessoas": the full package can be priced (widened
+ * dates), so the partial period is not only declined. */
+export function quotableNewYearRange(message: string) {
+  const s = norm(message);
+  return !!newYearStayRange(message) && partyMention.test(s) && !skipsPartyNight(s);
+}
 
 /** Réveillon sales answer for this turn. "31/12 a 01/01 para 5 pessoas" has
  * everything to price the full package, so it is quoted (widened dates)

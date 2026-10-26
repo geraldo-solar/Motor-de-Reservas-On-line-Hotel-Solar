@@ -108,12 +108,13 @@ test('"Sim" depois de oferta da IA: cota, chama a equipe ou pergunta o que falta
   await say('Teria um valor mais em conta?? Vocês participam da Black Friday?','Não há participação oficial em Black Friday para esse pacote, mas posso calcular o valor para seu grupo. Deseja que eu faça essa simulação para casal com três filhos de 14, 8 e 7 anos?');
   const janaina=await say('Sim');
   assert.equal(janaina.r.quote_request,'HUMANO');assert.match(janaina.text,/equipe para calcular/);
-  // Ana Marieta: ages the controller could not read.
+  // Ana Marieta: the ages are now read (item 3), so "Quero" quotes the 5.
   say=conversationAI(CAMPAIGN_SEED);
   await say('Quais os valores do Réveillon?');
   await say('São dois adultos e três crianças de 5 anos duas e uma 4 anos.');
   await say('Duas de 5 anos gêmeas e 1 dr 4 anos.','Posso calcular o valor do pacote para 2 adultos e 3 crianças (duas gêmeas de 5 anos e uma de 4 anos) para você?');
-  assert.equal((await say('Quero')).r.quote_request,'HUMANO');
+  const marieta=await say('Quero');
+  assert.equal(marieta.r.quote_request,'QUOTE|2026-12-31|2027-01-03|5|NONE');assert.doesNotMatch(marieta.text,/Quais são as idades/);
   // Messias: an offer to forward his contact.
   say=conversationAI();
   await say('Bom dia!');
@@ -133,4 +134,56 @@ test('"Sim" depois de oferta da IA: cota, chama a equipe ou pergunta o que falta
   await say('Ok','Se quiser, posso calcular o valor. Deseja que eu faça a simulação?');
   const question=await say('Pode ser um apto de casal e um triplo?');
   assert.notEqual(question.r.quote_request,'HUMANO');assert.doesNotMatch(question.text,/equipe para calcular/);
+});
+
+const rv=async(...msgs)=>{const say=conversationAI(CAMPAIGN_SEED);await say('Quais os valores do Réveillon?');let t;for(const m of msgs)t=await say(m);return t;};
+const plain=async(...msgs)=>{const say=conversationAI();let t;for(const m of msgs)t=await say(m);return t;};
+
+test('grupos escritos como os clientes escrevem viram hóspedes e idades',async()=>{
+  now=Date.parse('2026-10-26T15:00:00-03:00');
+  for(const [msg,guests,ages] of [['3 não tem criança',3,[]],['Somos 4 , sendo 1 de 15 anos',4,[180]],['3 adultos ( casal e filho)',3,[]],
+    ['3 pessoas, o filho tem 23 anos',3,[]],['Casal , filho 23 anos ( 1 quarto)',3,[]],['Apto pra casal',2,[]],
+    ['São dois adultos e três crianças de 5 anos duas e uma 4 anos.',5,[48,60,60]]]){
+    const t=await rv(msg);
+    assert.equal(t.state.facts.guests,guests,msg);
+    assert.deepEqual([...(t.state.family_party?.ages_months||[])].sort((a,b)=>a-b),ages,msg);
+    assert.match(t.text,/Indicada para vocês/,msg);
+  }
+  const twins=await rv('2 adultos e 3 crianças','Duas de 5 anos gêmeas e 1 dr 4 anos.');
+  assert.equal(twins.state.facts.guests,5);
+  const kerlly=await plain('Ola','5 adultos e duas crianças, sendo uma criança de 1 ano e a outra de 8 anos');
+  assert.equal(kerlly.state.facts.guests,7);assert.deepEqual([...kerlly.state.family_party.ages_months].sort((a,b)=>a-b),[12,96]);
+  const kids=await rv('2 criancas de 6 anos');
+  assert.match(kids.text,/Quantos adultos vão com elas\?/);
+  assert.equal((await rv('2 criancas de 6 anos','2 adultos')).state.facts.guests,4);
+  const finados=await plain('Bom dia! Qual valor para o feriado de finados\n01 casal\n01 criança 12 anos');
+  assert.equal(finados.state.facts.guests,3);
+  assert.match(finados.text,/Finados não temos um pacote especial/);assert.doesNotMatch(finados.text,/Pacotes ativos/);
+});
+
+test('datas escritas de outros jeitos são entendidas',async()=>{
+  now=Date.parse('2026-10-26T15:00:00-03:00');
+  const helaine=await plain('Boa tarde','Queria saber quanto custa para uma casal um fds do dia 13 - 15 novembro');
+  assert.equal(helaine.r.quote_request,'QUOTE|2026-11-13|2026-11-15|2|NONE');
+  assert.match((await rv('Valor para 1 pessoa','31/ 12/26 ao dia 01/01 de 2027')).r.quote_request,/^QUOTE\|2026-12-31\|2027-01-03\|1\|/);
+  assert.match((await plain('Oi','Somos 4 adultos','A do comercial.\nDe 31 a 03')).r.quote_request,/^QUOTE\|2026-12-31\|2027-01-03\|4\|/);
+  const weekend=await plain('Queria reservar quarto','Pra este sábado ate segunda');
+  assert.equal(weekend.state.facts.check_in,'2026-10-31');assert.equal(weekend.state.facts.check_out,'2026-11-02');
+  // Outside the campaign, "final do ano" lists the December packages (05/10), never "Vou consultar...".
+  const sara=await plain('Queria saber mas sobre as hospedagem','Para o final do ano');
+  assert.match(sara.text,/Réveillon Solar 2027/);assert.doesNotMatch(sara.text,/Vou consultar/);
+  const ten=await plain('Olá! Boa tarde 😊 Gostaria de saber o valor para o Réveillon: check-in dia 31 de dezembro e check-out dia 02 de janeiro, 2 diárias. Somos 10 pessoas. Qual o valor total para os 10 nas 2 diárias? Precisaria de quantos quartos? Tem café da manhã incluso? Faz preço para grupo? Obrigada, aguardo!');
+  assert.match(ten.text,/3 apartamentos/);assert.match(ten.text,/Você pediu 31\/12\/2026 a 02\/01\/2027/);assert.match(ten.text,/café da manhã está incluso/);
+  assert.doesNotMatch(ten.text,/Para quantas pessoas/);
+});
+
+test('festa sem hospedagem, mesa no restaurante e vizinha não viram cotação',async()=>{
+  now=Date.parse('2026-10-26T15:00:00-03:00');
+  for(const msg of ['Boa noite!vcs não vendem a ceia de ano novo e o show? Tenho casa p me hospedar queria só o show e a ceia',
+    'Pode participar do réveillon não estando hospedado no Solar ?'])
+    assert.match((await plain(msg)).text,/sem hospedagem, com pulseira/,msg);
+  const table=await plain('Pode mandar o cardápio ?','Precisa reservar ?');
+  assert.match(table.text,/por ordem de chegada/);assert.doesNotMatch(table.text,/Para quantas pessoas/);
+  const neighbour=await plain('Tudo perfeito, principalmente o repertório musical!','Sou vizinha de vcs. Tenho apto no Atlântico Norte!');
+  assert.doesNotMatch(neighbour.text,/Para quantas pessoas/);assert.equal(neighbour.r.quote_request,'NOQUOTE');
 });

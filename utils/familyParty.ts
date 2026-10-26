@@ -253,6 +253,45 @@ function withRelativeAdults(s: string): string {
     ? rest.replace(adults[0][0],`${quantity(adults[0][1])+extra} adultos`)
     : rest.replace(/(?:\b(?:um|1)\s+)?\bcasal\b/,`${2+extra} adultos`);
 }
+// Ways customers described the group that the rules below did not read
+// (audit 26/10/2026). Each one is rewritten into a form they already read.
+const wordCount: Record<string,number> = {um:1,uma:1,dois:2,duas:2,tres:3,quatro:4,cinco:5,seis:6,sete:7,oito:8,nove:9,dez:10};
+const countOf = (value: string) => /^\d+$/.test(value) ? Number(value) : wordCount[value];
+function auditPhrases(s: string): string {
+  const n = '(\\d{1,2}|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)';
+  s = s.replace(/\bdr (?=\d{1,2} anos?\b)/g, 'de ').replace(/\s*\bgeme(?:as|os|a|o)\b/g, '')
+    // "uma casal" (typo) and "apto pra casal": the couple.
+    .replace(/\buma casal\b/g, 'um casal')
+    // "01 casal\n01 criança 12 anos" (audit 26/10/2026).
+    .replace(/\b0(\d)\s+(?=casal|criancas?|adultos?|pessoas?|bebes?|filh[oa]s?)/g, '$1 ')
+    .replace(/^(?:um\s+|uma\s+)?(?:apto|apartamento|quarto|suite)\s+(?:pra|para|p\/)\s+(?:um\s+)?casal(?:\s+so)?[.!]*$/, 'casal');
+  // "3 não tem criança", "3 sem crianças": adults only.
+  s = s.replace(new RegExp(`^(?:somos\\s+|seremos\\s+|sao\\s+)?${n}\\s*(?:pessoas?|adult[oa]s?)?\\s*[,.]?\\s*(?:e\\s+)?(?:nao\\s+(?:tem|temos|ha|vai|vao|tera)|sem)\\s+(?:nenhuma\\s+)?criancas?\\b[.!]*$`),
+    (all, count: string) => countOf(count) ? `${countOf(count)} adultos` : all);
+  // "Somos 4, sendo 1 de 15 anos": one child of that age among the total.
+  s = s.replace(new RegExp(`^(?:somos\\s+|seremos\\s+|sao\\s+)?${n}\\s*(?:pessoas?)?\\s*,?\\s*sendo\\s+(?:um|uma|1)\\s+(?:crianca\\s+|adolescente\\s+|filh[oa]\\s+)?(?:de|com)\\s+(\\d{1,2})\\s*anos?\\b[.!]*$`),
+    (all, count: string, age: string) => { const total = countOf(count); return total && total >= 2 ? `${total - 1} adultos e 1 crianca de ${age} anos` : all; });
+  // "3 adultos (casal e filho)": the count of adults stands.
+  s = s.replace(new RegExp(`^${n}\\s+adult[oa]s?\\s*\\([^)]*\\)[.!]*$`), (all, count: string) => countOf(count) ? `${countOf(count)} adultos` : all);
+  // "Casal, filho 23 anos (1 quarto)", "3 pessoas, o filho tem 23 anos":
+  // grown children are adults.
+  const grown = /\b(?:o|a)?\s*filh[oa]\s+(?:tem\s+|de\s+|com\s+)?(\d{1,2})\s*anos?\b/.exec(s);
+  if (grown && Number(grown[1]) >= 18 && !/\bcriancas?\b|\bfilh[oa]s\b/.test(s)) {
+    const total = new RegExp(`^${n}\\s+(?:pessoas?|adult[oa]s?)\\b`).exec(s);
+    if (total && countOf(total[1])) return `${countOf(total[1])} adultos`;
+    if (/^(?:o\s+|um\s+|eu\s+e\s+meu\s+marido\s+e\s+)?casal\b/.test(s)) return '3 adultos';
+  }
+  // "três crianças de 5 anos duas e uma 4 anos": two of 5 and one of 4.
+  s = s.replace(new RegExp(`\\b${n}\\s+criancas\\s+de\\s+(\\d{1,2})\\s*anos?\\s+${n}\\s+e\\s+${n}\\s+(?:de\\s+)?(\\d{1,2})\\s*anos?\\b`),
+    (all, total: string, a: string, x: string, y: string, b: string) =>
+      countOf(x) + countOf(y) === countOf(total) && countOf(total) <= 6
+        ? `${countOf(total)} criancas de ${[...Array(countOf(x)).fill(a), ...Array(countOf(y)).fill(b)].join(', ').replace(/, (\d+)$/, ' e $1')} anos` : all);
+  // "duas crianças, sendo uma de 1 ano e a outra de 8 anos".
+  s = s.replace(new RegExp(`\\b${n}\\s+criancas\\s*,?\\s*sendo\\s+(?:uma|um|1)\\s+(?:crianca\\s+)?(?:de|com)\\s+(\\d{1,2})\\s*anos?\\s+e\\s+(?:a\\s+|o\\s+)?(?:outra|outro)\\s+(?:crianca\\s+)?(?:de|com)\\s+(\\d{1,2})\\s*anos?\\b`),
+    (all, total: string, a: string, b: string) => countOf(total) === 2 ? `2 criancas de ${a} e ${b} anos` : all);
+  return s;
+}
+
 function informalComposition(s: string): string {
   s=s.replace(/\banod\b/g,'anos').replace(/\bd (?=\d{1,2} (?:anos?|meses?|a)\b)/g,'de ')
     // The ad's greeting quoted back and filled in: "quantos adultos:07".
@@ -305,7 +344,7 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   // "Somente eu e minha filha" is "eu e minha filha" when no group is known
   // yet (audit 21/10/2026); with a known group it may be a partial plan.
   const fresh=!readFamilyParty(previous,now);
-  let s=informalComposition(norm(message).replace(fresh?/^(?:(?:somente|so|apenas|seria|seremos|sera|vai ser|vamos)\s+)+(?=eu\s+(?:e|com)\s+(?:minha|meu|minhas|meus)\s+(?:filh|net|sobrinh|entead))/:/$^/,''));
+  let s=informalComposition(auditPhrases(norm(message)).replace(fresh?/^(?:(?:somente|so|apenas|seria|seremos|sera|vai ser|vamos)\s+)+(?=eu\s+(?:e|com)\s+(?:minha|meu|minhas|meus)\s+(?:filh|net|sobrinh|entead))/:/$^/,''));
   // "Dois idosos" are two adults ("casal de idosos" stays a couple).
   s=s.replace(/\bidos([oa])s\b/g,'adult$1s').replace(/\bidos([oa])\b/g,'adult$1');
   // "3 crianças (10,5,3)" / "2 crianças: 8 e 4": a list matching the count,
@@ -533,6 +572,8 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
       party.ages_months.push(ageValues[0]);
       rememberIncrement(party,messageHash);
     }
+    // Restating ages already known ("duas de 5 e 1 de 4") confirms them.
+    else if(party.ages_months.length===party.children&&new Set(ageValues).size&&[...new Set(ageValues)].every(age=>party.ages_months.includes(age))) {}
     else return result(party,'age_reference');
   }
   if(old?.clarification==='party_composition'&&party.adults===undefined&&party.children===undefined)

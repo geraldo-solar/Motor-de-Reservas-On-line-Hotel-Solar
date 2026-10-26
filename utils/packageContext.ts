@@ -26,7 +26,7 @@ export function readPackageContext(value: any, now = Date.now()): PackageContext
   return {id:value.id, name:value.name.trim(), start_date:value.start_date, end_date:value.end_date, updated_at:value.updated_at};
 }
 export function packageInquiry(message: string) {
-  return /\b(pacotes?|feriados?|reveillon|natal|ano novo|virada|carnaval|pascoa|finados|corpus christi|dia das criancas|dia das maes|dia dos pais|dia dos namorados)\b/.test(norm(message));
+  return /\b(pacotes?|feriados?|reveillon|natal|ano novo|virada|carnaval|pascoa|finados|corpus christi|dia das criancas|dia das maes|dia dos pais|dia dos namorados|(?:fim|final) d[oe] ano)\b/.test(norm(message));
 }
 export function namedPackageInquiry(message: string) {
   return /\b(reveillon|natal|ano novo|virada|carnaval|pascoa|finados|corpus christi|dia das criancas|dia das maes|dia dos pais|dia dos namorados|ostrabeach|independencia)\b/.test(norm(message));
@@ -221,6 +221,8 @@ export function packageFollowup(message: string) {
   if (/\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/.test(s)) return true;
   return /\b(indica|indicam|recomenda|recomendam|melhor|sugere|sugestao|pessoas|hospedes|adultos?|casal|criancas?|filh[oa]s?|bebe|familia|sozinh[oa]|so eu|pra mim|adolescentes?|menin[oa]s?|mocas?|rapaz|valores?|precos?|custa|custos?|mais barato|mais economico|quanto|pagamento|parcelamento|parcelar|parcelas|inclui|inclus[oa]s?|inclusoes|ceia|open bar|programacao|horarios?|barco|catamara|regras|periodo|noites|diarias|datas|entrada|saida|loft|suites?|quartos?|acomodacoes|acomodacao|informacoes|detalhes|reservar|prosseguir)\b/.test(s)
     || /^(sim|nao|pode ser|quero|pode mostrar|quais opcoes|\d{1,2})[.!?]*$/.test(s)
+    // "Somos 4, sendo 1 de 15 anos", "Duas de 5 anos gêmeas" (audit 26/10/2026).
+    || /\b(?:somos|seremos|sendo|gemeas|gemeos)\b|\b\d{1,2}\s*anos?\b/.test(s)
     // Ages of the whole group, "42, 33 e 52 e 0" (audit 07/10/2026).
     || /^\d{1,2}(?:\s*(?:,|e)\s*\d{1,2}){1,9}(?:\s*anos)?[.!?]*$/.test(s);
 }

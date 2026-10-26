@@ -71,7 +71,21 @@ const numberPattern = '(\\d{1,2}|uma|um|duas|dois|tres|quatro|cinco|seis|sete|oi
 // "reserva" must never start the lodging funnel, even if an upstream AI
 // classifier proposes a quote. Restaurant/table questions stay informational.
 const restaurantInquiry = (s: string) => !explicitLodgingRequest(s) && (/\breserva solar\b/i.test(reservaRestaurantMessage(s)) || /\b(cardapio|menu|restaurante|solar 73|avuado)\b/.test(s));
-const lodging = (s: string) => !restaurantInquiry(s) && /\b(vaga|vagas|disponibilidade|hospedagem|estadia|diaria|diarias|reservar|reserva|quarto|quartos|apto|apartamento|loft|suite|cotacao|orcamento|pessoas|hospedes|casal|adultos)\b/.test(s);
+// Audit 26/10/2026: "Precisa reservar?" right after the menu is about the
+// restaurant (ordinary visits are by order of arrival), not lodging.
+const restaurantBookingText = 'No restaurante Reserva Solar, as mesas são por ordem de chegada: para uma visita comum não é preciso reservar. O café da manhã avulso durante a semana, eventos e a Mesa Posta precisam de agendamento com a recepção.';
+function restaurantBookingFollowup(message: string, state: any) {
+  const s = norm(message);
+  if (!/^(?:e\s+|mas\s+)?(?:(?:precisa|preciso|tem que|temos que|e preciso|e necessario|necessita)\s+(?:de\s+)?(?:fazer\s+)?reserv(?:ar|a)|(?:da|pode|posso|tem como|consigo)\s+(?:para\s+|pra\s+)?reservar(?:\s+mesa)?|reserva(?:m)?\s+mesa)\s*\??$/.test(s)) return;
+  const previous = [...(state.history || []).slice(-3, -1), assistantBefore(state, message)].map(norm).join(' ');
+  return /\b(?:cardapio|menu|restaurante|reserva solar|solar 73|almoco|almocar|jantar|jantares)\b/.test(previous)
+    && !/\b(?:hospedagem|diarias?|quartos?|apartamentos?|apto|suites?|pacote|reveillon)\b/.test(previous) ? restaurantBookingText : undefined;
+}
+// "Sou vizinha, tenho apto no Atlântico Norte" (audit 26/10/2026) is not a
+// lodging request.
+const ownHome = (s: string) => /\b(?:tenho|temos)\s+(?:um\s+|uma\s+|meu\s+|minha\s+)?(?:apto|apartamento|casa)\b|\bsou (?:sua |seu |de vcs |de voces )?vizinh[oa]s?\b|\bmoro (?:aqui|perto|ao lado|em frente|no|na)\b/.test(s)
+  && !/\b(?:quero|queria|gostaria|preciso|reservar|valor|preco|quanto|disponibilidade|vaga)\b/.test(s);
+const lodging = (s: string) => !restaurantInquiry(s) && !ownHome(s) && /\b(vaga|vagas|disponibilidade|hospedagem|estadia|diaria|diarias|reservar|reserva|quarto|quartos|apto|apartamento|loft|suite|cotacao|orcamento|pessoas|hospedes|casal|adultos)\b/.test(s);
 const recommendation = (s: string) => /\b(indica|indicam|indicaria|indicariam|indicado|recomenda|recomendam|recomendaria|recomendariam|melhor|sugere|sugestao)\b/.test(s);
 const question = (s: string) => s.includes('?') || /\b(qual|quais|quanto|quantos|como|onde|quando|indica|recomenda|poderia|pode me|gostaria de saber|tem vaga|tem disponibilidade|inclui|incluido)\b/.test(s);
 // Explicit billing disputes require a person. General payment policies and
@@ -445,6 +459,19 @@ function parseDates(s: string, now: number): { dates: string[]; unclear?: boolea
   s = s.replace(/(?<![\d.,/])(\d{1,2})\.(\d{2})(?:\.(\d{4}|\d{2}))?(?![\d.,])/g, (all, d: string, m: string, y: string | undefined, offset: number, whole: string) =>
     +d >= 1 && +d <= 31 && +m >= 1 && +m <= 12 && !/\b(?:as|das|a partir das)\s*$/.test(whole.slice(0, offset)) ? `${d}/${m}${y ? '/' + y : ''}` : all)
     .replace(/(\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)(?=[a-z])/g, '$1 ').replace(/\b(\d{1,2})(?=(?:manha|tarde|noite)\b)/g, '$1 ');
+  // "31/ 12/26 ao dia 01/01 de 2027" (audit 26/10/2026): spaces inside a date
+  // and a year written after "de".
+  s = s.replace(/\b(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{2,4})\b/g, '$1/$2/$3')
+    .replace(/\b(\d{1,2}\/\d{1,2})\s+de\s+(20\d{2})\b/g, '$1/$2');
+  // "Pra este sábado até segunda" (audit 26/10/2026): the next such days.
+  const weekdayNames = ['domingo','segunda','terca','quarta','quinta','sexta','sabado'];
+  const weekdayRange = new RegExp(`\\b(?:(?:pra|para|neste|nesse|este|esse|deste|desse|de|do|da)\\s+)?(?:proxim[oa]\\s+)?(${weekdayNames.join('|')})(?:-feira)?\\s+(?:ate|a|ao)\\s+(?:a\\s+|o\\s+)?(?:proxim[oa]\\s+)?(${weekdayNames.join('|')})(?:-feira)?\\b`).exec(s);
+  if (weekdayRange && !/\b(?:programacao|funciona|funcionam|abre|abrem|aberto|horarios?|show|musica|restaurante|reserva solar|cardapio)\b/.test(s)) {
+    const base = new Date(`${new Date(now - 3 * 3600000).toISOString().slice(0, 10)}T12:00:00Z`);
+    const start = new Date(base); start.setUTCDate(start.getUTCDate() + (weekdayNames.indexOf(weekdayRange[1]) - base.getUTCDay() + 7) % 7);
+    const end = new Date(start); end.setUTCDate(end.getUTCDate() + ((weekdayNames.indexOf(weekdayRange[2]) - weekdayNames.indexOf(weekdayRange[1]) + 7) % 7 || 7));
+    return {dates:[start.toISOString().slice(0, 10), end.toISOString().slice(0, 10)]};
+  }
   // Written months become numeric dates, so the rules below also cover month
   // turns (audit 21/10/2026): "Dezembro 31 a 3 de janeiro" -> "31/12 a 3/1",
   // "dia 30 de dezembro ... sair dia 2" -> "dia 30/12 ... sair dia 2".
@@ -567,6 +594,11 @@ function clearStayDuration(state: State) {
 }
 
 function updateStayDates(state: State, s: string, now: number) {
+  // "De 31 a 03" in the Réveillon conversation, or about the ad ("a do
+  // comercial"), is 31/12 to 03/01 (audit 26/10/2026, JB).
+  const newYearTalk = state.package_context?.id === newYearCampaignPackage.id || state.recent_package?.id === newYearCampaignPackage.id
+    || state.campaign === 'RV27' && !state.facts.check_in || /\b(?:comercial|anuncio|propaganda|reveillon|ano novo|virada|final de ano|fim de ano|final do ano|fim do ano)\b/.test(s);
+  if (newYearTalk) s = s.replace(/\b(29|30|31)\s*(?:a|ate|ao|e|-)\s*(?:o\s+)?(?:dia\s+)?0?([1-4])\b(?!\s*(?:\/|de\s|anos?|pessoas?|adult|crianc|h\b|horas?|noites?|diarias?))/, '$1/12 a $2/01');
   if(rejectedStayDates(s)){
     clearStayDuration(state);
     delete state.facts.check_in;delete state.facts.check_out;delete state.pending;delete state.arrival_time;
@@ -1687,7 +1719,8 @@ function controlTurn(body: any, now = Date.now()) {
   const publicMessage = state.history.at(-1) === raw ? state.resolved_message || raw : raw;
   const occupancyFollowup=packageOccupancyFollowup(publicMessage,state.package_context,now);
   const inquiry = occupancyFollowup?undefined:currentGuestInquiry(state, publicMessage,now);
-  const diningAnswer = diningPolicyAnswer(publicMessage) || restaurantHoursAnswer(publicMessage,now) || visitorBreakfastAnswer(publicMessage);
+  const diningAnswer = diningPolicyAnswer(publicMessage) || restaurantHoursAnswer(publicMessage,now) || visitorBreakfastAnswer(publicMessage)
+    || restaurantBookingFollowup(publicMessage,state);
   const facilityAnswer = confirmedHotelAnswer(publicMessage) || (inquiry === 'lodging_faq' ? lodgingInclusionsAnswer(publicMessage) || guestFacilityAnswer(publicMessage) || locmilAnswer(publicMessage) : undefined);
   const weekdayQuestion = packageWeekdayClarification(publicMessage, state.package_context, now);
   const roomGuidance=multiRoomGuidanceText(state,publicMessage,now);

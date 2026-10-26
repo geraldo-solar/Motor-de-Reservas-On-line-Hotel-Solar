@@ -18,6 +18,12 @@ export const familyBeddingRule = 'O berço é gratuito, mediante solicitação �
 export const coupleRoomConfigurationText = 'A categoria Casal também pode ser oferecida como duplo com duas camas de solteiro, quando solicitado. A recepção precisa confirmar a configuração e a disponibilidade; a simulação não reserva essa unidade.';
 export const familyAgeQuestion = 'Quais são as idades das crianças? Preciso da idade de todas para verificar se vocês cabem em um apartamento ou se será necessário dividir o grupo. Cada categoria admite sua ocupação normal mais 1 criança de até 6 anos em cortesia, com limite de 4 pessoas mais essa criança no mesmo apartamento.';
 export function familyAgeQuestionFor(state: any) {
+  // "2 crianças de 6 anos" with no adults said (audit 23/10/2026): the ages
+  // are known, the adults are what is missing.
+  const party = state?.family_party;
+  if (party && Number.isInteger(party.children) && party.children > 0 && Array.isArray(party.ages_months)
+    && party.ages_months.length === party.children && party.adults === undefined && party.total === undefined)
+    return `Anotei ${party.children === 1 ? 'a criança' : `as ${party.children} crianças`} e ${party.children === 1 ? 'a idade' : 'as idades'}. Quantos adultos vão com ${party.children === 1 ? 'ela' : 'elas'}?`;
   return state?.family_party?.age_subject === 'offspring'
     ? 'Quais são as idades de todos os filhos, inclusive se algum já for adulto? Preciso dessas idades antes de indicar a acomodação ou dividir o grupo. Cada categoria admite sua ocupação normal mais 1 criança de até 6 anos em cortesia, com limite de 4 pessoas mais essa criança no mesmo apartamento.'
     : familyAgeQuestion;
