@@ -745,6 +745,17 @@ function updateFacts(state: State, message: string, now: number) {
       delete state.multi_room;
     }
   }
+  // Dates written in this message that do not touch the package in focus
+  // are another stay (audit 26/10/2026: "9 pessoas para 4 a 6 de dezembro"
+  // after the Réveillon card got 3 Triplos of the Réveillon). Leave the
+  // package so these dates are quoted.
+  const focus = state.package_context || state.recent_package;
+  const typed = parseDates(norm(message), now).dates;
+  if (focus && typed.length === 2 && state.facts.check_in === typed[0] && state.facts.check_out === typed[1]
+    && (typed[1] <= focus.start_date || typed[0] >= focus.end_date)) {
+    delete state.package_context; delete state.recent_package; delete state.multi_room;
+    if (state.topic === 'package_info') { delete state.topic; delete state.topic_at; }
+  }
 }
 
 // "Ficou em 8.210?" … "Aceito": the customer accepts an offer the AI never
@@ -771,6 +782,34 @@ function widenNewYearStay(state: State, now: number) {
 }
 
 // The option picked right after the package sales card (last assistant turn).
+// Audit 26/10/2026: the model asked "Deseja que eu faça a simulação?" and the
+// customer said "Sim" four times (Janaina, Messias, Iracy). The model cannot
+// act, so the controller answers its offer: quote, ask what is missing, or
+// call the team. Never the same offer again.
+function modelOffer(text: string): 'quote' | 'team' | undefined {
+  // "Posso encaminhar seu contato à equipe. Deseja que eu faça isso?": a
+  // question about "isso" carries the sentence before it.
+  const parts = norm(text).split(/(?<=[.!?])\s+/);
+  const asked = parts.map((part, i) => !part.endsWith('?') ? '' : /\bisso\b/.test(part) && i ? `${parts[i - 1]} ${part}` : part)
+    .filter(Boolean).join(' ');
+  if (!asked || !/\b(?:deseja|desejam|quer|querem|gostaria|gostariam|posso|prefere)\b/.test(asked)) return;
+  // The controller's own multi-apartment offer has its own validity window.
+  if (/\bprecisamos dividir o grupo\b|\bposso chamar a equipe para continuar nesta conversa\b/.test(norm(text))) return;
+  if (/\b(?:encaminh|repass|chamar|contato|falar com)\w*\b[^?]{0,100}\b(?:equipe|recepcao|responsavel|setor|atendente|programacao)\b/.test(asked)) return 'team';
+  if (/\b(?:calcul|simul|cotac|cotar|orcament|resumo|valor total|valores)\w*/.test(asked)) return 'quote';
+}
+// Only a bare yes ("Sim", "Pode sim", "Quero", "Isso") answers the offer;
+// "Pode ser um apto de casal e um triplo?" is a new question.
+const offerAccepted = (s: string) => !s.includes('?')
+  && /^(?:ok[,!. ]+)?(?:sim|s|pode|pode sim|podevsim|pode ser|quero|quero sim|queremos|isso|isso mesmo|claro|com certeza|por favor|gostaria|desejo|faca|faz|manda|bora|ok|okay|perfeito|beleza|certo|uhum|pode fazer|pode calcular|pode encaminhar|pode preparar)(?:[\s,!.]+(?:sim|por favor|pode|obrigad[oa]|agora|gostaria|quero))*[\s.!]*$/.test(s);
+const offeredRoom = (text: string) => {
+  const m = /\b(Su[ií]te (?:Casal|Triplo|Qu[aá]druplo|Sacada Vista Mar|Varanda T[eé]rreo)|LOFT|Loft)\b/.exec(text);
+  if (!m) return;
+  const n = norm(m[1]);
+  return n === 'loft' ? 'LOFT' : ({'suite casal':'Suíte Casal','suite triplo':'Suíte Triplo','suite quadruplo':'Suíte Quádruplo',
+    'suite sacada vista mar':'Suíte Sacada Vista Mar','suite varanda terreo':'Suíte Varanda Térreo'} as Record<string,string>)[n];
+};
+
 const cardChoiceFor=(state: State, message: string)=>state.package_context&&state.facts.guests
   ?packageCardChoice(message,[...(state.turns||[])].reverse().find(turn=>turn.role==='assistant')?.text||''):undefined;
 
@@ -1480,6 +1519,13 @@ function controlTurn(body: any, now = Date.now()) {
         // Only this client turn establishes/renews the focus. Neither an AI
         // question about people nor a catalog response can create lodging facts.
         state.guest_inquiry = { kind: inquiry, at: now };
+        // "Valor de 3 adultos e um pet para 4 a 9 de novembro" (audit
+        // 26/10/2026): the pet question is answered, and the stay written in
+        // the same message is kept for the next turn ("Só 3 adultos").
+        if (inquiry !== 'dining' && inquiry !== 'day_use' && lodging(s) && parseDates(s, now).dates.length === 2) {
+          updateFacts(state, raw, now);
+          delete state.pending;
+        }
         state.changed = false;
         delete state.event; delete state.awaiting;
       } else {
@@ -1656,7 +1702,9 @@ function controlTurn(body: any, now = Date.now()) {
   // "Ok", "obrigado", "👍", "nenhuma" or the customer's own away message:
   // a short closing, or nothing after a goodbye (see conversationClosers).
   // "Entendi"/"Ótimo" about the package in focus keeps its own short reply.
-  const closingCandidate=!choiceAccepted&&!cardChoice?closingTurn(raw,assistantBefore(state,raw)):undefined;
+  const lastAssistantText=assistantBefore(state,raw);
+  const acceptedOffer=!choiceAccepted&&!cardChoice&&!state.multi_room&&offerAccepted(s)?modelOffer(lastAssistantText):undefined;
+  const closingCandidate=!choiceAccepted&&!cardChoice&&!acceptedOffer?closingTurn(raw,assistantBefore(state,raw)):undefined;
   const closing=closingCandidate?.kind==='closing'&&closingCandidate.answer!==thanksAnswer&&state.package_context&&state.topic==='package_info'&&packageAcknowledgment(raw)
     ?undefined:closingCandidate;
   if (raw === AUDIO_UNAVAILABLE) {
@@ -1697,6 +1745,33 @@ function controlTurn(body: any, now = Date.now()) {
     answer=confirmationText;
     decision='COLETAR';
     delete state.package_choice;
+  }
+  else if (acceptedOffer) {
+    const f=state.facts,focus=state.package_context||state.recent_package,family=familyAccommodation(state,f.guests||0,now);
+    const partyReady=!!f.guests&&!f.children_pending&&!family.pending&&!state.family_clarification;
+    const datesReady=!!f.check_in&&!!f.check_out||!!focus;
+    delete state.pending;
+    if(acceptedOffer==='team'){
+      decision='HUMANO';
+      answer='Vou chamar a nossa equipe para continuar seu atendimento por aqui.';
+    } else if(partyReady&&datesReady&&f.guests!<=4){
+      if(!(f.check_in&&f.check_out)&&focus){f.check_in=focus.start_date;f.check_out=focus.end_date;}
+      const room=focus?offeredRoom(lastAssistantText):undefined;
+      if(room)state.package_choice={option:room,at:now};
+      answer='Vou preparar a simulação.';
+      decision=`QUOTE|${f.check_in}|${f.check_out}|${f.guests}|${f.extras.join(',')||'NONE'}`;
+    } else if(!f.guests&&!/\b(?:pessoas?|adult\w*|crianc\w*|filh\w*|casal|hospedes?|bebes?)\b/.test(norm(lastAssistantText))){
+      answer='Para quantas pessoas será a estadia? Me diga quantos adultos e a idade das crianças, se houver.';
+      state.awaiting='guests';
+    } else if(partyReady&&!datesReady){
+      answer='Quais são as datas de entrada e saída? Pode informar no formato dia/mês.';
+      state.awaiting='dates';
+    } else {
+      // The group was told to the model in words the controller cannot read,
+      // or it needs several apartments: the team calculates it.
+      decision='HUMANO';
+      answer='Vou chamar nossa equipe para calcular o valor para vocês nesta conversa.';
+    }
   }
   else if (continuingEvent && state.event) {answer=state.event.answer;delete state.pending;}
   else if (weekdayQuestion) {
