@@ -61,7 +61,7 @@ type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPa
   // This turn's message added a child's age (read by the repeated-question guard).
   ages_progress?: true };
 type ExistingReservationState = { flexible_stay?:FlexibleStay;existing_reservation?: {at: number};payment_support?:{at:number;topics?:PaymentSupportSupplementaryTopic[]};assistant_disclosure?:AssistantDisclosure;multi_room?:MultiRoomHandoff;checkout_question?:{at:number;key:string};arrival_time?:ArrivalTimePending;package_date_request?:PackageDateRequest };
-type State = ExistingReservationState & FamilyState & { massage_context?: {at:number}; programming_pending?: {question: string; at: number}; recent_package?: PackageContext; campaign?: 'RV27'; full_period_extended?: NewYearStayRequest; package_choice?: {option: string; at: number} } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'site_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
+type State = ExistingReservationState & FamilyState & { human_handoff_at?: number; massage_context?: {at:number}; programming_pending?: {question: string; at: number}; recent_package?: PackageContext; campaign?: 'RV27'; full_period_extended?: NewYearStayRequest; package_choice?: {option: string; at: number} } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'site_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 const norm = (s: unknown) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s?/,.-]/g, ' ').replace(/\s+/g, ' ').trim();
 const json = (v: unknown): any => { try { return typeof v === 'string' ? JSON.parse(v) : v; } catch { return null; } };
 const months = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -125,6 +125,33 @@ export const lateArrivalNotice = (s: string) => /\b(?:(?:tenho|temos|tinha|tinha
   && !/\b(?:posso|podemos|daria|da pra|tem como|seria possivel)\b[^.!]*\b(?:chegar|check ?-?in)\b[^.!]*\?/.test(s)
   && /\b(?:(?:so|somente|apenas) (?:vou|vamos|irei|iremos|vou conseguir|vamos conseguir) (?:chegar|fazer|ir)|(?:vou|vamos|irei|iremos|devo|devemos) chegar (?:amanha|mais tarde|so amanha|depois|atrasad[oa]s?|dia \d)|cheg(?:o|amos|arei|aremos) (?:so )?(?:amanha|mais tarde|atrasad[oa]s?|dia \d)|(?:farei|faremos|vou fazer|vamos fazer) o check ?-?in (?:so )?(?:amanha|mais tarde|dia \d)|(?:vou|vamos) atrasar|atraso na (?:chegada|viagem)|nao (?:vou|vamos) conseguir chegar (?:hoje|a tempo))\b/.test(s);
 const LATE_ARRIVAL_CONTEXT = '[Cliente com reserva avisa que vai chegar depois do previsto.]';
+// Fernando, 28/10/2026: after the team took a booking over, the assistant came
+// back and asked the dates again to "confirmar só a suíte casal" and to
+// "leram a mensagem de 8:22?". Those messages are for the team.
+const TEAM_FOLLOWUP_CONTEXT = '[Cliente continua o atendimento que já está com a equipe.]';
+export const teamFollowupAnswer = 'Avisei a nossa equipe, que já está cuidando do seu atendimento, e ela continua com você por aqui. Se preferir, ligue para (91) 98100-0800.';
+const HANDOFF_WINDOW = 72 * 3600000;
+export function waitingForTeam(s: string) {
+  return /\b(?:leram|leu|viram|viu|receberam|recebeu)\b.{0,30}\b(?:mensage(?:m|ns)|msg|recado|pedido|e-?mail)\b/.test(s)
+    || /\b(?:tem alguem (?:ai|ae|atendendo)|alguem (?:ai|ae|pode me (?:responder|atender))|ninguem (?:respondeu|responde|me respondeu|me responde)|sem resposta|aguardando (?:o )?(?:retorno|resposta|confirmacao)|aguardo (?:o )?(?:retorno|resposta|confirmacao)|alguma (?:novidade|resposta|posicao)|cade (?:a )?(?:resposta|confirmacao))\b/.test(s);
+}
+/** The team has had the conversation for a while (the 6 h pause ended):
+ * confirmations, changes and the stay details of that request go back to it.
+ * Right after the handoff (tests, a quick correction) the assistant continues. */
+function teamTookOver(state: State, raw: string, now: number) {
+  const since = state.human_handoff_at ? now - state.human_handoff_at : Infinity;
+  if (since < 60 * 60000 || since > HANDOFF_WINDOW) return false;
+  const s = norm(raw);
+  if (newTripRequest(raw) || /\b(?:nova|outra|mais uma)\s+(?:hospedagem|reserva|estadia|cotacao|simulacao)\b/.test(s)) return false;
+  if (teamBookingFollowup(s)) return true;
+  // Dates or group sent within a day of the handoff complete the request the
+  // team is quoting; the assistant must not quote over it (Fernando).
+  return since <= 24 * 3600000 && !question(s)
+    && (parseDates(s, now).dates.length === 2 || /\b(?:\d{1,2}|duas|dois|tres|quatro|cinco)\s+(?:pessoas|adultos|hospedes)\b|\bcasal\b/.test(s));
+}
+function teamBookingFollowup(s: string) {
+  return /\b(?:pode(?:m)? confirmar|pode fechar|pode reservar|quero confirmar|queria confirmar|gostaria de confirmar|confirmar (?:so|somente|apenas|a reserva|o quarto|a suite)|fechar a reserva|desistencia|desisti|desistir|ficando (?:so|apenas|somente)|so (?:a|o) (?:suite|quarto|apartamento|apto)|mensagem citada)\b/.test(s);
+}
 export const lateArrivalAnswer = 'Obrigado por avisar! Vou chamar a recepção agora para registrar sua chegada na reserva e confirmar com você por aqui. Se preferir, ligue para (91) 98100-0800.';
 const human = (s: string) => marketingOptOut(s) || paymentDispute(s) || reservationChange(s) || multiRoomRequest(s) || roomAlternativeComparison(s)
   || /\b(reclamacao|quero reclamar|cancelar minha reserva|reembolso)\b/.test(s) || explicitHumanRequest(s);
@@ -337,6 +364,8 @@ function loadState(value: unknown, now = Date.now()): State {
     ...(readStayDuration(parsed.duration_request, now) ? {duration_request:readStayDuration(parsed.duration_request, now)} : {}),
     ...(stayDatePending ? {stay_date_pending:stayDatePending} : {}),
     ...(arrivalTime?{arrival_time:arrivalTime}:{}),
+    ...(Number.isFinite(parsed.human_handoff_at) && parsed.human_handoff_at <= now && now - parsed.human_handoff_at <= HANDOFF_WINDOW
+      ? {human_handoff_at: parsed.human_handoff_at} : {}),
     ...(typeof parsed.subject === 'string' && !personal(parsed.subject) ? {subject: parsed.subject.slice(0,100)} : {}),
     ...(['guests','dates'].includes(parsed.awaiting) ? {awaiting: parsed.awaiting} : {}),
     ...(typeof parsed.resolved_message === 'string' && !personal(parsed.resolved_message) ? {resolved_message: parsed.resolved_message.slice(0,500)} : {}),
@@ -470,8 +499,15 @@ function parseDates(s: string, now: number): { dates: string[]; unclear?: boolea
   // and a year written after "de".
   s = s.replace(/\b(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{2,4})\b/g, '$1/$2/$3')
     .replace(/\b(\d{1,2}\/\d{1,2})\s+de\s+(20\d{2})\b/g, '$1/$2');
+  // "Entrada 31-10 / Saída 2-11" (Fernando, 28/10/2026): a labelled day-month
+  // with a hyphen is a date, not a range of days.
+  s = s.replace(/\b(entrada|saida|chegada|check ?-?in|check ?-?out|chego|chegamos|saio|saimos|ida|volta)(\s*:?\s*(?:no\s+|na\s+|dia\s+|em\s+)?)(\d{1,2})-(\d{1,2})(?![\d-])/g,
+    (all, label: string, gap: string, d: string, m: string) => +d >= 1 && +d <= 31 && +m >= 1 && +m <= 12 ? `${label}${gap}${d}/${m}` : all);
   // "Pra este sábado até segunda" (audit 26/10/2026): the next such days.
   const weekdayNames = ['domingo','segunda','terca','quarta','quinta','sexta','sabado'];
+  // "Chego no sábado pela manhã e saio na segunda" (Fernando, 28/10/2026).
+  const arrival = new RegExp(`\\b(?:chego|chegamos|chegarei|chegaremos|entro|entramos|entrada)\\b[^.?!]{0,20}?\\b(${weekdayNames.join('|')})(?:-feira)?\\b[^.?!]{0,40}?\\b(?:saio|saimos|sairei|sairemos|saida|volto|voltamos)\\b[^.?!]{0,12}?\\b(${weekdayNames.join('|')})(?:-feira)?\\b`).exec(s);
+  if (arrival) s = s.replace(arrival[0], `${arrival[1]} ate ${arrival[2]}`);
   const weekdayRange = new RegExp(`\\b(?:(?:pra|para|neste|nesse|este|esse|deste|desse|de|do|da)\\s+)?(?:proxim[oa]\\s+)?(${weekdayNames.join('|')})(?:-feira)?\\s+(?:ate|a|ao)\\s+(?:a\\s+|o\\s+)?(?:proxim[oa]\\s+)?(${weekdayNames.join('|')})(?:-feira)?\\b`).exec(s);
   if (weekdayRange && !/\b(?:programacao|funciona|funcionam|abre|abrem|aberto|horarios?|show|musica|restaurante|reserva solar|cardapio)\b/.test(s)) {
     const base = new Date(`${new Date(now - 3 * 3600000).toISOString().slice(0, 10)}T12:00:00Z`);
@@ -1082,6 +1118,27 @@ function controlTurn(body: any, now = Date.now()) {
   // This is only short-lived conversational intent, never a verified booking.
   // A new subject releases the handoff context without changing stay facts.
   if (raw && !existingRequest && ['prepare','route','confirm'].includes(body.operation)) delete state.existing_reservation;
+  if (raw && ['prepare','route','confirm'].includes(body.operation)
+    && (waitingForTeam(norm(raw)) || teamTookOver(state, raw, now))) {
+    state.changed = false;
+    clearStayDuration(state);
+    delete state.pending; delete state.awaiting; delete state.guest_inquiry; delete state.multi_room;
+    delete state.stay_date_pending; delete state.arrival_time;
+    state.resolved_message = TEAM_FOLLOWUP_CONTEXT;
+    if (body.operation === 'prepare') {
+      delete state.audio;
+      state.first_turn = !state.greeted;
+      state.greeted = true;
+      state.history = [...state.history, raw.slice(0,500)].slice(-12);
+      remember(state, 'user', raw);
+      return {state:JSON.stringify(state), can_collect:'NAO', quote_request:'NOQUOTE',
+        context:JSON.stringify({primeira_resposta:state.first_turn, ultima_mensagem:raw, interpretacao_da_ultima_mensagem:TEAM_FOLLOWUP_CONTEXT,
+          cotacao_valida_para_estes_dados:null, assunto_ativo:'',
+          regra:'O cliente continua um atendimento que a equipe já assumiu (confirmação, mudança ou cobrança de resposta). Não perguntar datas nem pessoas de novo, não cotar e não confirmar a reserva. Responda somente: '+teamFollowupAnswer})};
+    }
+    return {state:JSON.stringify(state), resolved_message:TEAM_FOLLOWUP_CONTEXT,
+      quote_request:'HUMANO', can_collect:'NAO', confirmation_text:'', answer:teamFollowupAnswer};
+  }
   if (lateArrivalNotice(norm(raw)) && ['prepare','route','confirm'].includes(body.operation)) {
     // Not a new stay: keep the facts out of it and let the reception record
     // the arrival on the booking (it was announced in writing, so the team
@@ -2040,7 +2097,19 @@ export function control(body: any, now = Date.now()) {
     context.regra_saudacao = 'Na primeira resposta do dia, cumprimente com a saudação do horário informada e continue o assunto normalmente. Nas demais respostas do mesmo dia, não repita saudações nem boas-vindas. Isso não reinicia a conversa, não apaga fatos e não autoriza ações.';
     return {...result, state:JSON.stringify(state), context:JSON.stringify(context)};
   }
+  if (body.operation === 'route' && 'quote_request' in result && result.quote_request === 'HUMANO' && 'state' in result && result.state)
+    result.state = markHumanHandoff(result.state, now);
   return body.operation === 'route' ? withDailyGreeting(result, body.state, now) : result;
+}
+
+/** Remember when the team took the conversation over (72 h window). */
+export function markHumanHandoff(stateJson: string, now = Date.now()): string {
+  // The first handoff of the request counts; follow-ups do not restart it.
+  try {
+    const st = JSON.parse(stateJson);
+    if (!(Number.isFinite(st.human_handoff_at) && now - st.human_handoff_at <= HANDOFF_WINDOW)) st.human_handoff_at = now;
+    return JSON.stringify(st);
+  } catch { return stateJson; }
 }
 
 export async function handleConversation(body: any, authorization = '', transcribe = transcribeAudio, now = Date.now(), analyze = analyzeAttachment) {

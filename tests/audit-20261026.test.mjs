@@ -274,3 +274,25 @@ test('secador de cabelo e ferro de passar são emprestados pela recepção (27/1
   const ok=await conversationAI()('Vocês emprestam algo?','Sim, a recepção empresta secador de cabelo e ferro de passar.');
   assert.match(ok.text,/a recepção empresta secador/);
 });
+
+test('Fernando (28/10): depois que a equipe assumiu, confirmação e cobrança voltam para a equipe; datas com hífen e dias da semana',async()=>{
+  now=Date.parse('2026-10-27T17:28:00-03:00');
+  const say=conversationAI();
+  assert.equal((await say('Bom dia! \nGostaria de reservar dois quartos para casal neste final de semana pfv. \nPode mandar os valores. Um grande e outro normal pfv','Vou verificar.')).r.quote_request,'HUMANO');
+  now=Date.parse('2026-10-28T08:22:00-03:00');
+  for(const msg of ['Oi bom dia. \nGostaria de confirmar só a suíte casal par duas pessoas mesmo. Ok?','Bom dia, leram a mensagem de 8:22?',
+    'A mensagem citada se refere justamente a desistência de um quarto. Ficando apenas a suite casal','Chego no sábado pela manhã e saio na segunda','Entrada 31-10\nSaída 2-11']){
+    now+=60000;
+    const t=await say(msg,'Quais são as datas de entrada e saída?');
+    assert.equal(t.r.quote_request,'HUMANO',msg);assert.match(t.text,/equipe, que já está cuidando do seu atendimento/,msg);
+    assert.doesNotMatch(t.text,/Quais são as datas|Para quantas pessoas|R\$/,msg);
+  }
+  // "Leram minha mensagem?" goes to the team even without an earlier handoff.
+  assert.equal((await conversationAI()('Leram minha mensagem?','Sim.')).r.quote_request,'HUMANO');
+  // Without a handoff, the same dates are understood and quoted.
+  now=Date.parse('2026-10-28T11:50:00-03:00');
+  for(const msg of ['Entrada 31-10\nSaída 2-11','Chego no sábado pela manhã e saio na segunda']){
+    const s2=conversationAI();await s2('Quero reservar um quarto de casal para 2 pessoas','Certo.');
+    assert.equal((await s2(msg,'Certo.')).r.quote_request,'QUOTE|2026-10-31|2026-11-02|2|NONE',msg);
+  }
+});

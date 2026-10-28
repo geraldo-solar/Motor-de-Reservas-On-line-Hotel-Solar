@@ -2,7 +2,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import { MANYCHAT_TEXT_TRANSPORT, withManyChatTextEnvelope } from '../utils/manychatText.js';
 import { createClient } from '@supabase/supabase-js';
 import { resolveRoomMedia, nextRoomMedia, roomDetailInquiry, roomDetailAnswer, recommendedRoomName } from '../utils/roomMedia.js';
-import { control, safeTypedMessage, handleConversation } from './conversation-control.js';
+import { control, safeTypedMessage, handleConversation, markHumanHandoff } from './conversation-control.js';
 import { instagramTurn, instagramContent } from '../utils/instagramTurn.js';
 import { withDailyGreeting, belemClock } from '../utils/dailyGreeting.js';
 import {stripAssistantDisclosure} from '../utils/assistantDisclosure.js';
@@ -604,7 +604,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!req.query?.operation || req.query?.transport === MANYCHAT_TEXT_TRANSPORT) {
     const sendJson = res.json.bind(res);
     res.json = ((payload: any) => {
-      const result = !req.query?.operation ? withDailyGreeting(repeatedQuestionHandoff(payload, req.body?.state, safeTypedMessage(String(req.body?.user_message || req.body?.message || '').trim()), priceTable), req.body?.state) : payload;
+      let result = !req.query?.operation ? withDailyGreeting(repeatedQuestionHandoff(payload, req.body?.state, safeTypedMessage(String(req.body?.user_message || req.body?.message || '').trim()), priceTable), req.body?.state) : payload;
+      if (result?.quote_request === 'HUMANO' && typeof result.state === 'string') result = {...result, state: markHumanHandoff(result.state)};
       return sendJson(req.query?.transport === MANYCHAT_TEXT_TRANSPORT ? withManyChatTextEnvelope(result) : result);
     }) as typeof res.json;
   }
