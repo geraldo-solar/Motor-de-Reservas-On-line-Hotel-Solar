@@ -256,3 +256,21 @@ test('teste do Geraldo no WhatsApp: "sem ser réveillon", "fora do ano novo" e "
   // Ana Luzia's second message.
   assert.doesNotMatch((await conversationAI()('Sem ser período de réveillon','Certo.')).text,/Réveillon Solar 2027/);
 });
+
+test('secador de cabelo e ferro de passar são emprestados pela recepção (27/10)',async()=>{
+  now=Date.parse('2026-10-27T23:30:00-03:00');
+  for(const msg of ['Tem secador de cabelo no quarto?','O apto tem ferro de passar roupa?','Onde fica o secador?']){
+    const t=await conversationAI()(msg,'O secador de cabelo fica dentro do banheiro.');
+    assert.match(t.text,/não têm secador de cabelo nem ferro de passar roupa/,msg);assert.match(t.text,/emprestados pela recepção/,msg);
+    assert.doesNotMatch(t.text,/dentro do banheiro/,msg);
+  }
+  // The model listing room items on another question is corrected too.
+  const say=conversationAI();
+  await say('Oi','Olá! Como posso ajudar?');
+  const items=await say('Pode me falar das comodidades?','Os apartamentos têm ar-condicionado, TV e frigobar. O secador de cabelo fica no banheiro.');
+  assert.match(items.text,/ar-condicionado, TV e frigobar/);assert.doesNotMatch(items.text,/fica no banheiro/);
+  assert.match(items.text,/emprestados pela recepção/);
+  // An answer that already says to ask the reception stays as is.
+  const ok=await conversationAI()('Vocês emprestam algo?','Sim, a recepção empresta secador de cabelo e ferro de passar.');
+  assert.match(ok.text,/a recepção empresta secador/);
+});

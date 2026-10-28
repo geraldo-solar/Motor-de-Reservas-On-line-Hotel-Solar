@@ -38,7 +38,7 @@ import { guestServiceRequest, guestServiceContext, guestServiceAnswer } from '..
 import { hotelPhoneInquiry, hotelContactAnswer, hotelCallDifficulty, hotelCallDifficultyAnswer } from '../utils/hotelContact.js';
 import {bookingDeferral,bookingDeferralAnswer} from '../utils/conversationContinuation.js';
 import { confirmedGuestFacilitiesPolicy, guestFacilityInquiry, guestFacilityAnswer } from '../utils/guestFacilities.js';
-import { confirmedHotelPolicy, confirmedHotelAnswer, locmilAnswer } from '../utils/hotelPolicy.js';
+import { confirmedHotelPolicy, confirmedHotelAnswer, locmilAnswer, correctBorrowedAmenities } from '../utils/hotelPolicy.js';
 import { massagePolicy, massageServiceAnswer, readMassageContext } from '../utils/massageService.js';
 import {photoSessionInquiry} from '../utils/photoSession.js';
 import { paymentStatusInquiry, paymentStatusContext, paymentStatusAnswer } from '../utils/paymentStatus.js';
@@ -1967,6 +1967,8 @@ function controlTurn(body: any, now = Date.now()) {
   }
   if (question(s)) delete state.pending;
   // Audit 26/10/2026: "No momento, não realizamos reservas por aqui".
+  // 27/10/2026: hair dryer and iron are borrowed from the reception.
+  if (decision==='NOQUOTE' && answer===String(body.ai_response||'').slice(0,1800)) answer = correctBorrowedAmenities(answer);
   if (decision==='NOQUOTE' && answer===String(body.ai_response||'').slice(0,1800) && bookingDenial(answer))
     answer = restaurantBookingFollowup('reservas', state) || bookingHereAnswer;
   if(decision==='NOQUOTE' && !inquiry && !restaurantInquiry(s) && !mediaRequest(norm(publicMessage))
