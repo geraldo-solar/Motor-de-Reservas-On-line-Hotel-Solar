@@ -21,6 +21,7 @@ import { closingTurn, assistantBefore, thanksAnswer } from '../utils/conversatio
 import { menuDetailAnswer, bookingDenial, bookingHereAnswer } from '../utils/menuDetails.js';
 import { neutralizeNegatedHolidays, packageInquiry, packageDiscoveryRequest, packageFollowup, packageAcknowledgment, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, packageResumeRequest, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
+import {solarSemLimites2027Policy} from '../utils/solarSemLimites2027.js';
 import {newYearSalesTurn,newYearCampaignSeed,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,newYearPolicyContext,newYearSiteLink,newYearCampaignFocus,type NewYearStayRequest} from '../utils/newYearSales.js';
 import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
 import {packageToday,packageEnded,retiredIndependence,endedPackageAnswer,endedPackageMarker} from '../utils/packageAvailability.js';
@@ -1676,6 +1677,8 @@ function controlTurn(body: any, now = Date.now()) {
       politica_gastronomia_confirmada: confirmedDiningPolicy,
       politica_instalacoes_confirmada: confirmedGuestFacilitiesPolicy,
       politicas_hotel_confirmadas: confirmedHotelPolicy,
+      // Lançamento Solar Sem Limites 2027 (Geraldo, 29/10/2026): convida, não vende nem detalha.
+      politica_solar_sem_limites_2027: solarSemLimites2027Policy(now),
       politica_reveillon_confirmada: newYearPolicyContext(raw, state.package_context || state.recent_package, state.campaign === 'RV27', now) || null,
       regra_valores_da_equipe: 'Nossa equipe também responde nesta conversa e você não vê essas mensagens. Se o cliente citar um valor, condição ou acomodação que você não informou, nunca diga que é inválido, que não corresponde ou que está errado: diga que vai confirmar com a equipe ou ofereça calcular aqui. Se ele aceitar algo combinado com a equipe, a equipe finaliza.',
       regra_ensaios_e_hidromassagem:'Ensaio ou sessão de fotos não é pedido para receber imagens do hotel: exige consulta prévia à recepção, sem autorização automática. As duas piscinas de hidromassagem são compartilhadas pelos hóspedes, não privativas; aquecimento e temperatura não estão confirmados.',
