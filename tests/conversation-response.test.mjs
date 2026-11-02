@@ -1,3 +1,4 @@
+import './relogio-fixo.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';
@@ -455,8 +456,11 @@ test('regra familiar: pergunta idades antes de recomendar e usa a categoria comp
     if(total===5)assert.ok(q.options.every(o=>o.name!=='Suíte Triplo'&&o.name!=='Suíte Casal'),party);
     if(total===4)assert.ok(q.options.every(o=>o.name!=='Suíte Casal'),party);
     if(first==='Suíte Casal') {
-      assert.match(result.conversation_text,/Categoria Casal, com a criança em cortesia/);
-      assert.match(result.conversation_text,/Categoria maior opcional/);
+      // Auditoria de 07/10/2026: a Casal vem primeiro, pelo valor de casal; as
+      // categorias maiores seguem listadas como opção e a cortesia é uma linha.
+      assert.match(result.conversation_text,/⭐ \*Suíte Casal\* — \*R\$ 1\.000\*/);
+      assert.match(result.conversation_text,/\n• (Suíte Triplo|Loft) — R\$/);
+      assert.match(result.conversation_text,/1 criança de até 6 anos por apartamento não paga/);
     }
   }
   const p=control({operation:'prepare',user_message:'Quero hospedagem de 20/09/2026 a 22/09/2026 para 2 adultos e 3 crianças'});
@@ -488,7 +492,7 @@ test('cinco sem criança elegível dividem; uma criança não gera duas cortesia
     assert.ok(q.options.every(o=>/\dx /.test(o.name)),party);
     if(party.startsWith('5 adultos e 1')) assert.equal(q.options[0].name,'3x Suíte Casal');
     if(party.startsWith('4 adultos e 2')) assert.equal(q.options[0].name,'2x Suíte Casal');
-    if(party.startsWith('2 adultos')) assert.match(result.conversation_text,/precisamos dividir o grupo/);
+    if(party.startsWith('2 adultos')) assert.match(result.conversation_text,/precisam de mais de um apartamento/);
   }
 });
 

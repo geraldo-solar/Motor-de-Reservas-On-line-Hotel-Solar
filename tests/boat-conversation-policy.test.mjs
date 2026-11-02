@@ -1,3 +1,4 @@
+import './relogio-fixo.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';
@@ -163,9 +164,12 @@ test('IA sem barco escolhido apresenta oferta sob consulta e mantém valor da ho
   const result = await request(await handlerFor(), { quote_request: `QUOTE|${ci}|${co}|2|NONE` });
   assert.deepEqual(JSON.parse(result.quote_state).options, [{ name: 'Suíte Casal', capacity: 2, total: 1000 }]);
   assert.equal(result.extras_total, 0);
-  const boatLine = result.conversation_text.split('\n').find(line => /Passeio de barco/i.test(line));
-  assert.match(boatLine, /terceiros, sob consulta/);
-  assert.doesNotMatch(boatLine, /R\$|350|2h|maré cheia/);
+  // Auditoria de 07/10/2026: os extras dividem uma linha só. O barco aparece
+  // sob consulta e sem preço; a explicação de que é feito por terceiros vem
+  // quando o hóspede pede o passeio (teste anterior).
+  const extrasLine = result.conversation_text.split('\n').find(line => /Passeio de barco/i.test(line));
+  assert.match(extrasLine, /passeio de barco \(sob consulta\)/i);
+  assert.doesNotMatch(extrasLine, /barco[^,]*R\$|2h|maré cheia/i);
 });
 
 test('motor público conserva o preço e total anteriores do barco sem alterar catálogo', async () => {

@@ -1,3 +1,4 @@
+import './relogio-fixo.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';
@@ -91,7 +92,11 @@ test('cotação familiar conserva preço/capacidade/ocupantes e apresenta berço
   assert.equal(result.quote.guests, 3);
   assert.equal(result.quote.family_key, '[2,1,[60]]');
   assert.equal(result.availability_checked, false);
-  for (const text of [result.conversation_text, result.whatsapp_text, result.prices_summary]) {
+  // Auditoria de 07/10/2026: a cotação do WhatsApp resume a cortesia numa
+  // linha; as regras completas de berço, cama e duplo seguem nos textos legados.
+  assert.match(result.conversation_text, /1 criança de até 6 anos por apartamento não paga; berço ou cama extra sem custo, conforme disponibilidade/);
+  assert.doesNotMatch(result.conversation_text, /Isso não garante cama extra/);
+  for (const text of [result.whatsapp_text, result.prices_summary]) {
     assert.match(text, /criança de até 6 anos em cortesia.*cama extra gratuita/s);
     assert.match(text, /berço é gratuito/);
     assert.match(text, /duplo com duas camas de solteiro/);
@@ -107,7 +112,9 @@ test('dois adultos recebem configuração duplo sem cama extra gratuita nem muda
     { name: 'Suíte Triplo', capacity: 3, total: 1400 },
     { name: 'Suíte Casal', capacity: 2, total: 1000 },
   ]);
-  assert.match(result.conversation_text, /duplo com duas camas de solteiro/);
+  // Auditoria de 07/10/2026: o duplo saiu da cotação curta do WhatsApp e fica
+  // no texto legado; quando o hóspede pede duas camas, a IA trata na conversa.
+  assert.match(result.whatsapp_text, /duplo com duas camas de solteiro/);
   assert.doesNotMatch(result.conversation_text, /cama extra gratuita/);
   const olderChild = await quote(3, familyState([84]));
   assert.deepEqual(olderChild.quote.options, [
