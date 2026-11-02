@@ -447,8 +447,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : 'Todos contam na ocupação normal do apartamento; a cortesia é só para criança de até 6 anos.';
     const extraNames = configuredExtras.filter(extra => !(extra.code === 'BARCO' && packageIncludesBoat))
       .map(extra => extra.code === 'BARCO' ? 'passeio de barco (sob consulta)' : `${extra.name} (R$ ${money(extra.price)})`);
-    const extrasLine = selectedExtras.length ? `✨ Valores já com os extras escolhidos: ${selectedExtras.map(extra => extra.name).join(', ')}. Total dos extras: R$ ${money(extrasTotal)}.`
-      : extraNames.length ? `✨ Extras opcionais: ${extraNames.join(', ')}.` : '';
+    // A boat the package already includes is not an extra the guest picked:
+    // say so, instead of listing it as chosen with "Total dos extras: R$ 0".
+    const includedExtras = selectedExtras.filter(extra => extra.code === 'BARCO' && packageIncludesBoat);
+    const chargedExtras = selectedExtras.filter(extra => !includedExtras.includes(extra));
+    const extrasLines = selectedExtras.length ? [
+      ...(chargedExtras.length ? [`✨ Valores já com os extras escolhidos: ${chargedExtras.map(extra => extra.name).join(', ')}. Total dos extras: R$ ${money(extrasTotal)}.`] : []),
+      ...includedExtras.map(extra => `✨ ${extra.name}: já incluído no pacote, sem cobrança adicional.`),
+    ] : extraNames.length ? [`✨ Extras opcionais: ${extraNames.join(', ')}.`] : [];
     const conversationText = choiceText || [
       `☀️ ${formatDate(checkIn)} a ${formatDate(checkOut)} · ${nights} ${nights === 1 ? 'diária' : 'diárias'} · ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'} · com café da manhã`,
       ...(activePackage ? [`🎉 Pacote especial: ${activePackage.name}`] : []),
@@ -461,7 +467,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       `💳 Em até ${installments}x sem juros no cartão.`,
       ...(familyLine ? [familyLine] : []),
       '',
-      ...(extrasLine ? [extrasLine] : []),
+      ...extrasLines,
       '🚲 Bicicletas de cortesia para hóspedes.',
       '',
       `👉 Reserve pelo site: https://reservas.hotelsolar.tur.br/?checkIn=${checkIn}&checkOut=${checkOut}`,
