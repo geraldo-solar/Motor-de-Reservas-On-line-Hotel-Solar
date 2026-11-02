@@ -56,7 +56,9 @@ export function existingReservationInquiry(message: string, contextual = false):
     // (audit 07/10/2026: both got "Para quantas pessoas será a estadia?").
     || /\b(?:confirmada|cancelada|ativa|pendente)\s+(?:a\s+|o\s+)?(?:minha|nossa) reserva\b/.test(s)
     || /\b(?:confirmar|cancelar|cancela|desmarcar|remarcar|adiar|antecipar|transferir)\s+(?:a\s+|o\s+)?(?:minha|nossa|essa|esta) (?:reserva|hospedagem|estadia)\b/.test(s)
-    || /\b(?:cancelamento|remarcacao|estorno|reembolso) (?:da|de) (?:minha|nossa|essa|esta) (?:reserva|hospedagem|estadia|compra)\b/.test(s);
+    || /\b(?:cancelamento|remarcacao|estorno|reembolso) (?:da|de) (?:minha|nossa|essa|esta) (?:reserva|hospedagem|estadia|compra)\b/.test(s)
+    // "Sou Edilene, gostaria de confirmar uma reserva!" (audit 26/10/2026).
+    || /\b(?:confirmar|cancelar|remarcar|alterar)\s+(?:uma|a)\s+reserva\b(?!\s+(?:para|pra|de|do|no|na)\s+(?:\d|dia|o dia|semana|fim|final|feriado|reveillon|natal))/.test(s);
   if (existingStatus) return true;
   // A known reservation may be mentioned in an ordinary FAQ. That remains
   // informational; merely mentioning it does not authorize a new handoff.

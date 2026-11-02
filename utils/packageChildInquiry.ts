@@ -20,7 +20,9 @@ export function childPolicyQuestion(message: string): boolean {
   // A possible future companion must be discussed as an unconfirmed person;
   // "filho" + "pagar" alone must not replace that request with child policy.
   if(possibleCompanionInquiry(message))return false;
-  const quoteWithParty=/\b(?:cotacao|orcamento|diarias?|hospedagem|estadia)\b/.test(s)
+  // "Quais os valores do Réveillon? 2 adultos, 3 crianças (10,5,3)" asks the
+  // price for that group, not the child policy (19/10/2026).
+  const quoteWithParty=/\b(?:cotacao|orcamento|diarias?|hospedagem|estadia|valor(?:es)?|precos?|quanto|pacotes?|reveillon|natal|feriado)\b/.test(s)
     && /\b(?:(?:\d+|um|uma|dois|duas|tres|quatro|cinco|seis)\s*adult[oa]s?|casal)\b/.test(s)
     && /\b(?:(?:\d+|um|uma|dois|duas|tres|quatro|cinco|seis)\s*(?:criancas?|bebes?|filh[oa]s?)|filh[oa]s)\b/.test(s);
   const childCharge=/\b(?:paga|pagam|pagar|cobranca|cobrado|cobrada|cortesia|gratis|gratuidade|gratuito|gratuita|free|isencao|desconto)\b/.test(s)

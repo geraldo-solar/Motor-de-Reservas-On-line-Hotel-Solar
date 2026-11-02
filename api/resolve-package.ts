@@ -1,8 +1,9 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { MANYCHAT_TEXT_TRANSPORT, withManyChatTextEnvelope } from '../utils/manychatText.js';
 import { createClient } from '@supabase/supabase-js';
-import { resolveRoomMedia, nextRoomMedia, roomDetailInquiry, roomDetailAnswer } from '../utils/roomMedia.js';
-import { control, safeTypedMessage } from './conversation-control.js';
+import { resolveRoomMedia, nextRoomMedia, roomDetailInquiry, roomDetailAnswer, recommendedRoomName } from '../utils/roomMedia.js';
+import { control, safeTypedMessage, handleConversation, markHumanHandoff } from './conversation-control.js';
+import { instagramTurn, instagramContent } from '../utils/instagramTurn.js';
 import { withDailyGreeting, belemClock } from '../utils/dailyGreeting.js';
 import {stripAssistantDisclosure} from '../utils/assistantDisclosure.js';
 import { PHOTO_CLARIFY, documentPhotoInquiry, photoClarificationQuestion, photoRetryRequest } from '../utils/photoIntent.js';
@@ -15,7 +16,7 @@ import { isAudioInput } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage } from '../utils/audioInput.js';
 import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
 import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
-import { namedPackageInquiry, packageGeneralInclusionQuestion, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup,packageDiscoveryRequest,packageRoomDetailFollowup } from '../utils/packageContext.js';
+import { neutralizeNegatedHolidays, namedPackageInquiry, packageGeneralInclusionQuestion, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup,packageDiscoveryRequest,packageRoomDetailFollowup } from '../utils/packageContext.js';
 import {packageInclusionReply} from '../utils/packageInclusions.js';
 import {newYearSalesTurn,newYearStayRange,newYearFullPeriodNote,readNewYearStayRequest,newYearCampaignFocus,newYearCampaignPackage,newYearSalesPolicy,newYearSiteLink} from '../utils/newYearSales.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
@@ -179,6 +180,8 @@ const scorePackage = (message: string, pkg: PackageRecord) => {
 const isPackageIntent = (message: string, bestScore: number) => {
   const normalized = normalize(message);
   if (/^(oi|ola|bom dia|boa tarde|boa noite|obrigad[oa]|tudo bem)(\s+(tudo bem|obrigad[oa]))*$/.test(normalized)) return false;
+  // "Para o final do ano" is a package question (audit 26/10/2026).
+  if (/\b(?:fim|final) d[oe] ano\b/.test(normalized)) return true;
   return bestScore >= 20 || [
     'pacote', 'pacotes', 'feriado', 'feriados', 'programacao', 'programacao do',
   ].some(term => normalized.includes(term));
@@ -302,6 +305,24 @@ const formatPackageInclusions = (pkg: PackageRecord, guests?: number) => {
   return fitWhatsApp(text.join('\n'), true);
 };
 
+const holidayLabels: Record<string, string> = {finados: 'o feriado de Finados', 'corpus christi': 'o feriado de Corpus Christi', tiradentes: 'o feriado de Tiradentes',
+  'dia das maes': 'o Dia das Mães', 'dia dos pais': 'o Dia dos Pais', 'dia dos namorados': 'o Dia dos Namorados', independencia: 'o feriado da Independência',
+  'proclamacao da republica': 'o feriado da Proclamação da República', 'consciencia negra': 'o feriado da Consciência Negra', pascoa: 'a Páscoa', carnaval: 'o Carnaval'};
+function missingHoliday(message: string, packages: PackageRecord[]) {
+  const s = normalize(message);
+  const name = Object.keys(holidayLabels).find(key => new RegExp(`\\b${key}\\b`).test(s));
+  if (!name || packages.some(pkg => normalize(String(pkg.name || '')).includes(name))) return undefined;
+  return holidayLabels[name];
+}
+
+// Audit 26/10/2026: the group combination answers what came with the group
+// ("31/12 a 02/01... tem café da manhã incluso?").
+const combinationExtras = (answer: string, message: string, state: any) => {
+  const text = withFullPeriodNote(answer, message, state);
+  return /\bcafe(?: da manha)?\b/.test(normalize(message)) && !/caf[eé] da manh[aã] incluso/i.test(text)
+    ? `${text}\n\n☕ O café da manhã está incluso todos os dias.` : text;
+};
+
 // Dates just widened to the full Réveillon package ("31/12 a 01/01"): the
 // turn that gave them says why the answer uses the whole package.
 const withFullPeriodNote = (answer: string, message: string, state: any) => {
@@ -356,6 +377,20 @@ const saleTermsFor = (pkg: PackageRecord): PackageSaleTerms => pkg.id === newYea
   ? {cashDiscountPct: newYearSalesPolicy.cash_discount_pct, siteUrl: newYearSiteLink(String(pkg.start_iso_date), String(pkg.end_iso_date)),
     highlights: 'Festa da Virada com ceia, open bar, Banda Zona Rural e DJ, passeio de barco e café da manhã todos os dias'}
   : {};
+
+/** Paid extras offered beside a package price card, as in the regular quote.
+ * A boat already included in the package is not offered again. */
+const packageExtrasLine = (extras: {name?: string; price?: number; active?: boolean}[], includedBoat: boolean) => {
+  const names = ['BARCO', 'MESA', 'LUA'].flatMap(code => {
+    if (code === 'BARCO' && includedBoat) return [];
+    const extra = extras.find(item => item.active !== false && extraCodes(item.name || '')[0] === code);
+    if (!extra) return [];
+    const price = Number(extra.price);
+    return [code === 'BARCO' ? 'passeio de barco (sob consulta)'
+      : `${String(extra.name).slice(0, 60)}${Number.isFinite(price) && price > 0 ? ` (R$ ${price.toLocaleString('pt-BR')})` : ''}`];
+  });
+  return [names.length ? `✨ Extras opcionais: ${names.join(', ')}.` : '', '🚲 Bicicletas de cortesia para hóspedes.'].filter(Boolean).join('\n');
+};
 
 /** The group stated in this very message ("Qual valor do Réveillon para 4 pessoas?"). */
 const groupInMessage = (message: string, state: any) => {
@@ -464,7 +499,8 @@ function occupancyAnswer(guests: number, family: {key?: string; eligible: number
 const groupQuestionKind = (text: string) =>
   /Quantas pessoas vão se hospedar|Para quantas pessoas será a (?:estadia|hospedagem|reserva)|preciso saber para quantas pessoas/i.test(text) ? 'people'
   : /Quais são as idades/.test(text) ? 'ages' : undefined;
-const repeatedQuestionAnswer = 'Para não te fazer repetir, vou chamar nossa equipe para calcular o valor para vocês nesta conversa.';
+const stayDateMention = (text: string) => /\b\d{1,2}\s*\/\s*\d{1,2}\b|\b(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b|\bdias?\s+\d{1,2}\b|\b(?:amanha|hoje|fim de semana|final de semana|feriado|fim d[oe] ano|final d[oe] ano|reveillon|ano novo|natal|carnaval|ferias)\b|\b(?:segunda|terca|quarta|quinta|sexta|sabado|domingo)(?:-feira)?\s+(?:ate|a|ao)\b/.test(normalize(text));
+const repeatedQuestionAnswer ='Para não te fazer repetir, vou chamar nossa equipe para calcular o valor para vocês nesta conversa.';
 
 // The customer asked the price again without the group or dates (audit
 // 05/10/2026, "Estou tentando mas não consigo saber o valor"): the regular
@@ -501,10 +537,22 @@ function repeatedQuestionHandoff(payload: any, sourceState: any, message: string
   let state: any;
   try { state = typeof sourceState === 'string' ? JSON.parse(sourceState) : sourceState; } catch { return payload; }
   if (groupQuestionKind(assistantBefore(state, message)) !== kind) return payload;
+  // The earlier question was on another day: asking again is not a loop.
+  try { if (JSON.parse(payload.state)?.daily_greeting?.first === true) return payload; } catch { /* Keep checking. */ }
   // A partial answer ("uma tem 2 anos", "4 pessoas") is progress, not a loop.
   // Ages count only when one more was understood (audit 07/10/2026: "0",
   // "42, 33 e 52 e 0" and "Crianças de 11 anos" got the same question).
   if (kind === 'ages' ? state?.ages_progress === true : updateFamilyParty(message, undefined, Date.now()).handled) return payload;
+  // Dates are progress too (audit 21/10/2026: "Dia 23/10 para 24/10?" after
+  // "Para quantas pessoas?" went to the team instead of asking the group).
+  if (kind === 'people' && stayDateMention(message)) {
+    let facts: any;
+    try { facts = JSON.parse(payload.state)?.facts; } catch { /* Keep the question as is. */ }
+    const br = (iso: unknown) => typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '';
+    const noted = br(facts?.check_in) && br(facts?.check_out) && /^Para quantas pessoas será a estadia\?$/.test(String(payload.conversation_text || '').trim())
+      ? `Anotei as datas: ${br(facts.check_in)} a ${br(facts.check_out)}. Para quantas pessoas será a estadia? Se houver crianças, me diga as idades.` : '';
+    return noted ? {...payload, quote_text: noted, conversation_text: noted} : payload;
+  }
   // A repeated "quantas pessoas?" about a price gets the table once; after it, the team.
   const table = kind === 'people' && priceTable && !priceTableSent(state) ? priceTable : undefined;
   const answer = table || repeatedQuestionAnswer;
@@ -523,14 +571,41 @@ function repeatedQuestionHandoff(payload: any, sourceState: any, message: string
 const teamPromise = (text: string) =>
   /\b(?:vou|irei|vamos) (?:confirmar|verificar|consultar|checar|conferir)\b[^.!?]{0,60}\bcom (?:a |nossa )?(?:equipe|recepção)\b|\baguarde\b[^.!?]{0,40}\benquanto (?:confirmo|verifico|consulto|confiro)\b|\bencaminh(?:ei|arei|aremos)\b|\b(?:vou|irei) (?:encaminhar|repassar)\b/i.test(text);
 
+// Runs a handler in-process for the Instagram turn (no extra function: the
+// Vercel plan counts each file in api/).
+async function invoke(target: (req: VercelRequest, res: VercelResponse) => unknown, query: Record<string, string>, body: any) {
+  let output: any; let status = 200;
+  const res: any = {status(code: number) { status = code; return res; }, json(value: any) { output = value; return res; },
+    send(value: any) { output = value; return res; }, setHeader() { return res; }, end() { return res; }};
+  await target({method: 'POST', query, body, headers: {}} as any, res);
+  return status >= 400 ? {...(output || {}), error: output?.error || 'Request failed'} : output;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.query?.operation === 'instagram' || req.query?.operation === 'instagram-render') {
+    res.setHeader?.('Cache-Control', 'no-store');
+    if (req.method !== 'POST') return res.status(405).json({error: 'Use POST'});
+    if (req.query.operation === 'instagram-render')
+      return res.status(200).json(instagramContent(req.body?.payload, String(req.query?.flow || '')));
+    return res.status(200).json(await instagramTurn(req.body || {}, {
+      route: body => handleConversation(body, req.headers?.authorization || ''),
+      // Loaded on demand: get-prices requires its credentials at import time.
+      prices: async (query, body) => invoke((await import('./get-prices.js')).default, query, body),
+      resolve: (query, body) => invoke(handler, query, body),
+    }));
+  }
   // Only the first response of a user turn: carousel pages / suggested media
   // are internal continuations and must not send the greeting again.
   let priceTable: string | undefined;
+  // "Sem ser réveillon, …": a ruled-out holiday is not the subject (26/10/2026).
+  if (!req.query?.operation && req.body && typeof req.body === 'object') {
+    for (const key of ['user_message', 'message']) if (typeof req.body[key] === 'string') req.body[key] = neutralizeNegatedHolidays(req.body[key]);
+  }
   if (!req.query?.operation || req.query?.transport === MANYCHAT_TEXT_TRANSPORT) {
     const sendJson = res.json.bind(res);
     res.json = ((payload: any) => {
-      const result = !req.query?.operation ? withDailyGreeting(repeatedQuestionHandoff(payload, req.body?.state, safeTypedMessage(String(req.body?.user_message || req.body?.message || '').trim()), priceTable), req.body?.state) : payload;
+      let result = !req.query?.operation ? withDailyGreeting(repeatedQuestionHandoff(payload, req.body?.state, safeTypedMessage(String(req.body?.user_message || req.body?.message || '').trim()), priceTable), req.body?.state) : payload;
+      if (result?.quote_request === 'HUMANO' && typeof result.state === 'string') result = {...result, state: markHumanHandoff(result.state)};
       return sendJson(req.query?.transport === MANYCHAT_TEXT_TRANSPORT ? withManyChatTextEnvelope(result) : result);
     }) as typeof res.json;
   }
@@ -569,7 +644,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // "Ok", "obrigado", "👍", "nenhuma": a short closing. After a goodbye, or
   // for the customer's own away message, nothing is sent (ROOM_DONE).
   const closingCandidate=!req.query?.operation&&!isAudioInput(incomingMessage)
-    ?closingTurn(serviceMessage,assistantBefore(earlyState,serviceMessage)):undefined;
+    ?closingTurn(serviceMessage,assistantBefore(earlyState,serviceMessage),earlyState?.daily_greeting?.first===true):undefined;
   const closing=closingCandidate?.kind==='closing'&&closingCandidate.answer!==thanksAnswer&&earlyState?.package_context&&earlyState?.topic==='package_info'
     &&packageAcknowledgment(serviceMessage)?undefined:closingCandidate;
   if(closing){
@@ -811,7 +886,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           can_collect:'NAO',confirmation_text:'',match_type:'multi_room_team_called',matched:false,availability_checked:false,
           state:withAssistantTurn(routed.state,answer)});
       }
-      const combination=await packageCombination(offered);
+      const combination=await packageCombination(offered).then(text=>text&&combinationExtras(text,serviceMessage,offered));
       if(combination)return res.status(200).json({...routed,quote_request:'HUMANO',quote_text:combination,conversation_text:combination,
         can_collect:'NAO',confirmation_text:'',match_type:'package_group_combination',matched:false,availability_checked:false,
         state:withAssistantTurn(routed.state,combination)});
@@ -840,7 +915,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           package_id:earlyState.package_context.id,package_name:earlyState.package_context.name,
           ...('state' in routed?{state:withAssistantTurn(routed.state,answer)}:{})});
       }
-      const combination=!human&&multiRoom?.status==='offered'?await packageCombination(state):undefined;
+      const combination=!human&&multiRoom?.status==='offered'?await packageCombination(state).then(text=>text&&combinationExtras(text,serviceMessage,state)):undefined;
       const answer=combination||('answer' in routed?routed.answer:'');
       return res.status(200).json({...routed,quote_request:human||combination?'HUMANO':'ROOM_LIST',
         quote_text:answer,conversation_text:answer,can_collect:'NAO',confirmation_text:'',
@@ -948,7 +1023,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     && latest?.role === 'assistant' && latest.text?.trim()
     && !photoClarificationQuestion(latest.text) ? latest.text : '';
   const informationResult = (fallback: string, match_type: string, authoritative=false) => {
-    const answer = withFullPeriodNote(authoritative ? fallback : currentAnswer || fallback, userMessage, conversationState);
+    // The controller's working notes ("Vou consultar as informações e as
+    // opções do pacote…") are never a final answer (seen twice on 25-26/10).
+    const working = /^Vou consultar (?:as informações|os pacotes cadastrados)/.test(currentAnswer.trim());
+    const answer = withFullPeriodNote(authoritative || working ? fallback : currentAnswer || fallback, userMessage, conversationState);
     // A model answer that promises a team action becomes the actual handoff.
     return {quote_request:!authoritative&&currentAnswer&&teamPromise(currentAnswer)?'HUMANO':'ROOM_LIST',quote_text:answer,conversation_text:answer,
       matched:false,match_type,availability_checked:false,
@@ -1038,7 +1116,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.query?.operation === 'next' && userMessage.startsWith('SITE_ID|')) return res.status(200).json(sitePhotoResult(true,userMessage));
   if (!req.query?.operation && reservaPhotoRequest(userMessage)) {
-    const result=sitePhotoResult();
+    const result=sitePhotoResult(false,'',userMessage);
     return res.status(200).json({...result,...control({operation:'remember_response',state:req.body?.state,response_text:result.conversation_text,clear_subject:true})});
   }
   if (!req.query?.operation && eventInquiry(userMessage) && !/fotos?|imagens|galeria/i.test(userMessage)) {
@@ -1066,9 +1144,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     || focusedPackage.id === newYearCampaignPackage.id && endOfYearMention(userMessage))
     && (!namedPackageInquiry(userMessage)||focusedPackageNameReference(userMessage,focusedPackage)
       ||packageOccupancyFollowup(userMessage,focusedPackage))) {
-    const [{data: packages,error: packageError},{data: rooms,error: roomError}] = await Promise.all([
+    const [{data: packages,error: packageError},{data: rooms,error: roomError},{data: packageExtras}] = await Promise.all([
       supabase.from('packages').select('*').eq('active',true),
       supabase.from('room_types').select('*').eq('active',true),
+      supabase.from('extras').select('*').eq('active',true),
     ]);
     if (packageError || roomError) return res.status(500).json({error:'Unable to load package information.'});
     const catalogPackage = (packages || []).find((item: PackageRecord) => currentPackage(item)&&item.id === focusedPackage.id);
@@ -1082,7 +1161,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Extra nights around the full package (31/12–04/01) are the same package.
     const differentDates = (facts.check_in && facts.check_in !== pkg.start_iso_date && !(facts.check_in < String(pkg.start_iso_date) && (!facts.check_out || facts.check_out >= String(pkg.end_iso_date))))
       || (facts.check_out && facts.check_out !== pkg.end_iso_date && !(facts.check_out > String(pkg.end_iso_date) && (!facts.check_in || facts.check_in <= String(pkg.start_iso_date))));
-    const saleTerms = saleTermsFor(pkg);
+    const saleTerms = {...saleTermsFor(pkg), extrasLine: packageExtrasLine(packageExtras || [], explicitPackageBoatBenefit(catalogPackage))};
     // 5+ people who need several apartments get the cheapest combination and
     // the team; a deposit with the balance later is the team's decision too.
     let handoff = false;
@@ -1153,7 +1232,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   ]);
 
   if (roomError) return res.status(500).json({ error: roomError.message });
-  const media = resolveRoomMedia(userMessage, rooms || []);
+  const media = resolveRoomMedia(userMessage, rooms || [], recommendedRoomName(conversationState?.turns));
   const remember = (response_text: string, room_name = '', clear_subject = false) => control({operation:'remember_response', state:req.body?.state, response_text, room_name, clear_subject});
   if (media) {
     const gallery = ['room_gallery','room_comparison_gallery','room_comparison_information','room_gallery_information'].includes(media.match_type);
@@ -1211,9 +1290,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // campaign package, not the list of December packages (audit 05/10/2026).
   const campaignPackage=!nextPackage&&endOfYearMention(userMessage)&&newYearCampaignFocus(conversationState?.campaign,conversationState?.facts)
     ?(currentPackages as PackageRecord[]).find(pkg=>pkg.id===newYearCampaignPackage.id):undefined;
-  const best = nextPackage?{pkg:nextPackage,score:scorePackage(userMessage,nextPackage)}
+  let best = nextPackage?{pkg:nextPackage,score:scorePackage(userMessage,nextPackage)}
     :campaignPackage?{pkg:campaignPackage,score:100}:ranked[0];
+  // Natal + Réveillon only when the customer asks for Christmas too (audit
+  // 21/10/2026: Réveillon dates written out got the 10-night package).
+  const bothHolidays = (item: PackageRecord) => /\bnatal\b/.test(normalize(String(item.name || ''))) && /\b(?:reveillon|ano novo|virada)\b/.test(normalize(String(item.name || '')));
+  if (!nextPackage && bothHolidays(best.pkg) && !/\bnatal(?:ino|ina)?\b/.test(normalize(userMessage))) {
+    const single = ranked.find(item => !bothHolidays(item.pkg) && item.score >= 20);
+    if (single) best = single;
+  }
 
+  // Audit 26/10/2026: "valor para o feriado de finados, 01 casal e 01
+  // criança" got the list of December packages. A holiday with no package of
+  // its own is a regular stay: ask the dates instead.
+  const holiday = best.score < 20 && !nextPackage ? missingHoliday(userMessage, currentPackages as PackageRecord[]) : undefined;
+  if (holiday) {
+    const guests = Number(conversationState?.facts?.guests) || 0;
+    const answer = `Para ${holiday} não temos um pacote especial cadastrado; a hospedagem é cotada por diária, com café da manhã incluso. Quais serão as datas de entrada e saída?${guests ? '' : ' E para quantas pessoas, contando adultos e crianças?'}`;
+    return res.status(200).json({quote_request:'NO_PACKAGE',quote_text:answer,conversation_text:answer,matched:false,match_type:'holiday_without_package',availability_checked:false,
+      ...control({operation:'remember_response',state:req.body?.state,response_text:answer,clear_package:true})});
+  }
   if (best.score < 20&&!nextPackage) {
     return res.status(200).json({
       quote_request: 'PACKAGE_LIST',
@@ -1246,9 +1342,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // pessoas?") goes straight to the card for that group.
   const statedGroup=!nextPackage?groupInMessage(userMessage,conversationState):0;
   if(statedGroup&&!familyAccommodation(conversationState,statedGroup).pending){
-    const terms=saleTermsFor(pkg);
+    const {data:groupExtras}=await supabase.from('extras').select('*').eq('active',true);
+    const terms={...saleTermsFor(pkg),extrasLine:packageExtrasLine(groupExtras||[],explicitPackageBoatBenefit(best.pkg))};
     const combination=packageGroupCombination(pkg,(rooms||[]) as RoomRecord[],statedGroup,conversationState,terms);
-    const answer=combination||packageRecommendation(pkg,(rooms||[]) as RoomRecord[],statedGroup,conversationState,terms);
+    const answer=combination?combinationExtras(combination,userMessage,conversationState):packageRecommendation(pkg,(rooms||[]) as RoomRecord[],statedGroup,conversationState,terms);
     return res.status(200).json({quote_request:combination?'HUMANO':'ROOM_LIST',quote_text:answer,conversation_text:answer,
       package_id:pkg.id,package_name:pkg.name||'',matched:true,match_type:combination?'package_group_combination':'package_recommendation',
       can_collect:'NAO',confirmation_text:'',availability_checked:false,

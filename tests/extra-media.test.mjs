@@ -22,12 +22,14 @@ test('fila finita com valores corretos, bicicletas gratuitas e barco terceirizad
  for(let i=0;r.quote_request.startsWith('EXTRA_ID|');i++) {
   assert.ok(i<4);captions.push(r.conversation_text); r=nextExtraMedia(r.quote_request,extras);
  }
- assert.equal(r.quote_request,'ROOM_DONE');assert.equal(captions.length,4);
+ // 19/10/2026: 3 photos per request (ManyChat loop); the bicycles go as text
+ // in the first caption instead of a 4th photo.
+ assert.equal(r.quote_request,'ROOM_DONE');assert.equal(captions.length,3);
  assert.match(captions[0],/terceiros, sob consulta/);
  assert.match(captions[0],/Valores, horários, duração e disponibilidade.*recepção/);
- assert.doesNotMatch(captions[0],/R\$|350|100|2h|maré cheia/);
+ assert.doesNotMatch(captions[0].split('🚲')[0],/R\$|350|100|2h|maré cheia/);
  assert.match(captions[1],/180,00/);assert.match(captions[2],/350,00/);
- assert.match(captions[3],/Cortesia gratuita/);assert.doesNotMatch(captions[3],/50,00/);
+ assert.match(captions[0],/Cortesia gratuita/);assert.doesNotMatch(captions[0],/50,00/);
  assert.match(extraMediaResult(['BARCO'],extras,true).conversation_text,/sem cobrança adicional/);
 });
 test('sem imagem ou extra inativo não usa foto alheia nem inventa valor',()=>{

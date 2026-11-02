@@ -49,6 +49,13 @@ export const confirmedHotelPolicy = {
     applies_to: 'Ensaios e sessões de fotos de hóspedes, inclusive nas áreas comuns e com fotógrafo externo.',
     limits: 'Hospedar-se não concede automaticamente autorização para o ensaio. Consultar previamente a recepção não confirma permissão, agendamento, áreas específicas, preço ou exclusividade.',
   },
+  // Owner correction of 27/10/2026: the model said the hair dryer was in the bathroom.
+  room_amenities: {
+    confirmed_at: '2026-10-27',
+    hair_dryer: 'Os apartamentos NÃO têm secador de cabelo. Ele é emprestado pela recepção, a pedido do hóspede.',
+    iron: 'Os apartamentos NÃO têm ferro de passar roupa. Ele é emprestado pela recepção, a pedido do hóspede.',
+    limits: 'Não afirmar que secador ou ferro ficam no banheiro ou no apartamento. Empréstimo sujeito à disponibilidade no momento; não reservar o item.',
+  },
   guest_guide: 'https://www.hotelsolar.tur.br/guia',
   massages: massagePolicy,
   limits: 'Políticas confirmadas prevalecem sobre mensagens antigas. Não representam disponibilidade em tempo real, contratação, agendamento, reserva de item nem execução de serviço. Não ampliar benefícios a outros serviços.',
@@ -64,7 +71,8 @@ export function hotelPolicyInquiry(message: string): boolean {
     || /\b(?:quadriciclos?|loc\s?mil|room service|servico de quarto)\b/.test(s)
     || /\bguia\b/.test(s) && /\b(?:hotel|hospede|hospedes|solar)\b/.test(s)
     || /\b(?:cadeira de rodas|rampas?|degraus?|banheiros? adaptados?)\b/.test(s)
-    || /\b(?:camas? extras?|camas? separadas|duas camas de solteiro)\b/.test(s);
+    || /\b(?:camas? extras?|camas? separadas|duas camas de solteiro)\b/.test(s)
+    || borrowedAmenityInquiry(message);
 }
 
 export function hydromassageInquiry(message: string): boolean {
@@ -75,9 +83,24 @@ export function hydromassageInquiry(message: string): boolean {
 
 /** Only current owner-confirmed policies; callers still retain explicit
  * human, operational, attachment and actual media-request priority. */
+export const borrowedAmenitiesAnswer = 'Os apartamentos não têm secador de cabelo nem ferro de passar roupa. Os dois são emprestados pela recepção: é só pedir, conforme a disponibilidade no momento.';
+const amenityWords = /\b(?:secador(?:es)?(?: de cabelo)?|secadores|ferro(?:s)? de passar|ferro(?:s)? de roupa|tabua de passar)\b/;
+export function borrowedAmenityInquiry(message: string): boolean {
+  return amenityWords.test(normalize(message));
+}
+/** The model placing the hair dryer or the iron in the room (27/10/2026):
+ * those sentences are replaced by the confirmed rule. */
+export function correctBorrowedAmenities(answer: string): string {
+  if (!amenityWords.test(normalize(answer))) return answer;
+  if (/recepcao/.test(normalize(answer)) && !/\b(?:no banheiro|nos banheiros|no quarto|nos quartos|no apartamento|nos apartamentos|disponive(?:l|is) (?:no|nos|em todos))\b/.test(normalize(answer))) return answer;
+  const kept = answer.split(/(?<=[.!?])\s+|\n+/).filter(part => !amenityWords.test(normalize(part)));
+  return [...kept, borrowedAmenitiesAnswer].join(' ').replace(/\s{2,}/g, ' ').trim();
+}
+
 export function confirmedHotelAnswer(message: string): string | undefined {
   if (explicitHumanRequest(message)) return;
   if (photoSessionInquiry(message)) return photoSessionAnswer;
+  if (borrowedAmenityInquiry(message)) return borrowedAmenitiesAnswer;
   if (!hydromassageInquiry(message)) return;
   const answer = 'Temos duas piscinas de hidromassagem, de uso compartilhado dos hóspedes. Elas não são privativas nem exclusivas de um apartamento.';
   return /\b(?:aquecid[oa]s?|aquecimento|quentes?|temperatura|esquenta)\b/.test(normalize(message))

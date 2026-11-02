@@ -115,7 +115,7 @@ test('caso real filha de nove anos responde a política e não transforma um adu
   assert.match(result.conversation_text,/9 anos está fora/);
   assert.doesNotMatch(result.conversation_text,/Quantas pessoas|R\$|Opção premium|datas de entrada|1 hóspede/);
   assert.equal(JSON.parse(result.state).package_context.id,'reveillon');
-  assert.deepEqual(queries,['packages','room_types']);
+  assert.deepEqual(queries,['packages','room_types','extras']);
 });
 
 test('idades em mensagens separadas permanecem no pacote; só grupo completo permite indicar categoria',async()=>{

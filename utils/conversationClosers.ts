@@ -48,12 +48,31 @@ export function declined(message: string): 'firm' | 'soft' | undefined {
 // hesitation answer): a further "ok" or emoji needs no answer.
 const farewell = (text: string) => /(?:é só me chamar(?: por aqui| aqui)?|me chame quando quiser)[^?]*$/.test(text.trim());
 
+export const stayThanksAnswer = 'Nós que agradecemos! 😊 Foi um prazer receber você no Hotel Solar. Se precisar de algo, é só chamar por aqui.';
+
+/** "Agradeço a estadia, maravilhoso o atendimento", "Obrigada pela
+ * hospedagem, amamos tudo" (audit 26/10/2026: got "Para quantas pessoas?"). */
+export function stayThanks(message: string): boolean {
+  const raw = message.trim();
+  if (!raw || raw.length > 400 || raw.includes('?')) return false;
+  const s = words(raw);
+  if (/\b(?:valor|valores|preco|quanto|reservar|disponibilidade|vaga|vagas|cotacao|orcamento|datas?|diarias?|pacote|proxima vez que|quero voltar em|esqueci|esquecemos|perdi|reclamacao|problema|cobranca|cobrado|estorno|reembolso)\b/.test(s)) return false;
+  const thanks = /\b(?:agradec\w*|obrigad[oa]s?|grat[oa]s?|gratidao|valeu)\b/.test(s);
+  const stay = /\b(?:estadia|hospedagem|acolhida|recepcao|atendimento|carinho|hospitalidade|tudo|dias|temporada|feriado|fim de semana)\b/.test(s);
+  const praise = /\b(?:maravilhos[oa]|otim[oa]|excelente|perfeit[oa]|incrivel|adorei|adoramos|amei|amamos|gostei|gostamos|voltaremos|voltarei|voltar sempre|chegamos bem|cheguei bem)\b/.test(s);
+  return thanks && (stay || praise) || praise && /\b(?:estadia|hospedagem|hotel|atendimento)\b/.test(s);
+}
+
 export type ClosingTurn = {kind: 'automatic_reply' | 'silent' | 'closing'; answer: string};
 
 /** Deterministic reply for a closing reaction, or undefined to answer normally.
  * An "ok" right after a question (in the closing lines) may be its answer, so it is left alone. */
-export function closingTurn(message: string, lastAssistant = ''): ClosingTurn | undefined {
+export function closingTurn(message: string, lastAssistant = '', resumed = false): ClosingTurn | undefined {
   if (automaticReply(message)) return {kind: 'automatic_reply', answer: ''};
+  if (stayThanks(message)) return {kind: 'closing', answer: stayThanksAnswer};
+  // A question left on another day is not what "Tudo certo" answers now
+  // (audit 26/10/2026: a guest's reply to the check-in welcome went to the team).
+  if (resumed) lastAssistant = '';
   const ack = acknowledgment(message), decline = declined(message);
   if (!ack && !decline) return;
   const last = lastAssistant.replace(/https?:\/\/\S+/g, 'link').trim();

@@ -1,7 +1,7 @@
 import {readPackageContext} from './packageContext.js';
 import {possibleCompanionInquiry,possibleCompanionAnswer} from './possibleCompanion.js';
 import {explicitLodgingRequest} from './guestInquiry.js';
-import {newYearPartialStayAnswer} from './newYearSales.js';
+import {newYearPartialStayAnswer,quotableNewYearRange} from './newYearSales.js';
 
 const norm=(s:string)=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
 const months=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
@@ -58,6 +58,9 @@ export function packageConsultationReply(message:string,context?:unknown,now=Dat
   const exception=newYearDateException(message,context,now);
   const companion=possibleCompanionInquiry(message)&&(/\b(?:cama|apartamento|apto|quarto|hospedagem|estadia|reserva|reservar|pacote|reveillon)\b/.test(norm(message))||!!readPackageContext(context,now));
   if(!exception&&!companion)return;
+  // Audit 26/10/2026: "31/12 a 02/01, somos 10 pessoas" is quoted on the full
+  // package (or handed to the team for several rooms), not asked again.
+  if(exception&&!companion&&quotableNewYearRange(message))return;
   // Owner decision of 29/09/2026: partial New Year stays are not accepted.
   // Answer clearly and offer extra nights around the full package instead.
   return {answer:[exception?newYearPartialStayAnswer:'',companion?possibleCompanionAnswer:''].filter(Boolean).join('\n\n'),handoff:false};

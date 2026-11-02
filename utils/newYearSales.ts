@@ -27,7 +27,7 @@ export const newYearSalesPolicy = {
   payment_confirmed_at: '2026-10-01',
 };
 
-export type NewYearSalesReply = {kind: 'party_only' | 'party_detail' | 'partial_stay' | 'unknown_partner' | 'payment' | 'price_objection' | 'hesitation'; answer: string; handoff: boolean};
+export type NewYearSalesReply = {kind: 'party_only' | 'party_price' | 'party_detail' | 'partial_stay' | 'unknown_partner' | 'payment' | 'price_objection' | 'hesitation'; answer: string; handoff: boolean};
 
 const norm = (s: string) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 const belemToday = (now: number) => new Date(now - 3 * 3600000).toISOString().slice(0, 10);
@@ -70,11 +70,36 @@ export function newYearPartyOnlyInquiry(message: string, context?: unknown, now 
   const wristband = /\b(?:pulseiras?|ingressos?)\b/.test(s);
   const withoutLodging = /\b(?:so|somente|apenas)\s+(?:(?:a|na|pra|para a|para)\s+)?festa\b/.test(s)
     || /\bsem (?:ficar |me |nos |estar )?(?:hospedad[oa]s?|hospedagem|hospedar|estadia|dormir|pernoitar)\b/.test(s)
-    || /\bnao (?:vou|vamos|quero|queremos|pretendo|pretendemos|precisamos|preciso) (?:ficar hospedad[oa]s?|me hospedar|nos hospedar|de hospedagem|dormir|pernoitar)\b/.test(s)
-    || /\bfesta\b.{0,40}\b(?:avuls[oa]|separad[oa]|sem hospedagem|sem estadia)\b/.test(s);
+    || /\bnao (?:vou|vamos|quero|queremos|pretendo|pretendemos|precisamos|preciso) (?:ficar hospedad[oa]s?|me hospedar|nos hospedar|(?:de )?hospedagem|dormir|pernoitar)\b/.test(s)
+    // "Somente participar da virada" (Inbox 19/10/2026).
+    || /\b(?:so|somente|apenas)\s+(?:para\s+|pra\s+)?(?:participar|ir|curtir|aproveitar)\s+(?:d[ao]|n[ao]|a|o)\s+(?:festa|virada)\b/.test(s)
+    || /\bfesta\b.{0,40}\b(?:avuls[oa]|separad[oa]|sem hospedagem|sem estadia)\b/.test(s)
+    // Audit 26/10/2026: "não estando hospedado", "só o show e a ceia, tenho
+    // casa", "moro perto".
+    || /\bnao\s+(?:estando|sendo|estar|ficando|ficar)\s+hospedad[oa]s?\b/.test(s)
+    || /\b(?:so|somente|apenas)\s+(?:o\s+|a\s+)?(?:show|ceia|jantar)(?:\s+(?:e|com)\s+(?:o\s+|a\s+)?(?:show|ceia|festa|jantar))?\b/.test(s)
+    || /\b(?:tenho|temos)\s+(?:casa|apartamento|apto)\b|\bmoro\s+(?:perto|aqui|em salinas|na orla)\b/.test(s) && /\b(?:festa|ceia|show|virada|reveillon)\b/.test(s);
   if (!wristband && !withoutLodging) return false;
   return wristband && (newYearWords.test(s) || /\bfesta\b/.test(s) || focusedOnNewYear(context, now) || /\bpulseiras?\b/.test(s))
     || withoutLodging && (newYearWords.test(s) || /\bfesta\b/.test(s) || focusedOnNewYear(context, now));
+}
+
+// "E na noite da virada, qto tá a festa" (Inbox 21/10/2026): the price of
+// the party, without saying whether they will stay. Both options, then ask.
+export const newYearPartyPriceAnswer = `A Festa da Virada (31/12, ${newYearSalesPolicy.party_hours}) também é vendida sem hospedagem: pulseira de R$ ${newYearSalesPolicy.party_wristband_price} por pessoa, com ceia, open bar, Banda Zona Rural e DJ. Pagamento no Pix ou no cartão de crédito em até 3x.
+
+Se quiser se hospedar, a festa já está incluída no pacote do Réveillon (31/12 a 03/01, 3 noites, com café da manhã e passeio de barco).
+
+Você quer só a festa ou a festa com hospedagem? Se for com hospedagem, me diga quantas pessoas vão que eu passo o valor.`;
+
+/** The party's price, with no word about lodging either way. */
+export function newYearPartyPriceInquiry(message: string, context?: unknown, now = Date.now()): boolean {
+  const s = norm(message);
+  if (!campaignActive(now) || !s || s.length > 200) return false;
+  if (!/\bfesta\b/.test(s) || privateEvent.test(s) || /\b(?:inclu(?:i|so|sa|sos|sas|ido|ida)|incluid[oa]s?)\b/.test(s)) return false;
+  if (/\b(?:hospedagem|hosped\w*|pacotes?|quartos?|apartamentos?|aptos?|suites?|diarias?|estadia|noites|pessoas?|adult\w*|crianc\w*|casal|loft)\b/.test(s)) return false;
+  const price = /\b(?:quanto|qto|qt|qnt|valor(?:es)?|precos?|custa|custo|ta a festa|esta a festa)\b/.test(s);
+  return price && (newYearWords.test(s) || focusedOnNewYear(context, now));
 }
 
 /** Specific party arrangements that are not confirmed in the catalogue. */
@@ -94,6 +119,12 @@ export function newYearStayRange(message: string): Range | undefined {
   return newYearRange(norm(message));
 }
 function newYearRange(s: string): Range | undefined {
+  // "check-in dia 31 de dezembro e check-out dia 02 de janeiro" (audit 26/10).
+  const spelled = s.match(/\b(\d{1,2}) de dezembro\b.{1,50}?\b(\d{1,2}) de janeiro\b/);
+  if (spelled) {
+    const start = `2026-12-${spelled[1].padStart(2, '0')}`, end = `2027-01-${spelled[2].padStart(2, '0')}`;
+    if (+spelled[1] >= 20 && +spelled[1] <= 31 && +spelled[2] >= 1 && +spelled[2] <= 15) return {start, end};
+  }
   const m = s.match(/\b(?:dia\s+)?(\d{1,2})(?:\/(\d{1,2})(?:\/(?:20)?2[67])?)?\s*(?:a|ate|ao|-)\s*(?:o\s+)?(?:dia\s+)?(\d{1,2})(?:\/(\d{1,2})(?:\/(?:20)?2[67])?)?(?!\s*(?:anos?|meses?|pessoas?|criancas?|adultos?|hospedes?|horas?|h\b|x\b|vezes))(?:\s+de\s+(dezembro|janeiro))?\b/);
   if (!m) return;
   const month = (day: number, explicit?: string) => explicit ? Number(explicit) : m[5] === 'janeiro' ? 1 : m[5] === 'dezembro' ? 12 : day >= 20 ? 12 : 1;
@@ -207,6 +238,13 @@ export const newYearFullPeriodNote = (asked: NewYearStayRequest) =>
 
 const partyMention = /\b(?:\d{1,2}|uma|um|duas|dois|tres|quatro|cinco|seis|sete|oito|nove|dez)\s+(?:pessoas?|adultos?|hospedes?)\b|\bcasal\b/;
 
+/** "31/12 a 02/01, somos 10 pessoas": the full package can be priced (widened
+ * dates), so the partial period is not only declined. */
+export function quotableNewYearRange(message: string) {
+  const s = norm(message);
+  return !!newYearStayRange(message) && partyMention.test(s) && !skipsPartyNight(s);
+}
+
 /** Réveillon sales answer for this turn. "31/12 a 01/01 para 5 pessoas" has
  * everything to price the full package, so it is quoted (widened dates)
  * instead of only declining the partial stay. */
@@ -287,6 +325,7 @@ export function newYearSiteLink(checkIn: string, checkOut: string, now = Date.no
 /** Deterministic Réveillon sales answers, in priority order. */
 export function newYearSalesReply(message: string, context?: unknown, now = Date.now()): NewYearSalesReply | undefined {
   if (newYearPartyOnlyInquiry(message, context, now)) return {kind: 'party_only', answer: newYearPartyOnlyAnswer, handoff: true};
+  if (newYearPartyPriceInquiry(message, context, now)) return {kind: 'party_price', answer: newYearPartyPriceAnswer, handoff: false};
   if (partialNewYearStay(message, context, now)) return {kind: 'partial_stay', answer: newYearPartialStayAnswer, handoff: false};
   // Unconfirmed details are answered as such and the AI keeps selling; the
   // customer can still ask for the team (owner, 30/09: the AI should answer).

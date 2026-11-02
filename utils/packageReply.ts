@@ -92,7 +92,7 @@ const money = (value: number) => value.toLocaleString('pt-BR', {
 }).replace(/\u00a0/g, ' ');
 
 /** Sale conditions the caller confirmed for this package (e.g. Réveillon 10% à vista). */
-export type PackageSaleTerms = { cashDiscountPct?: number; siteUrl?: string; highlights?: string };
+export type PackageSaleTerms = { cashDiscountPct?: number; siteUrl?: string; highlights?: string; extrasLine?: string };
 
 const packageNights = (pkg: PackagePricingRecord) => pkg.start_iso_date && pkg.end_iso_date
   ? Math.round((Date.parse(`${pkg.end_iso_date}T12:00:00Z`) - Date.parse(`${pkg.start_iso_date}T12:00:00Z`)) / 86400000) : 0;
@@ -207,7 +207,11 @@ export function packageGroupCombination(
     const single = options.filter(item => baseRoomCapacity(Number(item.capacity)) >= 4).sort((a, b) => a.price - b.price)[0];
     if (single) text.push(`Se uma das 5 pessoas for criança de até 6 anos, vocês cabem em um apartamento para 4 com ela em cortesia, a partir de ${money(single.price)}.`);
   }
-  text.push('', 'Valores por apartamento, para o pacote completo, sujeitos à disponibilidade.',
+  // Audit 16/10/2026: the highlighted price is the sum of the apartments, so
+  // "por apartamento" under it read as if each apartment cost the total.
+  text.push('', quad
+    ? 'Valores do pacote completo: com bicama, o total do apartamento; com 2 apartamentos, o total dos dois. Sujeitos à disponibilidade.'
+    : `Valor total dos ${best.length} apartamentos, para o pacote completo, sujeito à disponibilidade.`,
     'Vou chamar nossa equipe para confirmar a disponibilidade e a distribuição de vocês nesta conversa.');
   return text.join('\n');
 }
@@ -267,6 +271,7 @@ export function packageRecommendation(
   const site = terms.siteUrl || `https://reservas.hotelsolar.tur.br/?pacote=${encodeURIComponent(pkg.id)}`;
   const closing = [
     '', 'Valores por apartamento (não por pessoa), para o pacote completo, sujeitos à disponibilidade.',
+    ...(terms.extrasLine ? [terms.extrasLine] : []),
     `👉 Reserve pelo site: ${site}`,
     `Prefere a ${bestName} ou outra opção? Me diga qual que eu preparo o resumo para você confirmar.`,
   ].join('\n');

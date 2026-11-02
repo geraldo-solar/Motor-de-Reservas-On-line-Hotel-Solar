@@ -191,17 +191,20 @@ test('programação Heraldo responde antes de pacotes/extras/lead privado sem ac
   assert.match(first.conversation_text,/^Olá!/);
 });
 
-test('Reserva Solar possui duas fotos próprias, fila finita e eventos não viram pacotes ou extras', async () => {
+test('Reserva Solar possui fotos próprias, fila finita e eventos não viram pacotes ou extras', async () => {
   const handler=await loadHandler('api/resolve-package.ts',[],[]);
   const r=await request(handler,{user_message:'Vc tem fotos do restaurante reserva solar?'});
-  assert.equal(r.quote_request,'SITE_ID|RESERVA_1|RESERVA_2');
+  // 19/10/2026: three official photos (deck, varanda, aérea) + closing button.
+  assert.equal(r.quote_request,'SITE_ID|RESERVA_1|RESERVA_2,RESERVA_AEREA');
   assert.match(r.conversation_text,/Reserva Solar/); assert.doesNotMatch(r.conversation_text,/Loft|piscina/);
   let next;
   const response={status(){return this;},json(v){next=v;return v;}};
   await handler({method:'POST',query:{operation:'next'},body:{user_message:r.quote_request}},response);
-  assert.equal(next.quote_request,'SITE_ID|RESERVA_2');
-  await handler({method:'POST',query:{operation:'next'},body:{user_message:next.quote_request}},response);
-  assert.equal(next.quote_request,'ROOM_DONE');
+  assert.equal(next.quote_request,'SITE_ID|RESERVA_2|RESERVA_AEREA');
+  for (const expected of ['SITE_ID|RESERVA_AEREA','ROOM_DONE']) {
+    await handler({method:'POST',query:{operation:'next'},body:{user_message:next.quote_request}},response);
+    assert.equal(next.quote_request,expected);
+  }
   const event=await request(handler,{user_message:'Orçamento de aniversário para 50 pessoas',state:{version:2,history:[],facts:{extras:[]},turns:[{role:'assistant',text:'Sugiro Mesa Posta'}]}});
   assert.equal(event.quote_request,'ROOM_LIST'); assert.match(event.conversation_text,/5591991654050/);
   assert.equal((event.conversation_text.match(/5591991654050/g)||[]).length,1);
@@ -236,13 +239,15 @@ test('foto específica vem da categoria cadastrada, sem preço ou disponibilidad
   const room = { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', name: 'LOFT', images: [image] };
   const quad = { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', name: 'Suíte Quádruplo', images: [image] };
   const handler = await loadHandler('api/resolve-package.ts', [], [room, quad]);
-  for (const [message, expected] of [['Quero ver fotos do apto loft', room], ['Quero imagens do quádruplo', quad], ['Me mande fotos dos aptos', room]]) {
+  for (const [message, expected] of [['Quero ver fotos do apto loft', room], ['Quero imagens do quádruplo', quad]]) {
     const r = await request(handler, { user_message: message });
     assert.equal(r.quote_request, `ROOM_ID|${expected.id}`);
     assert.equal(r.room_name, expected.name);
     assert.equal(r.availability_checked, false);
     assert.doesNotMatch(r.conversation_text, /R\$|Confirmar opção|CPF|disponível/);
   }
+  // 17/10/2026: a generic request shows every category, not only the Loft.
+  assert.equal((await request(handler, {user_message: 'Me mande fotos dos aptos'})).quote_request, `ROOM_ID|${room.id}|${quad.id}`);
   for (const message of ['Fotos da suíte presidencial']) {
     const r = await request(handler, {user_message: message});
     assert.equal(r.quote_request, 'ROOM_LIST');
@@ -290,18 +295,20 @@ test('serviço solicitado recebe imagem real, preço correto e memória sem acei
   const resend=await request(handler,{user_message:'Foto da Mesa Posta novamente',state:result.state});assert.match(resend.quote_request,/^EXTRA_ID\|MESA/);
 });
 
-test('todos os aptos percorre categorias uma vez e termina; pacote não entra no loop', async () => {
+test('todos os aptos percorre até 3 categorias e cita as demais; pacote não entra no loop', async () => {
   const catalog = Array.from({length:6},(_,i)=>({id:`room${i}`,name:`Categoria ${i}`,images:['https://example.com/room.jpg']}));
   catalog.push({id:'missing',name:'Sem foto',images:[]});
   const handler = await loadHandler('api/resolve-package.ts',packages,catalog);
   let response = await request(handler,{user_message:'Fotos de todos os aptos'});
+  // 17/10/2026: the ManyChat loop delivers 4 photos per request.
+  assert.match(response.conversation_text,/Também temos Categoria 3, Categoria 4 e Categoria 5; se quiser ver, é só pedir/);
   const names = [];
   while (response.quote_request.startsWith('ROOM_ID|')) {
     names.push(response.room_name);
     assert.ok(names.length<=6);
     await handler({method:'POST',query:{operation:'next'},body:{user_message:response.quote_request}},{status(){return this;},json(v){response=v;return v;}});
   }
-  assert.deepEqual(names,catalog.slice(0,6).map(r=>r.name));
+  assert.deepEqual(names,catalog.slice(0,3).map(r=>r.name));
   assert.equal(response.quote_request,'ROOM_DONE');
   await handler({method:'POST',query:{operation:'next'},body:{user_message:'PACKAGE_ID|independencia'}},{status(){return this;},json(v){response=v;return v;}});
   assert.equal(response.quote_request,'ROOM_DONE');
