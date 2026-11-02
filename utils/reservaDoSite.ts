@@ -185,40 +185,6 @@ export function ehRascunhoDoChatbot(linha: any): boolean {
     && String(linha.status || '').toUpperCase() === 'PENDING';
 }
 
-type LinhaDoQuarto = { overrides?: any; total_quantity?: number | null; base_price?: number | null };
-
-/** Dias da estadia (entrada inclusive, saída exclusive), em AAAA-MM-DD. */
-export function diasDaEstadia(entrada: string, saida: string): string[] {
-  const dias: string[] = [];
-  const atual = new Date(`${entrada}T12:00:00Z`);
-  const fim = new Date(`${saida}T12:00:00Z`);
-  for (let guarda = 0; atual < fim && guarda < 366; guarda++) {
-    dias.push(atual.toISOString().slice(0, 10));
-    atual.setUTCDate(atual.getUTCDate() + 1);
-  }
-  return dias;
-}
-
-/**
- * Estoque da acomodação depois de um cancelamento (devolve 1 por dia, sem
- * passar do total). "reservar" (tira 1 por dia) fica para quem precisar: na
- * entrada da reserva quem tira é o próprio banco.
- */
-export function estoqueAjustado(quarto: LinhaDoQuarto, entrada: string, saida: string, operacao: 'reservar' | 'devolver') {
-  const total = Number(quarto.total_quantity || 1);
-  const ajustes = safeArray<any>(quarto.overrides).map(o => ({ ...o }));
-  for (const dia of diasDaEstadia(entrada, saida)) {
-    const i = ajustes.findIndex(o => o.dateIso === dia);
-    if (i >= 0) {
-      const atual = ajustes[i].availableQuantity ?? total;
-      ajustes[i].availableQuantity = operacao === 'devolver' ? Math.min(total, atual + 1) : Math.max(0, atual - 1);
-    } else if (operacao === 'reservar') {
-      ajustes.push({ dateIso: dia, price: quarto.base_price, availableQuantity: Math.max(0, total - 1), isClosed: false });
-    }
-  }
-  return ajustes;
-}
-
 /**
  * Cancelamento pelo hóspede. Total, ou só as acomodações/serviços marcados;
  * se não sobrar acomodação, vira total. Mesma conta que a tela fazia.

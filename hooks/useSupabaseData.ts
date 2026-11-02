@@ -710,56 +710,9 @@ export const useSupabaseData = () => {
         return updated;
       });
 
-      // --- SINCRONIZAÇÃO DE INVENTÁRIO ---
-      const syncInventory = async (res: Reservation, operation: 'increase' | 'decrease') => {
-        try {
-          for (const roomSnapshot of res.rooms) {
-            const { data: roomData } = await supabase.from('room_types').select('*').eq('id', roomSnapshot.id).single();
-            if (roomData) {
-              const currentRoom = mapRooms([roomData])[0];
-              const checkInDate = parseISODate(res.checkIn);
-              const checkOutDate = parseISODate(res.checkOut);
-              const updatedOverrides = [...(currentRoom.overrides || [])];
-
-              let current = new Date(checkInDate);
-              while (current < checkOutDate) {
-                const iso = toLocalISO(current);
-                const ovIndex = updatedOverrides.findIndex(o => o.dateIso === iso);
-
-                if (ovIndex >= 0) {
-                  const currentQty = updatedOverrides[ovIndex].availableQuantity ?? currentRoom.totalQuantity;
-                  updatedOverrides[ovIndex] = {
-                    ...updatedOverrides[ovIndex],
-                    availableQuantity: operation === 'increase'
-                      ? Math.min(currentRoom.totalQuantity, currentQty + 1)
-                      : Math.max(0, currentQty - 1)
-                  };
-                } else if (operation === 'decrease') {
-                  updatedOverrides.push({
-                    dateIso: iso,
-                    price: currentRoom.price, // Use base price if no override exists
-                    availableQuantity: Math.max(0, currentRoom.totalQuantity - 1),
-                    isClosed: false
-                  });
-                }
-                current.setDate(current.getDate() + 1);
-              }
-              await supabase.from('room_types').update({ overrides: updatedOverrides }).eq('id', roomSnapshot.id);
-            }
-          }
-        } catch (err) {
-          console.error('[Inventory] Erro na sincronização:', err);
-        }
-      };
-
-      if (status === 'CANCELED') {
-        const resToUpdate = reservations.find(r => r.id === id);
-        if (resToUpdate) {
-          console.log('[Supabase] Reserva cancelada detectada. Restaurando inventário...');
-          await syncInventory(resToUpdate, 'increase');
-        }
-      }
-
+      // O estoque da acomodação volta pelo gatilho do banco
+      // (sync_inventory_from_reservation); devolver aqui contaria duas vezes.
+      // Recarrega para a tela mostrar o estoque já devolvido.
       // Forçar recarregamento dos dados de acomodações/estoque
       await loadFromSupabase(true);
       // --- FIM DA ATUALIZAÇÃO DE INVENTÁRIO ---

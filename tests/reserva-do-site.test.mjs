@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {build} from 'esbuild';
+import {readFileSync} from 'node:fs';
 const b=await build({entryPoints:['utils/reservaDoSite.ts'],bundle:true,write:false,platform:'node',format:'esm'});
 const m=await import('data:text/javascript;base64,'+Buffer.from(b.outputFiles[0].text).toString('base64'));
 
@@ -51,15 +52,12 @@ test('rascunho do chatbot só enquanto pendente',()=>{
   assert.ok(!m.ehRascunhoDoChatbot({observations:'reserva do site',status:'PENDING'}));
 });
 
-test('estoque: reservar tira 1 por dia, devolver repõe sem passar do total',()=>{
-  assert.deepEqual(m.diasDaEstadia('2026-10-30','2026-11-02'),['2026-10-30','2026-10-31','2026-11-01']);
-  const quarto={total_quantity:3,base_price:400,overrides:[{dateIso:'2026-10-10',availableQuantity:1,price:500}]};
-  const depois=m.estoqueAjustado(quarto,'2026-10-10','2026-10-12','reservar');
-  assert.deepEqual(depois.map(o=>[o.dateIso,o.availableQuantity]),[['2026-10-10',0],['2026-10-11',2]]);
-  assert.equal(quarto.overrides[0].availableQuantity,1,'não altera o original');
-  const devolvido=m.estoqueAjustado({...quarto,overrides:depois},'2026-10-10','2026-10-12','devolver');
-  assert.deepEqual(devolvido.map(o=>o.availableQuantity),[1,3]);
-  assert.deepEqual(m.estoqueAjustado({total_quantity:3,overrides:[]},'2026-10-10','2026-10-11','devolver'),[]);
+test('estoque: cancelar não mexe em room_types, quem devolve é o gatilho do banco',()=>{
+  // sync_inventory_from_reservation devolve a diária no cancelamento total e
+  // no parcial (2026-11-02). Uma devolução feita aqui contaria duas vezes.
+  for(const arquivo of ['api/check-reservation.ts','hooks/useSupabaseData.ts']){
+    assert.doesNotMatch(readFileSync(arquivo,'utf8'),/from\('room_types'\)\.update/,arquivo);
+  }
 });
 
 test('cancelamento: parcial recalcula, e sem acomodação restante vira total',()=>{

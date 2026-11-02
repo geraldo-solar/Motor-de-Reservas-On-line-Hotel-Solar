@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { bancoDoServidor, chaveDoBanco } from '../utils/bancoDoServidor.js';
 import {
   COLUNAS_DO_SITE, cancelamentoDoSite, codigoCurto, conferirReservaDoSite, cupomParaOSite, ehCodigoCurto,
-  ehRascunhoDoChatbot, ehUuid, estoqueAjustado, fichaDoHospede, fichaQuePodeSerCompletada, linhasPorQuarto,
+  ehRascunhoDoChatbot, ehUuid, fichaDoHospede, fichaQuePodeSerCompletada, linhasPorQuarto,
   reservaLimpa, soDigitos,
 } from '../utils/reservaDoSite.js';
 import { type ContextoDaCompra, enviarCompraParaMeta } from '../utils/metaConversoesServidor.js';
@@ -46,19 +46,6 @@ async function buscar(db: Banco, corpo: any) {
   const achada = (data || []).find((r: any) => codigoCurto(r.id) === codigo || (r.group_id && codigoCurto(r.group_id) === codigo));
   if (!achada) return { status: 404, json: { error: 'Reserva não encontrada. Confira o número e o e-mail.' } };
   return { status: 200, json: await reservasDoNumero(db, (achada as any).id) };
-}
-
-async function mexerNoEstoque(db: Banco, quartos: Array<{ id?: string }>, entrada: string, saida: string, operacao: 'reservar' | 'devolver') {
-  for (const quarto of quartos) {
-    if (!ehUuid(quarto?.id)) continue;
-    try {
-      const { data: tipo } = await db.from('room_types').select('overrides, total_quantity, base_price').eq('id', quarto.id).maybeSingle();
-      if (!tipo) continue;
-      await db.from('room_types').update({ overrides: estoqueAjustado(tipo, entrada, saida, operacao) }).eq('id', quarto.id);
-    } catch (err) {
-      console.error('[reserva-site] estoque não ajustado:', quarto.id, err);
-    }
-  }
 }
 
 async function criar(db: Banco, corpo: any, contexto: ContextoDaCompra) {
@@ -111,14 +98,15 @@ async function cancelar(db: Banco, corpo: any) {
 
   if (plano.tipo === 'nada') return { status: 400, json: { error: 'Marque o que deseja cancelar.' } };
 
+  // O estoque da acomodação volta pelo gatilho do banco
+  // (sync_inventory_from_reservation), no total e no parcial: devolver aqui
+  // também contaria a diária duas vezes.
   if (plano.tipo === 'total') {
     const r = await db.from('reservations').update({ status: 'CANCELED', cancellation_reason: MOTIVO_DO_CLIENTE, card_details: null }).eq('id', id);
     if (r.error) throw r.error;
-    await mexerNoEstoque(db, Array.isArray(atual.rooms) ? atual.rooms : [], atual.check_in, atual.check_out, 'devolver');
   } else {
     const r = await db.from('reservations').update(plano.alteracao).eq('id', id);
     if (r.error) throw r.error;
-    await mexerNoEstoque(db, plano.quartosDevolvidos, atual.check_in, atual.check_out, 'devolver');
   }
 
   const { data: depois } = await db.from('reservations').select(COLUNAS_DO_SITE).eq('id', id).maybeSingle();
