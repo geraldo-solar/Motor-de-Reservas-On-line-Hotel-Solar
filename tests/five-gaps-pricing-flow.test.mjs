@@ -1,3 +1,4 @@
+import './relogio-fixo.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {build} from 'esbuild';
@@ -49,7 +50,8 @@ test('nova viagem individual chega ao cálculo sem criança/cortesia herdada',as
   const response=await quote(solo);
   assert.equal(response.guests,1);assert.equal(response.check_in,'2026-09-23');assert.equal(response.check_out,'2026-09-25');
   const state=JSON.parse(response.quote_state);
-  assert.equal(state.guests,1);assert.equal(state.options[0].total,1000);
+  // Diária individual desde 08/10/2026: R$ 370 de domingo a quinta (23 e 24/09).
+  assert.equal(state.guests,1);assert.equal(state.options[0].total,740);
   assert.equal(state.options[0].child_allowance,undefined);
   assert.doesNotMatch(response.conversation_text,/criança.*cortesia/i);
 });
