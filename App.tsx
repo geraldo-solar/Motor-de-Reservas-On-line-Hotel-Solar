@@ -11,7 +11,7 @@ import { INITIAL_CONFIG, INITIAL_ROOMS } from './constants';
 import { sortRoomsByPriority } from './utils/roomUtils';
 import { useSupabaseData } from './hooks/useSupabaseData';
 import { offlineQueue } from './lib/offlineQueue';
-import { sendReservationEmails } from './services/emailService';
+import { sendReservationEmails, sendPaymentConfirmedEmail } from './services/emailService';
 
 import { Lightbox } from './components/Lightbox';
 import { Share2, Zap, ArrowRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Info, Luggage, MapPin, Search, Star, User, X, Ticket, Plus, Minus, Users, AlertCircle, ShoppingCart } from 'lucide-react';
@@ -22,6 +22,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { DateSelectorBar } from './components/DateSelectorBar';
 import { RoomGallery } from './components/RoomGallery';
 import { PreCheckinPage } from './components/PreCheckinPage';
+import { PagamentoRetornoPage } from './components/PagamentoRetornoPage';
 import { buscarReserva } from './services/reservaNoServidor';
 import { rastrearNaMeta } from './services/metaPixel';
 import { dadosDaCompra, idDoEventoDeCompra } from './utils/metaEventos';
@@ -59,6 +60,7 @@ export default function App() {
   const [zoomData, setZoomData] = useState<{ images: string[], index: number } | null>(null);
   const [cancellationReservationId, setCancellationReservationId] = useState<string>('');
   const [preCheckinReservationId, setPreCheckinReservationId] = useState<string>('');
+  const [pagamentoReservationId, setPagamentoReservationId] = useState<string>('');
   const [draftPayload, setDraftPayload] = useState<any>(null);
 
   // Pacote pedido por link (?pacote=<id> ou #pacote-<id>), aguardando o scroll.
@@ -126,6 +128,15 @@ export default function App() {
           document.getElementById('quartos-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 500);
       }
+    }
+
+    // Volta da Cielo: a URL só diz qual reserva conferir. Quem decide se está
+    // paga é o ERP, perguntando à Cielo — nunca o que veio no endereço.
+    const pagamentoParam = params.get('pagamento');
+    if (pagamentoParam) {
+      setPagamentoReservationId(pagamentoParam);
+      setCurrentView(ViewState.PAGAMENTO);
+      return;
     }
 
     const viewParam = params.get('view');
@@ -432,6 +443,16 @@ export default function App() {
       const comPagamento = reservation.paymentMethod === 'CREDIT_CARD'
         ? { ...reservation, checkoutUrl: await pedirPagamentoNaCielo(reservation.id) }
         : reservation;
+      // No cartão o hóspede sai desta aba para a Cielo, então o e-mail precisa
+      // ter saído antes: é ele que traz de volta quem abandona o pagamento.
+      if (comPagamento.paymentMethod === 'CREDIT_CARD' && comPagamento.checkoutUrl) {
+        await sendReservationEmails(comPagamento).catch(() => undefined);
+        // Nada de tela de protocolo antes de pagar: era ela que fazia o
+        // hóspede achar que tinha acabado. A confirmação só existe na volta,
+        // e só se a Cielo aprovar.
+        window.location.assign(comPagamento.checkoutUrl);
+        return true;
+      }
       setLastReservation(comPagamento);
       setCurrentView(ViewState.SUCCESS);
       sendReservationEmails(comPagamento);
@@ -443,6 +464,20 @@ export default function App() {
       return false;
     }
   };
+
+  // Só é chamado quando o ERP confirmou o pagamento na Cielo. A reserva vem
+  // do banco, não da URL: o que aparece na tela é o que está gravado.
+  const handlePagamentoAprovado = React.useCallback(async () => {
+    const busca = await buscarReserva({ id: pagamentoReservationId });
+    if ('erro' in busca || !busca.reserva) {
+      console.error('[App] Pagamento aprovado, mas a reserva não foi encontrada:', pagamentoReservationId);
+      return;
+    }
+    const confirmada: Reservation = { ...busca.reserva, status: 'CONFIRMED' as ReservationStatus };
+    setLastReservation(confirmada);
+    setCurrentView(ViewState.SUCCESS);
+    sendPaymentConfirmedEmail(confirmada).catch(() => undefined);
+  }, [pagamentoReservationId]);
 
   const calculateRoomDisplayPrice = (room: Room) => {
     if (!checkIn || !checkOut) return room.price;
@@ -997,6 +1032,19 @@ export default function App() {
             <PreCheckinPage
               reservationId={preCheckinReservationId}
               onBack={() => {
+                window.history.pushState({}, '', '/');
+                setCurrentView(ViewState.HOME);
+              }}
+            />
+          )
+        }
+
+        {
+          currentView === ViewState.PAGAMENTO && (
+            <PagamentoRetornoPage
+              reservationId={pagamentoReservationId}
+              onAprovado={handlePagamentoAprovado}
+              onGoHome={() => {
                 window.history.pushState({}, '', '/');
                 setCurrentView(ViewState.HOME);
               }}

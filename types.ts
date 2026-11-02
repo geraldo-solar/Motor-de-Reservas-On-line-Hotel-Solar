@@ -93,7 +93,9 @@ export enum ViewState {
   SUCCESS = 'SUCCESS',
   REGULAMENTO = 'REGULAMENTO',
   CANCELAMENTO = 'CANCELAMENTO',
-  PRE_CHECKIN = 'PRE_CHECKIN'
+  PRE_CHECKIN = 'PRE_CHECKIN',
+  /** Volta da Cielo: confere o pagamento antes de mostrar a reserva. */
+  PAGAMENTO = 'PAGAMENTO'
 }
 
 export interface EmailTemplate {

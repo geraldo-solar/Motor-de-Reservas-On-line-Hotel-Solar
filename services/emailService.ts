@@ -54,6 +54,9 @@ const getShortReservationId = (id: string): string => {
 export const generateClientEmailHTML = (reservation: Reservation): string => {
   const shortId = getShortReservationId(reservation.id);
   const isPix = reservation.paymentMethod === 'PIX';
+  // A reserva nasce PENDING: até o dinheiro entrar, o e-mail não pode dar a
+  // entender que está tudo resolvido, senão o hóspede deixa de pagar.
+  const aguardandoPagamento = reservation.status !== 'CONFIRMED';
 
   // Gerar lista de acomodações
   const roomsHTML = reservation.rooms.map(room => {
@@ -172,9 +175,10 @@ export const generateClientEmailHTML = (reservation: Reservation): string => {
         <p style="color: #475569; margin: 0;">
           Valor: <strong style="color: #1a3c34;">${formatCurrency(reservation.totalPrice)}</strong>, à vista ou em até ${parcelasMax}x sem juros.
         </p>
+        ${aguardandoPagamento ? `<p style="color: #b45309; margin: 12px 0 0 0; font-weight: bold;">O apartamento só fica bloqueado no seu nome depois que este pagamento for aprovado.</p>` : ''}
         ${linkSeguro ? `
         <div style="text-align: center; margin: 20px 0 8px 0;">
-          <a href="${linkSeguro}" style="display: inline-block; background: #1a3c34; color: #d4a853; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; letter-spacing: 1px;">PAGAR NO CARTÃO PELA CIELO</a>
+          <a href="${linkSeguro}" style="display: inline-block; background: #1a3c34; color: #d4a853; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; letter-spacing: 1px; font-size: 16px;">PAGAR AGORA ${formatCurrency(reservation.totalPrice)}</a>
         </div>
         <p style="color: #64748b; margin: 8px 0 0 0; font-size: 12px; text-align: center;">
           O link confere sua reserva e encaminha à página segura da Cielo quando o pagamento ainda está pendente. O hotel não recebe os dados do seu cartão.
@@ -185,6 +189,11 @@ export const generateClientEmailHTML = (reservation: Reservation): string => {
       </div>
     `;
   }
+
+  const blocoPagamento = `
+      <div style="color: #1e293b">
+        ${paymentSection.replace(/color: #fff/g, 'color: #1e293b').replace(/color: #ccc/g, 'color: #475569').replace(/background: rgba\(255,255,255,0.1\)/g, 'background: #f1f5f9')}
+      </div>`;
 
   // O Link de Pré-Check-in agora aponta para o Próprio Motor de Reservas
   const preCheckInUrl = `https://motor-de-reservas-on-line-hotel-sol.vercel.app/pre-checkin/${reservation.id}`;
@@ -202,11 +211,11 @@ export const generateClientEmailHTML = (reservation: Reservation): string => {
     <!-- Header com Logo -->
     <div style="background: linear-gradient(135deg, #1a3c34 0%, #2d5a4e 100%); padding: 40px 20px; text-align: center;">
       <img src="${HOTEL_CONFIG.logoUrl}" alt="Hotel Solar" style="height: 120px; margin-bottom: 20px;">
-      <h1 style="color: #4ade80; margin: 0; font-size: 28px; font-weight: normal;">
-        ✅ Reserva Solicitada!
+      <h1 style="color: ${aguardandoPagamento ? '#fbbf24' : '#4ade80'}; margin: 0; font-size: 28px; font-weight: normal;">
+        ${aguardandoPagamento ? '⏳ Falta o pagamento' : '✅ Reserva Confirmada!'}
       </h1>
       <p style="color: #d4a853; margin: 10px 0 0 0; font-size: 16px;">
-        Obrigado por nos escolher!
+        ${aguardandoPagamento ? 'Sua reserva só fica garantida depois de paga' : 'Obrigado por nos escolher!'}
       </p>
     </div>
     
@@ -218,13 +227,21 @@ export const generateClientEmailHTML = (reservation: Reservation): string => {
         Olá <strong>${reservation.mainGuest.name}</strong>,
       </p>
       <p style="color: #475569; font-size: 14px; margin: 0 0 24px 0; line-height: 1.6;">
-        Recebemos sua solicitação de reserva no Hotel Solar! Ficamos felizes com sua preferência. Para sua comodidade, você já pode agilizar sua chegada realizando o pré-check-in digital.
+        ${aguardandoPagamento
+          ? 'Recebemos sua solicitação de reserva no Hotel Solar! <strong>Ela ainda não está garantida:</strong> o apartamento só fica bloqueado no seu nome depois que o pagamento for aprovado. Use o botão de pagamento logo abaixo para concluir.'
+          : 'Recebemos sua solicitação de reserva no Hotel Solar! Ficamos felizes com sua preferência. Para sua comodidade, você já pode agilizar sua chegada realizando o pré-check-in digital.'}
       </p>
+
+      <!-- Pagamento primeiro quando ainda falta pagar -->
+      ${aguardandoPagamento ? blocoPagamento : ''}
 
       <!-- Botão de Pré-Check-in -->
       <div style="text-align: center; margin: 32px 0;">
-        <a href="${preCheckInUrl}" style="background-color: #1a3c34; color: #d4a853; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">AGILIZAR MEU CHECK-IN AGORA</a>
-        <p style="color: #64748b; font-size: 11px; margin-top: 12px;">Preencha seus dados agora e ganhe tempo na recepção!</p>
+        ${aguardandoPagamento
+          ? `<a href="${preCheckInUrl}" style="color: #64748b; text-decoration: underline; font-size: 13px;">Adiantar o pré-check-in digital</a>
+        <p style="color: #94a3b8; font-size: 11px; margin-top: 8px;">Pode ser feito depois — primeiro garanta a reserva com o pagamento.</p>`
+          : `<a href="${preCheckInUrl}" style="background-color: #1a3c34; color: #d4a853; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">AGILIZAR MEU CHECK-IN AGORA</a>
+        <p style="color: #64748b; font-size: 11px; margin-top: 12px;">Preencha seus dados agora e ganhe tempo na recepção!</p>`}
       </div>
       
       <!-- Número da Reserva -->
@@ -306,9 +323,7 @@ export const generateClientEmailHTML = (reservation: Reservation): string => {
       </div>
       
       <!-- Seção de Pagamento -->
-      <div style="color: #1e293b">
-        ${paymentSection.replace(/color: #fff/g, 'color: #1e293b').replace(/color: #ccc/g, 'color: #475569').replace(/background: rgba\(255,255,255,0.1\)/g, 'background: #f1f5f9')}
-      </div>
+      ${aguardandoPagamento ? '' : blocoPagamento}
       
       <!-- Links -->
       <div style="text-align: center; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e2e8f0;">
@@ -547,7 +562,11 @@ export const sendReservationEmails = async (reservation: Reservation): Promise<{
             reservationId: reservation.id,
             sender: { name: HOTEL_CONFIG.name, email: HOTEL_CONFIG.email },
             to: [{ email: reservation.mainGuest.email, name: reservation.mainGuest.name }],
-            subject: `Confirmação de Reserva #${shortId} - Hotel Solar`,
+            subject: reservation.status === 'CONFIRMED'
+              ? `Confirmação de Reserva #${shortId} - Hotel Solar`
+              : reservation.paymentMethod === 'PIX'
+                ? `Reserva #${shortId} recebida — falta o PIX para garantir`
+                : `Reserva #${shortId} recebida — falta o pagamento para garantir`,
             htmlContent: generateClientEmailHTML(reservation),
           }),
         });
