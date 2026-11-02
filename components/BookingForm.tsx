@@ -610,8 +610,8 @@ const BookingForm: React.FC<BookingFormProps> = ({
                 <span className="font-bold uppercase tracking-widest text-[10px]">Pagamento na página segura da Cielo</span>
               </div>
               <p className="text-sm text-slate-600">
-                Ao confirmar, sua reserva é registrada e você recebe o botão para pagar <strong>R$ {total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> no cartão,
-                à vista ou em até <strong>{maxInstallments}x de R$ {(total / maxInstallments).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sem juros</strong>.
+                Ao finalizar, você segue direto para a página segura da Cielo para pagar <strong>R$ {total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> no cartão,
+                à vista ou em até <strong>{maxInstallments}x de R$ {(total / maxInstallments).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sem juros</strong>. A reserva fica garantida quando o pagamento for aprovado.
               </p>
               <p className="text-[11px] text-slate-400">O hotel não recebe os dados do seu cartão: você os digita direto na Cielo.</p>
             </div>

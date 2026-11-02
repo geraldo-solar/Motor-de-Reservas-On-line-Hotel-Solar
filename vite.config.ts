@@ -13,6 +13,14 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       VitePWA({
+        // O service worker servia a página guardada da visita anterior: quem
+        // já tinha entrado no site fazia a reserva inteira na versão velha
+        // (visto em 02/11/2026, no teste do pagamento no cartão). O index.html
+        // tenta desregistrá-lo desde 21/03, mas o registerSW.js deste plugin o
+        // registrava de novo a cada visita. Com selfDestroying, o sw.js
+        // publicado se desregistra e apaga os caches nos navegadores que já o
+        // têm, e o site passa a vir sempre da rede.
+        selfDestroying: true,
         registerType: 'autoUpdate',
         includeAssets: ['logo-gold.png', 'logo-white.png', 'logo-dark.png', 'hero-family-pool.jpg'],
         manifest: {
