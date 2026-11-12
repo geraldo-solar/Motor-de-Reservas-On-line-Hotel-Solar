@@ -63,6 +63,22 @@ export function stayThanks(message: string): boolean {
   return thanks && (stay || praise) || praise && /\b(?:estadia|hospedagem|hotel|atendimento)\b/.test(s);
 }
 
+/** "Oi", "Bom dia!", "Olá, tudo bem?": a greeting with no request yet.
+ * Tolerates the usual typing ("Bomm dia", "Oii", "Boa noitee"). */
+export function greetingOnly(message: string): boolean {
+  const s = norm(message).replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!s || s.length > 60) return false;
+  return /^(?:(?:o+i+e*|ola+|opa+|e ai|eai|alo+|hello|hi|hey|bo+m+ di+a+|boa+ tarde+|boa+ noi+te+|tudo bem|td bem|tudo bom|tudo certo|como vai|como estao|com voces|com vcs|por ai|pessoal|gente|hotel solar)\s*)+$/.test(s);
+}
+
+/** The reply to a greeting or to a closing reaction answers nothing yet, so
+ * it does not carry the reception button (audit 12/11/2026: four customers
+ * who only wrote "bom dia" tapped it before asking anything). The button
+ * comes with the first reply to an actual question. */
+export function holdReceptionButton(message: string): boolean {
+  return greetingOnly(message) || !!closingTurn(message, '', true);
+}
+
 export type ClosingTurn = {kind: 'automatic_reply' | 'silent' | 'closing'; answer: string};
 
 /** Deterministic reply for a closing reaction, or undefined to answer normally.
