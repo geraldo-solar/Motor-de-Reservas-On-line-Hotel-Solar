@@ -108,7 +108,7 @@ test('cotação de 1900 caracteres usa apresentação compacta sem perder preço
   assert.equal(body.length,1900);
   const state=prepare(),result=withDailyGreeting(reply(state,body),state,now);
   assert.ok(result.answer.length<=2000,result.answer.length);
-  assert.match(result.answer,/^Bom dia!\n\nSou a assistente virtual/);
+  assert.match(result.answer,/^Bom dia!\n\nAqui é a assistente virtual/);
   assert.equal(result.answer.includes(ASSISTANT_DISCLOSURE_COMPACT),true);
   assert.equal(result.answer.includes(ASSISTANT_DISCLOSURE),false);
   assert.equal(stripAssistantDisclosure(result.answer),`Bom dia!\n\n${body}`);

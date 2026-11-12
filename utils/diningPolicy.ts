@@ -94,7 +94,7 @@ export function diningPolicyAnswer(message: string): string | undefined {
 /** General hours are not a real-time open/closed or table-availability check. */
 export function reservaHoursAnswer(message: string, now=Date.now()): string | undefined {
   const s=normalize(reservaRestaurantMessage(stripNegatedHumanRequests(message)));
-  if (!/\breserva solar\b/.test(s) || !/\b(?:funciona\w*|aberto|abrir|abre|fech\w*|horarios?)\b/.test(s)
+  if (!/\breserva solar\b/.test(s) || !/\b(?:funciona\w*|aberto|abrir|abrem?|fech\w*|horarios?)\b/.test(s)
     || isPrivateEventRequest(s) || publicEventInquiry(s)
     || /\b(?:cardapio|menu|fotos?|imagens?|videos?|hospedagem|diarias?|quartos?|pagamento|paguei|atendente|humano)\b/.test(s)) return;
   const h=confirmedDiningPolicy.hours.reserva_solar.low_season;
@@ -109,7 +109,7 @@ export function reservaHoursAnswer(message: string, now=Date.now()): string | un
  * mentioned, and the Solar 73, open that day, was left out). */
 // Audit 16/10/2026: "Restaurante do hotel aberto para não hóspedes?" got only
 // the hours; the yes/no comes first, then the details.
-const visitorQuestion=(s: string)=>/\b(?:nao hosped\w*|publico|visitantes?|de fora|quem nao (?:esta|estiver|for|fica|ficar)\w* hosped\w*|sem (?:estar |ficar |me |nos )?hosped\w*)\b/.test(s);
+export const visitorQuestion=(s: string)=>/\b(?:nao hosped\w*|nao (?:sou|somos|e|eh|sao) hosped\w*|publico|visitantes?|de fora|quem nao (?:esta|estiver|for|fica|ficar|e|eh|sao)\w* hosped\w*|sem (?:estar |ficar |me |nos )?hosped\w*)\b/.test(s);
 const VISITOR_YES='Sim! Nossos restaurantes são abertos ao público, inclusive para quem não está hospedado.';
 export function restaurantHoursAnswer(message: string, now=Date.now()): string | undefined {
   const text=normalize(stripNegatedHumanRequests(message));
@@ -132,7 +132,7 @@ function restaurantHoursOnly(message: string, now=Date.now()): string | undefine
   const reserva=reservaHoursAnswer(message,now);
   if (reserva) return reserva;
   const s=normalize(stripNegatedHumanRequests(message));
-  if (!/\b(?:restaurantes?|solar 73)\b/.test(s) || !/\b(?:funciona\w*|abert[oa]s?|abrir|abre|fech\w*|horarios?)\b/.test(s)
+  if (!/\b(?:restaurantes?|solar 73)\b/.test(s) || !/\b(?:funciona\w*|abert[oa]s?|abrir|abrem?|fech\w*|horarios?)\b/.test(s)
     || isPrivateEventRequest(s) || publicEventInquiry(s)
     || /\b(?:cardapio|menu|fotos?|imagens?|videos?|hospedagem|diarias?|quartos?|pagamento|paguei|atendente|humano|cafe da manha)\b/.test(s)) return;
   const hour=(value: string)=>value.replace(':00','h');
@@ -142,4 +142,49 @@ function restaurantHoursOnly(message: string, now=Date.now()): string | undefine
   const weekday=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Belem',weekday:'long'}).format(new Date(now));
   const reservaToday=(h.weekdays as readonly string[]).includes(weekday);
   return general+` Hoje é ${weekday}: pelo horário habitual, o Solar 73 abre das ${hour(solar.opens)} às ${hour(solar.closes)}${reservaToday ? ' e o Reserva Solar também abre' : ', e o Reserva Solar não abre'}. Não tenho confirmação de alterações para hoje; a recepção pode conferir.`;
+}
+
+/** "Como funciona o acesso para não hóspedes?" (audit 12/11/2026: the word
+ * "hóspedes" started the lodging funnel and the visitor was asked "Para
+ * quantas pessoas será a estadia?"). A general access question, with no venue
+ * or service named, gets the confirmed rules for visitors. Named subjects
+ * (pool, Day Use, breakfast, menus, events, rooms) keep their own routes. */
+export function visitorAccessAnswer(message: string): string | undefined {
+  const s=normalize(stripNegatedHumanRequests(message));
+  if (!s || s.length>160 || !visitorQuestion(s)) return;
+  if (!/\b(?:acesso|acessar|entrar|entrada|frequentar|visitar|conhecer|abert[oa]s?|pode\w*|posso|podemos|permitid[oa]s?|recebem?|aceitam?|funciona|atende\w*)\b/.test(s)) return;
+  if (/\b(?:piscinas?|hidro\w*|day ?use|cafe|cardapio|menu|fotos?|imagens?|videos?|hospedagem|hospedar|diarias?|quartos?|apartamentos?|aptos?|suites?|loft|pacotes?|reveillon|natal|festas?|eventos?|shows?|musica|casamentos?|aniversarios?|pagamento|estacionamento|ensaios?|capela|trapiche|quadra|praia|passeios?|barco|bicicletas?|bike|massagem|spa|atendente|humano|reclamacao)\b/.test(s)) return;
+  if (isPrivateEventRequest(message) || publicEventInquiry(message)) return;
+  const hour=(value: string)=>value.replace(':00','h');
+  const solar=confirmedDiningPolicy.hours.solar_73, h=confirmedDiningPolicy.hours.reserva_solar.low_season;
+  const admission=confirmedDiningPolicy.reserva_solar_admission.authorized_charge_dates.length?'':' A entrada no Reserva Solar é gratuita como regra; você paga apenas o que consumir.';
+  return `Quem não está hospedado é bem-vindo nos nossos restaurantes. O Solar 73 funciona das ${hour(solar.opens)} às ${hour(solar.closes)}, e o Reserva Solar, pé na areia, habitualmente de sexta a domingo, das ${hour(h.opens)} às ${hour(h.closes)}, na baixa temporada.${admission} As mesas são por ordem de chegada. A piscina é exclusiva para hóspedes. Horários especiais precisam ser conferidos com a recepção.`;
+}
+
+/** "Hoje segue aberto normalmente?", "Abre que horas?": an opening question
+ * that names no venue (audit 12/11/2026: after the menu, "hoje" was read as a
+ * check-in date and the visitor was asked for the stay dates). With a dining
+ * focus any such ellipsis counts; without it, only one that names the day. */
+export function openingEllipsis(message: string, diningFocus: boolean): boolean {
+  const s=normalize(stripNegatedHumanRequests(message));
+  if (!s || s.length>90) return false;
+  if (/\b(?:restaurantes?|reserva solar|solar 73)\b/.test(s)) return false;
+  if (/\bcomo (?:e que )?funciona\b/.test(s)) return false;
+  if (!/\b(?:abert[oa]s?|abre|abrem|abrir|abrira|abrirao|fechad[oa]s?|fecha|fecham|fechar|funcionando|funciona|funcionam|funcionar|funcionara)\b/.test(s)) return false;
+  if (!diningFocus && !/\b(?:hj|hoje|agora|amanha|sabado|domingo|segunda|terca|quarta|quinta|sexta|feriado|fim de semana|final de semana)\b/.test(s)) return false;
+  if (/\b(?:piscinas?|hidro\w*|recepcao|check.?in|check.?out|hospedagem|hospedar|hospedad[oa]s?|diarias?|quartos?|apartamentos?|aptos?|suites?|loft|pacotes?|reveillon|natal|festas?|eventos?|shows?|musica|capela|trapiche|quadra|sala de jogos|parque|parquinho|passeios?|barco|bike|bicicletas?|massagem|spa|loja|site|link|pagamento|pix|cartao|vagas?|disponibilidade|reservas?|cafe|fotos?|imagens?|videos?|atendente|humano)\b/.test(s)) return false;
+  return !isPrivateEventRequest(message) && !publicEventInquiry(message);
+}
+
+/** The weekday in Belém and the regular hours for it, for the model's
+ * context: asked "Só pretendo ir almoçar hoje" on a Thursday, it answered that
+ * the Reserva Solar "funciona normalmente hoje" (audit 12/11/2026). */
+export function restaurantTodayNote(now=Date.now()): string {
+  const hour=(value: string)=>value.replace(':00','h');
+  const solar=confirmedDiningPolicy.hours.solar_73, h=confirmedDiningPolicy.hours.reserva_solar.low_season;
+  const weekday=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Belem',weekday:'long'}).format(new Date(now));
+  const reservaToday=(h.weekdays as readonly string[]).includes(weekday);
+  return `Hoje é ${weekday}. Pelo horário habitual, o Solar 73 abre das ${hour(solar.opens)} às ${hour(solar.closes)}${reservaToday
+    ? ` e o Reserva Solar também abre, das ${hour(h.opens)} às ${hour(h.closes)}`
+    : ', e o Reserva Solar não abre hoje (funciona habitualmente de sexta a domingo na baixa temporada)'}. Alterações e horários especiais precisam ser conferidos com a recepção.`;
 }

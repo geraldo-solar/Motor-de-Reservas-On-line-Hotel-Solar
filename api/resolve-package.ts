@@ -14,7 +14,7 @@ import { deliverEvent, deliveryFailed, acceptEventReceipt } from '../utils/event
 import { publicEventInquiry, publicEventAnswer } from '../utils/publicEvents.js';
 import { isAudioInput } from '../utils/audioTranscription.js';
 import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage } from '../utils/audioInput.js';
-import { isAttachmentInput } from '../utils/attachmentAnalysis.js';
+import { isAttachmentInput, isStickerInput, STICKER_REACTION } from '../utils/attachmentAnalysis.js';
 import { attachmentReceivedMessage } from '../utils/attachmentInput.js';
 import { neutralizeNegatedHolidays, namedPackageInquiry, packageGeneralInclusionQuestion, packageFollowup, packageBookingRequest, packageRecommendationInquiry, readPackageContext, packageWeekdayClarification,packageAcknowledgment,packageInclusionFollowup,focusedPackageNameReference,packageOccupancyFollowup,packageDiscoveryRequest,packageRoomDetailFollowup } from '../utils/packageContext.js';
 import {packageInclusionReply} from '../utils/packageInclusions.js';
@@ -549,7 +549,7 @@ function repeatedQuestionHandoff(payload: any, sourceState: any, message: string
     let facts: any;
     try { facts = JSON.parse(payload.state)?.facts; } catch { /* Keep the question as is. */ }
     const br = (iso: unknown) => typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '';
-    const noted = br(facts?.check_in) && br(facts?.check_out) && /^Para quantas pessoas será a estadia\?$/.test(String(payload.conversation_text || '').trim())
+    const noted = br(facts?.check_in) && br(facts?.check_out) && /^Para quantas pessoas será a estadia\?(?: Se houver crianças, me diga as idades\.)?$/.test(String(payload.conversation_text || '').trim())
       ? `Anotei as datas: ${br(facts.check_in)} a ${br(facts.check_out)}. Para quantas pessoas será a estadia? Se houver crianças, me diga as idades.` : '';
     return noted ? {...payload, quote_text: noted, conversation_text: noted} : payload;
   }
@@ -582,6 +582,11 @@ async function invoke(target: (req: VercelRequest, res: VercelResponse) => unkno
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // A sticker (.webp) is a reaction like an emoji, never an attachment for the
+  // team (audit 12/11/2026). Every step of the turn reads it the same way.
+  if (req.body && typeof req.body === 'object') {
+    for (const key of ['user_message', 'message']) if (isStickerInput(req.body[key])) req.body[key] = STICKER_REACTION;
+  }
   if (req.query?.operation === 'instagram' || req.query?.operation === 'instagram-render') {
     res.setHeader?.('Cache-Control', 'no-store');
     if (req.method !== 'POST') return res.status(405).json({error: 'Use POST'});

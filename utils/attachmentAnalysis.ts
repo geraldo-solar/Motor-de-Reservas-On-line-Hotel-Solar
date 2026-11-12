@@ -48,6 +48,18 @@ function parseUrl(value: unknown): URL | null {
   } catch { return null; }
 }
 
+/** A WhatsApp sticker arrives as the URL of a .webp file (photos arrive as
+ * .jpeg and documents keep their own extension). It is a reaction, like an
+ * emoji, not a document for the team: the audit of 12/11/2026 found two
+ * stickers answered with "Recebi seu anexo. Estou encaminhando ao setor
+ * responsável" and a notification to the reception each time. */
+export function isStickerInput(value: unknown): boolean {
+  const url = parseUrl(value);
+  return !!url && /\.webp$/i.test(url.pathname);
+}
+/** What a sticker stands for in the conversation: a neutral reaction. */
+export const STICKER_REACTION = '🙂';
+
 /** Classify complete attachment URLs only. Never infer a file type from a query or prose. */
 export function isAttachmentInput(value: unknown): boolean {
   const url = parseUrl(value);

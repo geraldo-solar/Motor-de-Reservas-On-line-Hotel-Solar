@@ -1,8 +1,21 @@
 // `show` is fixed for a prepared user turn. `rendered` is acknowledged only
 // after a non-empty public response; internal retries retain the same decision.
 export type AssistantDisclosure = { version: 1; show: boolean; rendered?: true };
-export const ASSISTANT_DISCLOSURE = 'Sou a assistente virtual do Hotel Solar. ☀️ Se preferir atendimento humano, toque em “Falar com a recepção”, escreva “recepção” ou ligue para (91) 98100-0800.';
-export const ASSISTANT_DISCLOSURE_COMPACT = 'Sou a assistente virtual do Hotel Solar. Recepção: botão abaixo ou (91) 98100-0800.';
+// Audit 12/11/2026: in 5 of 15 conversations the customer tapped "Falar com a
+// recepção" right after the greeting. The presentation offered the human
+// contact three ways before saying what the assistant can do, and the flow's
+// own footer (button + telephone) repeated it just below. The presentation now
+// says what can be solved here; the footer remains the human option.
+export const ASSISTANT_DISCLOSURE = 'Sou a assistente virtual do Hotel Solar. ☀️ Posso te passar valores, pacotes e informações na hora, por aqui mesmo.';
+// Worded differently on purpose: it must not be the beginning of the full text.
+export const ASSISTANT_DISCLOSURE_COMPACT = 'Aqui é a assistente virtual do Hotel Solar. ☀️';
+// Presentations sent until 12/11/2026. They can still come back in a
+// response echoed by the flow, so they are stripped like the current ones.
+const LEGACY_DISCLOSURES = [
+  'Sou a assistente virtual do Hotel Solar. ☀️ Se preferir atendimento humano, toque em “Falar com a recepção”, escreva “recepção” ou ligue para (91) 98100-0800.',
+  'Sou a assistente virtual do Hotel Solar. Recepção: botão abaixo ou (91) 98100-0800.',
+];
+const CANONICAL_DISCLOSURES = [ASSISTANT_DISCLOSURE, ASSISTANT_DISCLOSURE_COMPACT, ...LEGACY_DISCLOSURES];
 const PUBLIC_TEXT_LIMIT = 2000;
 
 export function readAssistantDisclosure(value: unknown): AssistantDisclosure | undefined {
@@ -34,8 +47,8 @@ function leadingGreeting(text: string): {prefix: string; body: string} {
 
 function stripCanonicalPrefix(text: string): string {
   let body = text.trim();
-  for (let canonical = [ASSISTANT_DISCLOSURE, ASSISTANT_DISCLOSURE_COMPACT].find(value => body.startsWith(value)); canonical;
-    canonical = [ASSISTANT_DISCLOSURE, ASSISTANT_DISCLOSURE_COMPACT].find(value => body.startsWith(value))) {
+  for (let canonical = CANONICAL_DISCLOSURES.find(value => body.startsWith(value)); canonical;
+    canonical = CANONICAL_DISCLOSURES.find(value => body.startsWith(value))) {
     body = body.slice(canonical.length).trim();
   }
   return body;

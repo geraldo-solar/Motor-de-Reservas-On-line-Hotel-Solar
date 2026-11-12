@@ -3,7 +3,7 @@ import { eventInquiry } from './hotelInfo.js';
 import { namedPackageInquiry, packageInquiry } from './packageContext.js';
 import { publicEventInquiry } from './publicEvents.js';
 import { guestFacilityInquiry } from './guestFacilities.js';
-import { diningPolicyAnswer } from './diningPolicy.js';
+import { diningPolicyAnswer, visitorAccessAnswer } from './diningPolicy.js';
 import { hotelPolicyInquiry } from './hotelPolicy.js';
 import { reservaRestaurantMessage } from './restaurantIntent.js';
 import { stripNegatedHumanRequests } from './humanIntent.js';
@@ -166,6 +166,9 @@ export function guestInquiry(message: string): GuestInquiry | undefined {
   // Keep the established leisure/extra handlers, including their photo
   // context and commercial distinctions, outside this informational guard.
   if (extraCodes(message).length) return;
+  // "Como funciona o acesso para não hóspedes?" is about visiting, not a stay
+  // (audit 12/11/2026): "hóspedes" must not start the lodging funnel.
+  if (visitorAccessAnswer(message)) return 'dining';
   const faq = lodgingFaq(s);
   if (mealWords.test(s)) {
     if (faq && /\b(?:diarias?|hospedagem|estadia|quartos?|loft|suites?)\b/.test(s)
