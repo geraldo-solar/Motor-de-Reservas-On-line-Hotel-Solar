@@ -147,12 +147,18 @@ export async function instagramTurn(body: any, deps: InstagramDependencies): Pro
     footer = 'NAO';
   }
   if (action !== 'HUMANO' && !messages.length && action !== 'VAZIO') { say(INSTAGRAM_FALLBACK); footer = 'NAO'; }
-  // General answers carry the reception button once a day, with the first
-  // reply of the day (WhatsApp keeps a tag for this; here the state says it).
-  let firstOfDay = false;
-  try { firstOfDay = JSON.parse(String(state || '{}'))?.daily_greeting?.first === true; } catch { /* keep false */ }
-  const withFooter = footer === 'SEMPRE' || footer === 'UMA_VEZ' && firstOfDay;
-  if (withFooter && action !== 'HUMANO' && messages.length) messages.push({t: 'footer'});
+  // General answers carry the reception button once a day (WhatsApp keeps a
+  // tag for this; here the state says it). Not with the reply to a greeting
+  // or closing reaction: it waits for the first reply to an actual question.
+  let parsedState: any;
+  try { parsedState = JSON.parse(String(state || '{}')); } catch { /* keep undefined */ }
+  const day = typeof parsedState?.daily_greeting?.day === 'string' ? parsedState.daily_greeting.day : '';
+  const pendingToday = !!day && parsedState?.reception_footer_day !== day;
+  const withFooter = footer === 'SEMPRE' || footer === 'UMA_VEZ' && pendingToday && parsedState?.reception_button !== 'hold';
+  if (withFooter && action !== 'HUMANO' && messages.length) {
+    messages.push({t: 'footer'});
+    if (day && typeof state === 'string') state = JSON.stringify({...parsedState, reception_footer_day: day});
+  }
   // Keep the Dynamic block within its message limit, preserving the footer.
   const footerItem = messages.at(-1)?.t === 'footer' ? messages.pop() : undefined;
   const capped = messages.slice(0, INSTAGRAM_MAX_MESSAGES - (footerItem ? 1 : 0));

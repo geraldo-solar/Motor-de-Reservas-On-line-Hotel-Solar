@@ -17,7 +17,7 @@ import { AUDIO_RETRY, AUDIO_UNAVAILABLE, audioMessage, audioSourceHash, readAudi
 import { isAttachmentInput, isStickerInput, STICKER_REACTION, analyzeAttachment, type AttachmentKind } from '../utils/attachmentAnalysis.js';
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
 import { packageCardChoice } from '../utils/packageReply.js';
-import { closingTurn, assistantBefore, thanksAnswer } from '../utils/conversationClosers.js';
+import { closingTurn, assistantBefore, thanksAnswer, holdReceptionButton } from '../utils/conversationClosers.js';
 import { menuDetailAnswer, bookingDenial, bookingHereAnswer } from '../utils/menuDetails.js';
 import { neutralizeNegatedHolidays, packageInquiry, packageDiscoveryRequest, packageFollowup, packageAcknowledgment, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, packageResumeRequest, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
@@ -62,7 +62,7 @@ type FamilyState = { family_party?: FamilyParty; family_clarification?: FamilyPa
   // This turn's message added a child's age (read by the repeated-question guard).
   ages_progress?: true };
 type ExistingReservationState = { flexible_stay?:FlexibleStay;existing_reservation?: {at: number};payment_support?:{at:number;topics?:PaymentSupportSupplementaryTopic[]};assistant_disclosure?:AssistantDisclosure;multi_room?:MultiRoomHandoff;checkout_question?:{at:number;key:string};arrival_time?:ArrivalTimePending;package_date_request?:PackageDateRequest };
-type State = ExistingReservationState & FamilyState & { human_handoff_at?: number; massage_context?: {at:number}; programming_pending?: {question: string; at: number}; recent_package?: PackageContext; campaign?: 'RV27'; full_period_extended?: NewYearStayRequest; package_choice?: {option: string; at: number}; daily_greeting?: DailyGreeting } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'site_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates' | 'stay'; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
+type State = ExistingReservationState & FamilyState & { human_handoff_at?: number; massage_context?: {at:number}; programming_pending?: {question: string; at: number}; recent_package?: PackageContext; campaign?: 'RV27'; full_period_extended?: NewYearStayRequest; package_choice?: {option: string; at: number}; daily_greeting?: DailyGreeting } & { version: 2; history: string[]; facts: Facts; greeted: boolean; first_turn?: boolean; changed?: boolean; pending?: { quote_id: string; option: string }; turns?: {role: 'user' | 'assistant'; text: string}[]; topic?: 'room_photos' | 'room_info' | 'extra_photos' | 'site_photos' | 'extra_info' | 'photo_clarification' | 'public_events' | 'package_info'; package_context?: PackageContext; guest_inquiry?: GuestInquiryState; duration_request?: StayDuration; stay_date_pending?: StayDatePending; topic_at?: number; subject?: string; extra_photo_subjects?: string[]; resolved_message?: string; awaiting?: 'guests' | 'dates' | 'stay'; reception_button?: 'hold'; reception_footer_day?: string; extra_photo_requests?: string[]; event?: EventState; audio?: AudioTurn; attachment?: AttachmentTurn };
 // One question may now ask the group and the dates together (audit
 // 12/11/2026: people, then dates, then ages, one message each). 'stay' keeps
 // both short answers readable: "4" is the group, "sexta a domingo" the dates.
@@ -391,6 +391,9 @@ function loadState(value: unknown, now = Date.now()): State {
       ? {human_handoff_at: parsed.human_handoff_at} : {}),
     ...(typeof parsed.subject === 'string' && !personal(parsed.subject) ? {subject: parsed.subject.slice(0,100)} : {}),
     ...(['guests','dates','stay'].includes(parsed.awaiting) ? {awaiting: parsed.awaiting} : {}),
+    // Read by the ManyChat flow (WhatsApp) and by the Instagram turn; see holdReceptionButton.
+    ...(parsed.reception_button === 'hold' ? {reception_button: 'hold' as const} : {}),
+    ...(typeof parsed.reception_footer_day === 'string' && /^20\d{2}-\d{2}-\d{2}$/.test(parsed.reception_footer_day) ? {reception_footer_day: parsed.reception_footer_day} : {}),
     ...(typeof parsed.resolved_message === 'string' && !personal(parsed.resolved_message) ? {resolved_message: parsed.resolved_message.slice(0,500)} : {}),
     ...(readAudioTurn(parsed.audio, now) ? {audio: readAudioTurn(parsed.audio, now)} : {}),
     ...(readAttachmentTurn(parsed.attachment, now) ? {attachment: readAttachmentTurn(parsed.attachment, now)} : {}),
@@ -2130,8 +2133,13 @@ export function control(body: any, now = Date.now()) {
     // "Ok obrigado!" as the first turn here, after another flow answered
     // (audit 12/11/2026): the presentation came glued to "Por nada!". A
     // closing reaction leaves it pending for the next real question.
-    if(disclosure.show&&typeof body.user_message==='string'&&closingTurn(isStickerInput(body.user_message.trim())?STICKER_REACTION:body.user_message,'',true))delete state.assistant_disclosure;
+    const reaction=typeof body.user_message!=='string'?'':isStickerInput(body.user_message.trim())?STICKER_REACTION:body.user_message;
+    if(disclosure.show&&reaction&&closingTurn(reaction,'',true))delete state.assistant_disclosure;
     else state.assistant_disclosure=disclosure;
+    // The reply to a greeting or closing reaction goes without the reception
+    // button. The flow reads this marker in the state; each new turn decides again.
+    if(reaction&&holdReceptionButton(reaction))state.reception_button='hold';
+    else delete state.reception_button;
     const context = parseGreetingState(result.context);
     context.primeira_resposta_do_dia = state.daily_greeting.first;
     context.saudacao_do_horario = clock.greeting;
