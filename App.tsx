@@ -5,6 +5,7 @@ import BookingForm from './components/BookingForm';
 import AdminPanel, { AdminLogin } from './components/AdminPanel';
 import { ViewState, Room, HolidayPackage, DiscountCode, HotelConfig, ExtraService, Reservation, ReservationStatus } from './types';
 import { toLocalISO, parseISODate, formatDisplayDate, calculateNights } from './utils/dateUtils';
+import { contagemRegressiva } from './utils/contagemPacote';
 import { getPublicImageUrl } from './utils/imageUtils';
 import { getNightlyPrice } from './utils/pricing';
 import { INITIAL_CONFIG, INITIAL_ROOMS } from './constants';
@@ -14,7 +15,7 @@ import { offlineQueue } from './lib/offlineQueue';
 import { sendReservationEmails, sendPaymentConfirmedEmail } from './services/emailService';
 
 import { Lightbox } from './components/Lightbox';
-import { Share2, Zap, ArrowRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Info, Luggage, MapPin, Search, Star, User, X, Ticket, Plus, Minus, Users, AlertCircle, ShoppingCart } from 'lucide-react';
+import { Share2, Zap, ArrowRight, CalendarDays, Clock, Check, ChevronDown, ChevronLeft, ChevronRight, Info, Luggage, MapPin, Search, Star, User, X, Ticket, Plus, Minus, Users, AlertCircle, ShoppingCart } from 'lucide-react';
 import { SuccessPage } from './components/SuccessPage';
 import { RegulationPage } from './components/RegulationPage';
 import { CancellationPage } from './components/CancellationPage';
@@ -640,11 +641,15 @@ export default function App() {
                 <div className="w-24 h-1 bg-solar-gold mx-auto rounded-full"></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-6xl mx-auto">
-                {sortedActivePackages.map(pkg => (
-                  <div key={pkg.id} id={`pacote-${pkg.id}`} className="bg-white rounded-[2rem] overflow-hidden shadow-xl border border-slate-50 flex flex-col group hover:shadow-2xl transition-all duration-500 relative scroll-mt-24">
-                    <div className="aspect-[16/10] relative overflow-hidden">
+                {sortedActivePackages.map((pkg, idx) => {
+                  // O primeiro da lista é o mais próximo da data: o pacote da vez ganha destaque.
+                  const destaque = idx === 0;
+                  const contagem = contagemRegressiva(pkg.startIsoDate, toLocalISO(new Date()));
+                  return (
+                  <div key={pkg.id} id={`pacote-${pkg.id}`} className={`bg-white rounded-[2rem] overflow-hidden flex flex-col group hover:shadow-2xl transition-all duration-500 relative scroll-mt-24 ${destaque ? 'md:col-span-2 md:flex-row border-2 border-solar-gold shadow-2xl ring-4 ring-solar-gold/15' : 'shadow-xl border border-slate-50'}`}>
+                    <div className={`aspect-[16/10] relative overflow-hidden ${destaque ? 'md:aspect-auto md:w-1/2 md:shrink-0 md:min-h-[460px]' : ''}`}>
                       {pkg.imageUrl ? (
-                        <img src={getPublicImageUrl(pkg.imageUrl, 800)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={pkg.name} loading="lazy" decoding="async" />
+                        <img src={getPublicImageUrl(pkg.imageUrl, 800)} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" alt={pkg.name} loading={destaque ? 'eager' : 'lazy'} decoding="async" />
                       ) : (
                         <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300"><Ticket size={48} /></div>
                       )}
@@ -674,7 +679,19 @@ export default function App() {
                       </div>
                     </div>
                     <div className="p-10 flex-1 flex flex-col justify-between">
-                      <div className="bg-solar-gold/10 border border-solar-gold/30 rounded-xl p-4 mb-6 flex items-center justify-center gap-3 relative overflow-hidden group/dates">
+                      {destaque && (
+                        <div className="-mx-10 -mt-10 mb-8 bg-solar-green text-solar-gold px-6 py-3 flex flex-wrap items-center justify-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em]">
+                          <Clock size={16} />
+                          <span>Próximo pacote</span>
+                          {contagem && (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <strong className="text-white">{contagem}</strong>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      <div className="bg-solar-gold/10 border border-solar-gold/30 rounded-xl p-4 mb-6 flex flex-wrap items-center justify-center gap-3 relative overflow-hidden group/dates">
                         <div className="absolute inset-0 bg-solar-gold/5 translate-x-[-100%] group-hover/dates:translate-x-[100%] transition-transform duration-1000"></div>
                         <CalendarDays size={20} className="text-solar-gold relative z-10" />
                         <span className="text-solar-green font-bold text-sm tracking-wide relative z-10">
@@ -682,6 +699,11 @@ export default function App() {
                           {' — '}
                           {formatDisplayDate(pkg.endIsoDate).toUpperCase()}
                         </span>
+                        {!destaque && contagem && (
+                          <span className="relative z-10 bg-solar-green text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full whitespace-nowrap">
+                            {contagem}
+                          </span>
+                        )}
                       </div>
                       <p className="text-slate-500 text-sm leading-relaxed mb-6 italic text-left">{pkg.description}</p>
 
@@ -706,7 +728,8 @@ export default function App() {
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
