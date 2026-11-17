@@ -153,7 +153,7 @@ test('regra interna da entrada, catamarã, golpe, currículo e Ostrabeach',async
   const cv=await conversationAI(NEW())('Saudações\n\nSou Gerente Geral Hoteleiro / Diretor de Operações\nProfissional sênior com ampla experiência na gestão integral de empreendimentos hoteleiros.\n\nAt.te\nFrancilio');
   assert.match(cv.text,/fazer parte da equipe/);assert.doesNotMatch(cv.text,/quantas pessoas/);
   const ostra=await conversationAI(NEW())('Sem estadia, só pro evento mesmo. Funcionaria como? É o festival da ostra');
-  assert.match(ostra.text,/aberto ao público/);assert.doesNotMatch(ostra.text,/Luiza|quantas pessoas/);
+  assert.match(ostra.text,/aberto ao público/);assert.match(ostra.text,/ingresso de acesso, de R\$ 60 por pessoa/);assert.doesNotMatch(ostra.text,/R\$ (?:40|50)\b/);assert.doesNotMatch(ostra.text,/Luiza|quantas pessoas/);
 });
 
 test('ofertas da IA aceitas, correção de reserva e foto do quarto',async()=>{

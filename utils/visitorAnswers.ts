@@ -8,10 +8,10 @@ const norm = (value: string) => String(value || '').normalize('NFD').replace(/[�
 // Ostrabeach 2026 (catálogo: festival nos dias 20 e 21/11). What the team told
 // visitors on 14-16/11: open to the public, guests do not pay, a one-day
 // access ticket bought on the day, meals apart, tables by order of arrival.
-// The ticket price is left to the team: the package text, and two answers of
-// the team, gave three different values (R$ 60, R$ 50 and R$ 40).
+// Ticket for visitors: R$ 60 per person (Geraldo, 17/11/2026; the team had
+// also answered R$ 50 and R$ 40).
 const OSTRABEACH_LAST_DAY = '2026-11-22';
-export const ostrabeachVisitorAnswer = 'O Ostrabeach é aberto ao público e acontece no Reserva Solar, nosso restaurante pé na areia, nos dias 20 e 21/11, com música ao vivo. Quem não está hospedado paga só o ingresso de acesso, comprado no dia, na entrada; hóspede não paga. As refeições e bebidas são à parte, e as mesas são por ordem de chegada (não fazemos reserva de mesa). O ingresso vale para um dia. A programação e o cardápio do festival saem nas redes sociais do hotel durante a semana. Se quiser saber o valor do ingresso, escreva “recepção” que a nossa equipe confirma.';
+export const ostrabeachVisitorAnswer = 'O Ostrabeach é aberto ao público e acontece no Reserva Solar, nosso restaurante pé na areia, nos dias 20 e 21/11, com música ao vivo. Quem não está hospedado paga só o ingresso de acesso, de R$ 60 por pessoa, comprado no dia, na entrada; hóspede não paga. As refeições e bebidas são à parte, e as mesas são por ordem de chegada (não fazemos reserva de mesa). O ingresso vale para um dia. A programação e o cardápio do festival saem nas redes sociais do hotel durante a semana.';
 
 export function ostrabeachVisitorQuestion(message: string, focusName = '', now = Date.now()): boolean {
   if (new Date(now - 3 * 3600000).toISOString().slice(0, 10) > OSTRABEACH_LAST_DAY) return false;
