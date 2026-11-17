@@ -29,6 +29,9 @@ export function menuDetailQuestion(message: string, recent = ''): boolean {
   if (!s || s.length > 300) return false;
   if (/\b(?:hospedagem|diarias?|quartos?|apartamentos?|suites?|pacote|reveillon|ceia|festa|evento|casamento|aniversario|day ?use|cafe da manha)\b/.test(s)) return false;
   if (!detail.test(s)) return false;
+  // "esse aqui serve quantas pessoas" about a dish photo (audit 17/11/2026).
+  if (/^(?:e\s+)?(?:esse|essa|este|esta|isso|esse prato|essa porcao)(?:\s+aqui|\s+ai)?\s+serve[m]?\s+(?:quantas|pra quantas|para quantas)\s+pessoas\b/.test(s)
+    && !/\b(?:apto|loft|quarto|suite|apartamento)\b/.test(norm(recent).split(' ').slice(-40).join(' '))) return true;
   return menuWords.test(s) || menuWords.test(norm(recent)) && /\?|\b(?:qual|quais|quantas?|quantos?|tem|serve|e individual)\b/.test(s);
 }
 
@@ -49,3 +52,15 @@ export function bookingDenial(answer: string): boolean {
       && /\b(?:por aqui|neste canal|pelo whatsapp|nao)\b/.test(s);
 }
 export const bookingHereAnswer = 'Fazemos a sua reserva por aqui, sim! Me diga as datas de entrada e saída e quantas pessoas vão, contando adultos e crianças, que eu já te passo os valores.';
+
+/** "cardápio reserva olá" got "posso enviar o link oficial. Deseja?" (audit
+ * 17/11/2026): a menu request gets the links, never an offer to send them. */
+export function menuLinksWhenAsked(message: string, answer: string): string {
+  const s = norm(message);
+  if (!/\b(?:cardapio|menu)\b/.test(s) || /https?:\/\//.test(answer)) return answer;
+  if (/\b(?:hospedagem|diarias?|quartos?|pacote|reveillon|ceia|festa)\b/.test(s)) return answer;
+  const places = restaurantsFor(s);
+  const links = places.map(place => `${place === 'reserva' ? 'Reserva Solar' : 'Solar 73'}: ${MENU_LINKS[place]}`).join('\n');
+  const kept = answer.split(/(?<=[.!?])\s+/).filter(part => !/\b(?:posso (?:te )?(?:enviar|mandar|passar)|deseja|quer que eu (?:envie|mande))\b/i.test(norm(part))).join(' ').trim();
+  return `${kept ? kept + '\n\n' : ''}Segue o cardápio:\n${links}`;
+}

@@ -17,7 +17,9 @@ test('antes da abertura: convida para a Lista VIP e a visita, sem preço nem pre
   const p = policy(Date.parse('2026-10-30T13:05:00Z'));
   assert.equal(p.fase, 'antes_da_abertura');
   assert.match(p.datas, /24\/11, às 19h.*25\/11, às 8h.*01\/12, às 23h59/);
-  assert.match(p.como_entrar_na_lista_vip, /Entrar na Lista VIP.*Quero entrar na Lista VIP.*hotelsolar\.tur\.br\/vip/);
+  assert.match(p.como_entrar_na_lista_vip, /Entrar na Lista VIP.*hotelsolar\.tur\.br\/vip/);
+  // 17/11/2026: telling people to write the phrase looped when the keyword failed.
+  assert.match(p.como_entrar_na_lista_vip, /Não peça para a pessoa escrever "Quero entrar na Lista VIP"/);
   assert.match(p.nao_inventar, /Não informe nem estime preço.*parcelamento.*reservas comuns não vale/);
   assert.match(p.tom, /últimas vagas.*sem juros, desconto, sorteio ou ilimitado.*guarás, maré ou clima/);
   assert.match(p.indicacao, /item 10 do regulamento/);

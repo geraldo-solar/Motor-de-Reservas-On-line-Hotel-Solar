@@ -111,3 +111,15 @@ export function locmilAnswer(message: string): string | undefined {
   if (!/\b(?:quadriciclos?|loc\s?mil)\b/.test(normalize(message))) return;
   return 'Para passeios de quadriciclo, indicamos a LocMil Turismo, uma empresa terceirizada. WhatsApp: (91) 98765-7501 — https://wa.me/5591987657501. Valores, horários, disponibilidade e contratação são tratados diretamente com eles.';
 }
+
+// Audit 17/11/2026 (and 23/10): the model told customers that the Reserva Solar
+// charges entry "só em datas previamente autorizadas pela direção", an
+// internal rule. Customers get the public version.
+export const publicAdmissionRule = 'Em alguns eventos especiais pode haver cobrança de entrada, sempre divulgada com antecedência.';
+export function publicAdmissionWording(answer: string): string {
+  const internal = /[^.!?\n]*\b(?:previamente (?:autorizad|informad)\w*|autorizad\w* pela dire[cç][aã]o|pelo respons[aá]vel|datas de grande movimento)[^.!?\n]*[.!?]?/gi;
+  if (!internal.test(answer)) return answer;
+  let used = false;
+  return answer.replace(internal, part => /cobran|entrada|pag/i.test(part) ? (used ? '' : (used = true, ' ' + publicAdmissionRule)) : part)
+    .replace(/\s{2,}/g, ' ').replace(/\s+([.,!?])/g, '$1').trim();
+}

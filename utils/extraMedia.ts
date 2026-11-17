@@ -75,7 +75,14 @@ export function safeBoatCopy(value: string, includedBoat = false) {
         : 'Passeio de barco com terceiros, sob consulta; valores, horários, duração e disponibilidade com a recepção');
     }).join('');
 }
-export function safeBoatPackageCopy<T extends { includes?: string[]; benefits?: string[]; description?: string }>(pkg: T): T {
+// The hotel has no catamaran, only the boat trip (owner, 21/10/2026); the
+// Réveillon description still said "passeio de catamarã" on 17/11/2026.
+const noCatamaran = (text: string) => String(text).replace(/catamar[aã]s?/gi, match => /^C/.test(match) ? 'Barco' : 'barco');
+export function safeBoatPackageCopy<T extends { includes?: string[]; benefits?: string[]; description?: string }>(source: T): T {
+  const pkg = {...source,
+    ...(source.description ? {description: noCatamaran(source.description)} : {}),
+    ...(source.includes ? {includes: source.includes.map(noCatamaran)} : {}),
+    ...(source.benefits ? {benefits: source.benefits.map(noCatamaran)} : {})};
   const included = explicitPackageBoatBenefit(pkg);
   return { ...pkg,
     ...(pkg.description ? { description: safeBoatCopy(pkg.description, included) } : {}),

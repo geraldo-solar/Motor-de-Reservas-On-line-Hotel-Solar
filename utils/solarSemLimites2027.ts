@@ -40,7 +40,7 @@ export function solarSemLimites2027Policy(now = Date.now()) {
       fase: 'antes_da_abertura',
       datas: 'Visita guiada ao vivo pelo hotel em 24/11, às 19h. As vendas abrem em 25/11, às 8h, e encerram em 01/12, às 23h59 (horário de Belém).',
       como_responder: 'Explique que as condições serão apresentadas com calma na visita guiada ao vivo de 24/11, às 19h, e que quem entra na Lista VIP recebe o convite para a visita, conhece as condições antes da abertura e é avisado em 25/11, às 8h, quando as vendas abrem.',
-      como_entrar_na_lista_vip: `Quem recebeu o convite pode tocar no botão "Entrar na Lista VIP". Também pode escrever aqui "Quero entrar na Lista VIP" ou entrar pelo site ${solarSemLimites2027.lista_vip}. Não diga que a pessoa já entrou na lista: a confirmação vem na mensagem do hotel.`,
+      como_entrar_na_lista_vip: `Quem recebeu o convite pode tocar no botão "Entrar na Lista VIP" ou se cadastrar pelo site ${solarSemLimites2027.lista_vip}. Não peça para a pessoa escrever "Quero entrar na Lista VIP" (se ela já escreveu e a confirmação não veio, mande o link do site). Não diga que a pessoa já entrou na lista: a confirmação vem na mensagem do hotel.`,
       indicacao,
     };
   }
@@ -58,4 +58,28 @@ export function solarSemLimites2027Policy(now = Date.now()) {
     fase: 'encerrado',
     como_responder: 'As vendas do Solar Sem Limites 2027 foram encerradas em 01/12. Para quem já comprou, reservas e dúvidas do pacote seguem com a equipe nesta conversa.',
   };
+}
+
+const normVip = (value: string) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().replace(/\s+/g, ' ').trim();
+
+/** "Quero entrar na Lista VIP Solar Sem Limites 2027 (vim pelo anúncio)".
+ * ManyChat's keyword sends the signup; when the message reaches the AI
+ * instead, the AI told people to write that same phrase (audit 17/11/2026:
+ * 14 to 16/11, the phrase went round in circles and no one was signed up).
+ * A short "Quero entrar" right after the AI talked about the list counts too. */
+export function vipSignupRequest(message: string, lastAssistant = ''): boolean {
+  const s = normVip(message);
+  if (!s || s.length > 200) return false;
+  if (/\blista vip\b/.test(s) && /\b(?:quero|queria|gostaria|desejo|vou|pode|como|posso|me (?:coloca|inclui|inscreve|cadastra)|entrar|participar|fazer parte|inscrever|cadastrar|incluir)\b/.test(s)
+    && !/\b(?:sair|remover|tirar|cancelar|nao quero)\b/.test(s)) return true;
+  return /\blista vip\b/i.test(normVip(lastAssistant))
+    && /^(?:sim[,! ]*)?(?:quero(?: entrar| participar| sim)?|quero sim|pode(?: ser| me colocar| incluir)?|sim)[.!]*$/.test(s);
+}
+
+/** The signup answer, by launch phase; undefined once sales are closed. */
+export function vipSignupAnswer(now = Date.now()): string | undefined {
+  if (now < em(solarSemLimites2027.abertura)) return `Que bom ter você com a gente! 🌴 Para garantir seu lugar na Lista VIP do Solar Sem Limites 2027, é só confirmar seu cadastro neste link: ${solarSemLimites2027.lista_vip}\n\nQuem está na lista recebe o convite para a visita guiada ao vivo pelo hotel em 24/11, às 19h, e é avisado em 25/11, às 8h, quando as vendas abrem.`;
+  if (now <= em(solarSemLimites2027.encerramento)) return `As vendas do Solar Sem Limites 2027 já estão abertas, até 01/12, às 23h59! 🌴 As condições, o regulamento e as formas de pagamento estão aqui: ${solarSemLimites2027.pagina_de_vendas}\n\nSe preferir, escreva "recepção" que a nossa equipe atende você por aqui.`;
+  return undefined;
 }

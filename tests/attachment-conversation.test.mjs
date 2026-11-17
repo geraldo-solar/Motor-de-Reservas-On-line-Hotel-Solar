@@ -127,7 +127,7 @@ test('novo texto ou áudio remove metadata e mantém atendimento anterior funcio
   const p = await handleConversation({operation:'prepare',user_message:'Qual o cardápio do Reserva Solar?',state:first.state},auth,noTranscription,now,async () => {throw Error('Should not analyze text');});
   assert.equal(JSON.parse(p.state).attachment,undefined);
   const r = control({operation:'route',user_message:'Qual o cardápio do Reserva Solar?',state:p.state,proposed:'QUOTE|2026-09-20|2026-09-25|2|NONE',ai_response:'Aqui está o cardápio.'},now);
-  assert.equal(r.quote_request,'NOQUOTE'); assert.equal(r.answer,'Aqui está o cardápio.');
+  assert.equal(r.quote_request,'NOQUOTE'); assert.match(r.answer,/^Aqui está o cardápio\.\n\nSegue o cardápio:\nReserva Solar: https/);
   const a = await handleConversation({operation:'prepare',user_message:audio,state:first.state},auth,async () => 'Qual o cardápio do Reserva Solar?',now,async () => {throw Error('Should not analyze audio');});
   assert.equal(a.transcription_status,'ok');
   assert.equal(JSON.parse(a.state).attachment,undefined);

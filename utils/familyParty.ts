@@ -265,6 +265,30 @@ function auditPhrases(s: string): string {
     // "01 casal\n01 criança 12 anos" (audit 26/10/2026).
     .replace(/\b0(\d)\s+(?=casal|criancas?|adultos?|pessoas?|bebes?|filh[oa]s?)/g, '$1 ')
     .replace(/^(?:um\s+|uma\s+)?(?:apto|apartamento|quarto|suite)\s+(?:pra|para|p\/)\s+(?:um\s+)?casal(?:\s+so)?[.!]*$/, 'casal');
+  // "6 adultos, sendo: 1 apartamento para três pessoas, 1 apartamento para
+  // três pessoas" (audit 17/11/2026): the split adds up to the group, so the
+  // group stands (the rooms are chosen with the quote).
+  s = s.replace(new RegExp(`\\b${n}\\s+(adult[oa]s?|pessoas?)\\s*[,.]?\\s*sendo\\s*:?\\s*((?:(?:e\\s+)?(?:1|um|uma)\\s+(?:apartamento|apto|quarto|suite)\\s+(?:para|pra|com|de)\\s+${n}\\s+(?:pessoas?|adult[oa]s?)\\s*[,;.]?\\s*){2,4})`),
+    (all, total: string, word: string, split: string) => {
+      const parts = [...split.matchAll(new RegExp(`(?:para|pra|com|de)\\s+${n}\\s+(?:pessoas?|adult[oa]s?)`, 'g'))].map(m => countOf(m[1]) || 0);
+      return parts.reduce((a, b) => a + b, 0) === countOf(total) ? `${countOf(total)} ${word} ` : all;
+    });
+  // Teenagers (audit 17/11/2026): "2 adultos 1 adolescentes de 17 anos, 1
+  // criança de 10 anos e 1 de 4 anos" got "quantos adultos e quantas
+  // crianças?" three times. A list of minors, each with an age, is the
+  // children with their ages (only up to 6 is free).
+  if (/\badolescentes?\b/.test(s)) {
+    const seg = `${n}\\s+(?:(?:adolescentes?|criancas?|filh[oa]s?|bebes?)\\s+)?(?:de|com)\\s+(\\d{1,2})\\s*anos?`;
+    const run = new RegExp(`${seg}(?:\\s*(?:,|e|;)\\s*${seg})+`);
+    const m = run.exec(s);
+    if (m) {
+      const parts = [...m[0].matchAll(new RegExp(seg, 'g'))];
+      if (parts.every(part => countOf(part[1]) === 1))
+        s = s.slice(0, m.index) + `${parts.length} criancas de ${parts.map(part => part[2]).join(', ')} anos` + s.slice(m.index + m[0].length);
+    }
+  }
+  // "So eu e outra pessoa", "eu e mais uma pessoa" (audit 17/11/2026).
+  s = s.replace(/^(?:(?:so|somente|apenas|seria|seremos|sera)\s+)?eu\s+e\s+(?:mais\s+)?(?:outra|uma|1)\s+pessoa[.!]*$/, '2 adultos');
   // "3 não tem criança", "3 sem crianças": adults only.
   s = s.replace(new RegExp(`^(?:somos\\s+|seremos\\s+|sao\\s+)?${n}\\s*(?:pessoas?|adult[oa]s?)?\\s*[,.]?\\s*(?:e\\s+)?(?:nao\\s+(?:tem|temos|ha|vai|vao|tera)|sem)\\s+(?:nenhuma\\s+)?criancas?\\b[.!]*$`),
     (all, count: string) => countOf(count) ? `${countOf(count)} adultos` : all);
@@ -351,8 +375,20 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
   // yet (audit 21/10/2026); with a known group it may be a partial plan.
   const fresh=!readFamilyParty(previous,now);
   let s=informalComposition(auditPhrases(norm(message)).replace(fresh?/^(?:(?:somente|so|apenas|seria|seremos|sera|vai ser|vamos)\s+)+(?=eu\s+(?:e|com)\s+(?:minha|meu|minhas|meus)\s+(?:filh|net|sobrinh|entead))/:/$^/,''));
+  // "2 pessoas" then "50 e 54 anos" (audit 17/11/2026) got the children's ages
+  // question: ages of 18 or more, one per person, are the adults.
+  const adultAges=/^(?:idades?\s*:?\s*)?(\d{1,3}(?:\s*(?:,|e|\/)\s*\d{1,3})*)\s*(?:anos?)?[.!]*$/.exec(norm(message));
+  if(adultAges&&knownTotal){
+    const ages=adultAges[1].split(/\s*(?:,|e|\/)\s*/).map(Number);
+    if(ages.length===knownTotal&&ages.length>1&&ages.every(age=>age>=18&&age<=110))return updateFamilyParty(`${knownTotal} adultos`,previous,now,knownTotal);
+  }
   // "Dois idosos" are two adults ("casal de idosos" stays a couple).
   s=s.replace(/\bidos([oa])s\b/g,'adult$1s').replace(/\bidos([oa])\b/g,'adult$1');
+  // "Qual valor de um quarto para casal" (audit 17/11/2026): with no group
+  // known yet, a price question for one room for a couple is the couple. With
+  // a known family it stays the Casal category ("Quero quarto para casal").
+  if(fresh&&!knownTotal&&/\b(?:valor|valores|quanto|preco|precos|diaria|diarias|custa|orcamento)\b/.test(s))
+    s=s.replace(/(^|[^\d\s]\s*)\b(?:(?:um|uma|1|o|do|no)\s+)?(?:apto|apartamento|quarto|suite)\s+(?:pra|para|p\/)\s+(?:um\s+)?casal\b(?!\s+e\b)/,'$1para um casal');
   // "3 crianças (10,5,3)" / "2 crianças: 8 e 4": a list matching the count,
   // right after it, is the children's ages even without "anos" (19/10/2026).
   s=s.replace(new RegExp(`\\b${number}\\s*(criancas?|filh[oa]s?)\\s*(?:\\(\\s*|:\\s*|de\\s+|com\\s+)(\\d{1,2}(?:\\s*(?:,|e)\\s*\\d{1,2})*)\\s*\\)?(?!\\s*(?:anos?|meses?|mes|\\/|\\d|pessoas?|adult))`,'g'),
@@ -411,7 +447,12 @@ export function updateFamilyParty(message: string, previous?: unknown, now=Date.
     || [...s.matchAll(/(?:[:,;]\s*|\b(?:na verdade|corrigindo)\s+)casal(?=\s*(?:[.!?]|$)|\s+(?:e|com)\b)/g)].some(match=>!roomLinkedCouple(s,match.index!))
     || [...s.matchAll(/\b(?:somos|para|pra|pro|vai|vamos|um|1|o|seria|sera|so|apenas|somente)\s+casal\b/g)].some(match=>/^somos\s/.test(match[0])
       ||!roomLinkedCouple(s,match.index!)&&!(/^o\s/.test(match[0])&&/\b(?:prefiro|quero|escolho|escolhi|fico com|vou de|vamos de|reservar|fechar|pode ser)\s*$/.test(s.slice(0,match.index))));
-  const couple=pluralCouple?quantity(pluralCouple[1]):oneCouple?1:undefined;
+  // "Valor da diaria dia 11 a 13 casal" (audit 17/11/2026): the couple at the
+  // end of a price or date request ("o casal", "suíte casal" stay categories).
+  const trailingCouple=/(?:\d|\b(?:diarias?|valor(?:es)?|precos?|quanto|orcamento))\b[^.?!\n]{0,40}\s(?:pra\s+|para\s+|p\/\s*)?(?:um\s+)?casal[.!?]*$/.test(s)
+    &&!/\b(?:o|a|suite|quarto|apto|apartamento|categoria|de)\s+casal[.!?]*$/.test(s)&&!/\bcasais\b/.test(s)
+    &&!/\b(?:quartos?|suites?|apartamentos?|aptos?|acomodac\w*|loft|categoria)\b/.test(s);
+  const couple=pluralCouple?quantity(pluralCouple[1]):oneCouple||trailingCouple?1:undefined;
   const offspringMention=/\bfilh[oa]s?\b/.test(s);
   const unspecifiedOffspring=offspringMention&&!childMatches.length
     && (adultMatches.length>0||couple!==undefined||/^(?:e |com )?(?:nossos? |nossas? |meus? |minhas? )?filh[oa]s\b/.test(s));

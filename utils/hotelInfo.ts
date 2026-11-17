@@ -6,7 +6,13 @@ export function eventInquiry(message: string) {
   const s = norm(message);
   if (/\b(nao quero|nao e|sem)\s+(evento|festa|aniversario)|\b(apenas|so) hospedagem individual/.test(s)) return false;
   if (isPrivateEventRequest(message)) return true;
+  // "Locamos o auditório de vocês por 1 hora… 20 cadeiras" (audit 17/11/2026).
+  if (/\b(?:auditorio|sala de (?:reuniao|reunioes|eventos|treinamento)|loca(?:r|cao|mos)|alugar|aluguel)\b/.test(s)
+    && /\b(?:auditorio|espaco|sala|salao|cadeiras|pessoas|horas?)\b/.test(s) && !/\b(?:carro|bicicleta|bike|barco|cadeira de praia|guarda-?sol)\b/.test(s)) return true;
   if (publicEventInquiry(message)) return false;
+  // The Ostrabeach is a public festival, not a private event (audit 17/11/2026:
+  // "Sem estadia, só pro evento mesmo" was sent to the events team).
+  if (/\b(?:ostra|ostras|ostrabeach|festival)\b/.test(s)) return false;
   // Public package programming is not a request to organize a private event.
   if (/\b(programacao|shows?|feriados?|pacotes?|reveillon)\b/.test(s) && !/orcamento|organizar|realizar|contratar|meu evento|minha festa/.test(s)) return false;
   if (/\b(eventos?|corporativ[oa]s?|empresariais|confraternizacoes?|confraternizacao|casamentos?|reunioes|treinamentos?)\b/.test(s)) return true;

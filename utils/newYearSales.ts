@@ -102,6 +102,24 @@ export function newYearPartyPriceInquiry(message: string, context?: unknown, now
   return price && (newYearWords.test(s) || focusedOnNewYear(context, now));
 }
 
+export const newYearNightOnlyAnswer = `No Réveillon a hospedagem é vendida só no pacote completo, de 31/12 a 03/01 (3 noites), com a Festa da Virada incluída: não temos pacote de uma noite só.
+
+Se a ideia é só a noite da virada, sem hospedagem, a Festa da Virada (31/12, ${newYearSalesPolicy.party_hours}) tem pulseira de R$ ${newYearSalesPolicy.party_wristband_price} por pessoa, com ceia, open bar, Banda Zona Rural e DJ. Pagamento no Pix ou no cartão de crédito em até 3x.
+
+Você quer só a festa ou a festa com hospedagem? Se for com hospedagem, me diga quantas pessoas vão que eu passo o valor.`;
+
+/** "Vocês vendem pacote somente para a noite do Réveillon?" (audit 17/11/2026):
+ * it can mean one night of lodging or the party alone, so both are answered. */
+export function newYearNightOnlyInquiry(message: string, now = Date.now()): boolean {
+  const s = norm(message);
+  if (!campaignActive(now) || !s || s.length > 300 || privateEvent.test(s)) return false;
+  if (/\b(?:\d{1,2}|uma|um|duas|dois|tres|quatro|cinco|seis)\s+(?:pessoas?|adult\w*|crianc\w*)\b|\bcasal\b/.test(s)) return false;
+  const nightWords = '(?:reveillon|revellion|reveilon|revelion|virada|ano novo|dia 31|31\\/12|31)';
+  return new RegExp(`\\b(?:so|somente|apenas)\\s+(?:para\\s+|pra\\s+)?(?:a\\s+)?noite\\s+(?:d[oa]|de)\\s+${nightWords}\\b`).test(s)
+    || new RegExp(`\\b(?:uma|1)\\s+(?:noite|diaria)\\s+(?:so|somente|apenas)?\\s*(?:n[oa]|d[oa]|para o|pro|pra)\\s+${nightWords}\\b`).test(s)
+    || /\b(?:pacote|hospedagem|diaria)s?\b.{0,30}\b(?:so|somente|apenas)\s+(?:para\s+|pra\s+)?(?:a\s+)?noite\b/.test(s) && newYearWords.test(s);
+}
+
 /** Specific party arrangements that are not confirmed in the catalogue. */
 export function newYearPartyDetailInquiry(message: string, context?: unknown, now = Date.now()): boolean {
   const s = norm(message);
@@ -119,6 +137,7 @@ export function newYearStayRange(message: string): Range | undefined {
   return newYearRange(norm(message));
 }
 function newYearRange(s: string): Range | undefined {
+  s = s.replace(/\bdia(\d{1,2})\b/g, 'dia $1');
   // "check-in dia 31 de dezembro e check-out dia 02 de janeiro" (audit 26/10).
   const spelled = s.match(/\b(\d{1,2}) de dezembro\b.{1,50}?\b(\d{1,2}) de janeiro\b/);
   if (spelled) {
@@ -252,6 +271,14 @@ export function newYearSalesTurn(message: string, context: unknown, guests: numb
   const reply = newYearSalesReply(message, context, now) || newYearPaymentReply(message, context, campaignLead, now);
   if (reply?.kind !== 'partial_stay') return reply;
   const s = norm(message);
+  // "Valor de hospedagem de 02/01 a 06/01" (audit 17/11/2026): a stay that
+  // starts inside the package and goes past it. From 03/01 the nights are
+  // ordinary, so both ways are offered (the team quoted 03/01 to 06/01).
+  const range = newYearStayRange(message), {package_start: start, package_end: end} = newYearSalesPolicy;
+  if (range && range.start > start && range.start < end && range.end > end && !skipsPartyNight(s)) {
+    const day = (iso: string) => iso.split('-').reverse().slice(0, 2).join('/');
+    return {...reply, answer: `No Réveillon, de 31/12 a 03/01, a hospedagem é vendida só no pacote completo, com a Festa da Virada incluída. A partir de 03/01 as diárias são normais: posso calcular de 03/01 a ${day(range.end)}, ou o pacote completo com as diárias extras até ${day(range.end)}. ${guests ? 'Qual das duas você prefere?' : 'Para quantas pessoas seria, e qual das duas opções você prefere?'}`};
+  }
   // Declining the party night itself ("não quero passar a virada") gets the rule.
   if (newYearStayRange(message) && (guests || partyMention.test(s)) && !skipsPartyNight(s)) return;
   return guests ? {...reply, answer: newYearPartialStayRule} : reply;
@@ -326,6 +353,7 @@ export function newYearSiteLink(checkIn: string, checkOut: string, now = Date.no
 export function newYearSalesReply(message: string, context?: unknown, now = Date.now()): NewYearSalesReply | undefined {
   if (newYearPartyOnlyInquiry(message, context, now)) return {kind: 'party_only', answer: newYearPartyOnlyAnswer, handoff: true};
   if (newYearPartyPriceInquiry(message, context, now)) return {kind: 'party_price', answer: newYearPartyPriceAnswer, handoff: false};
+  if (newYearNightOnlyInquiry(message, now)) return {kind: 'party_price', answer: newYearNightOnlyAnswer, handoff: false};
   if (partialNewYearStay(message, context, now)) return {kind: 'partial_stay', answer: newYearPartialStayAnswer, handoff: false};
   // Unconfirmed details are answered as such and the AI keeps selling; the
   // customer can still ask for the team (owner, 30/09: the AI should answer).

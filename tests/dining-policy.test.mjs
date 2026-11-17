@@ -98,7 +98,9 @@ test('dúvidas explícitas de entrada do Reserva Solar recebem regra gratuita se
     const reply = diningPolicyAnswer(message);
     assert.equal(typeof reply, 'string', message);
     assert.match(reply, /entrada no Reserva Solar é gratuita como regra/i, message);
-    assert.match(reply, /datas de grande movimento previamente informadas/i, message);
+    // 17/11/2026: the public version, without the internal authorization rule.
+    assert.match(reply, /eventos especiais pode haver cobrança de entrada, sempre divulgada com antecedência/i, message);
+    assert.doesNotMatch(reply, /previamente|autoriza|grande movimento/i, message);
     assert.doesNotMatch(reply, /R\$|\b40\b|sempre gratuit|aberto|confirmad[ao]|garantid[ao]/i, message);
   }
 });

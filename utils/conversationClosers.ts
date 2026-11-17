@@ -111,3 +111,15 @@ export function assistantBefore(state: any, message: string): string {
     if (turns[previous]?.role === 'assistant') return String(turns[previous].text || '');
   return '';
 }
+
+/** Chain scam messages ("AUXÍLIO RECONSTRUÇÃO 2026… CONSULTE AGORA… saque via
+ * PIX", audit 17/11/2026) get no reply: answering only invites more. */
+export function massSpam(message: string): boolean {
+  const s = String(message || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (s.length < 80 || !/https?:\/\/|www\.|\.com\b|\.site\b|\.online\b/.test(s)) return false;
+  if (/\b(?:hotel|reserva|hospedagem|diaria|quarto|apartamento|reveillon|pacote)\b/.test(s)) return false;
+  const markers = [/\bauxilio\b/, /\bbeneficio\b/, /\bsaque\b|\bsacar\b/, /consulte agora|consulta liberada|clique (?:aqui|no link)/,
+    /receberam hoje|mais de [\d.]+ (?:de )?pessoas/, /\bvia pix\b|\bpix imediato\b|de forma imediata/, /valores? a receber|cpf (?:irregular|bloqueado)|regularize/,
+    /\bliberad[oa] para todos\b/, /\bgratis\b.*\bsorteio\b|\bvoce foi sorteado\b|\bganhou\b/];
+  return markers.filter(marker => marker.test(s)).length >= 2;
+}

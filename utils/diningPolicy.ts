@@ -88,7 +88,7 @@ export function diningPolicyAnswer(message: string): string | undefined {
     || /\b(?:paga|pagar)\s+para\s+(?:ir|visitar)\b/.test(text);
   if (!(admissionSubject && admissionCharge) && !venueChargeQuestion) return;
 
-  return 'A entrada no Reserva Solar é gratuita como regra. Cobrança só ocorre em datas de grande movimento previamente informadas pelo hotel; não é automática por ser feriado ou férias.';
+  return 'A entrada no Reserva Solar é gratuita como regra. Em alguns eventos especiais pode haver cobrança de entrada, sempre divulgada com antecedência; feriado ou férias, por si só, não têm cobrança.';
 }
 
 /** General hours are not a real-time open/closed or table-availability check. */

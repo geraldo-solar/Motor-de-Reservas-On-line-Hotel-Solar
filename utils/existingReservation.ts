@@ -60,6 +60,10 @@ export function existingReservationInquiry(message: string, contextual = false):
     // "Sou Edilene, gostaria de confirmar uma reserva!" (audit 26/10/2026).
     || /\b(?:confirmar|cancelar|remarcar|alterar)\s+(?:uma|a)\s+reserva\b(?!\s+(?:para|pra|de|do|no|na)\s+(?:\d|dia|o dia|semana|fim|final|feriado|reveillon|natal))/.test(s);
   if (existingStatus) return true;
+  // "Está errada a data na mensagem eletronica acima. A reserva é a partir do
+  // dia 20/11" (audit 17/11/2026): a correction of a booking already made.
+  if (/\b(?:esta |ta |veio |saiu )?(?:errad[ao]s?|incorret[ao]s?|equivocad[ao]s?)\b/.test(s) && /\b(?:a|minha|nossa|essa|esta) reserva\b|\breserva (?:e|eh|foi|esta|ficou) (?:a partir|de|do|para|pro)\b|\bcomprovante\b|\bmensagem\b/.test(s)
+    && /\b(?:data|datas|dia|dias|nome|valor)\b/.test(s)) return true;
   // A known reservation may be mentioned in an ordinary FAQ. That remains
   // informational; merely mentioning it does not authorize a new handoff.
   const faq = /\b(?:horarios?|que horas|check[ -]?in|check[ -]?out|cafe|wifi|wi[ -]?fi|senha|piscinas?|pets?|estacionamento|precos?|valores?|tarifas?|quanto custa|quanto fica|quanto e|formas de pagamento|meios de pagamento|parcelas?|parcelamento|parcelar|aceita(?:m)? pix|posso pagar (?:com|por|via|no|em) (?:pix|cartao)|como (?:e|funciona) (?:o )?pagamento)\b/;

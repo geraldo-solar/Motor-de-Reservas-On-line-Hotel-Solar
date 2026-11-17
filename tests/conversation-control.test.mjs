@@ -127,6 +127,8 @@ test('Reserva Solar é restaurante e nunca inicia reserva de hospedagem', () => 
     assert.equal(r.quote_request, 'NOQUOTE', msg);
     assert.equal(r.can_collect, 'NAO', msg);
     if(msg==='Que horas abre o Reserva Solar?') assert.match(r.answer,/Restaurante Reserva Solar.*10h.*18h/);
+    // 17/11/2026: a menu request without a link in the answer gets the links.
+    else if(/card[aá]pio|menu/i.test(msg)) assert.match(r.answer, /^Resposta de teste\.\n\nSegue o cardápio:\nReserva Solar: https:\/\/cardapio-reserva-solar\.vercel\.app\/$/, msg);
     else assert.equal(r.answer, 'Resposta de teste.', msg);
     assert.equal(JSON.parse(r.state).pending, undefined, msg);
   }

@@ -33,6 +33,8 @@ import { stayDateClarification } from '../utils/stayDuration.js';
 import {lodgingInclusionsAnswer} from '../utils/stayInformation.js';
 import {flexibleStayQuestion,flexibleStayAnswer,compareFlexibleStays} from '../utils/flexibleStay.js';
 import { guestServiceRequest } from '../utils/guestService.js';
+import {vipSignupRequest,vipSignupAnswer} from '../utils/solarSemLimites2027.js';
+import {ostrabeachVisitorQuestion,ostrabeachVisitorAnswer,jobApplication,jobApplicationAnswer} from '../utils/visitorAnswers.js';
 import { hotelPhoneInquiry, hotelContactAnswer,hotelCallDifficulty,hotelCallDifficultyAnswer } from '../utils/hotelContact.js';
 import {bookingDeferral,bookingDeferralAnswer} from '../utils/conversationContinuation.js';
 import { locmilAnswer, confirmedHotelAnswer } from '../utils/hotelPolicy.js';
@@ -46,7 +48,7 @@ import {readMultiRoomHandoff,multiRoomGuidanceText} from '../utils/multiRoomHand
 import {multiRoomRequest,roomAlternativeComparison} from '../utils/lodgingScope.js';
 import {restaurantHoursAnswer} from '../utils/diningPolicy.js';
 import {explicitHumanRequest,stripNegatedHumanRequests} from '../utils/humanIntent.js';
-import {closingTurn,assistantBefore,closingAnswer,thanksAnswer,declined} from '../utils/conversationClosers.js';
+import {closingTurn,assistantBefore,closingAnswer,thanksAnswer,declined,massSpam} from '../utils/conversationClosers.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
@@ -96,6 +98,10 @@ const STOP_WORDS = new Set([
   // The complete holiday expressions are matched separately below.
   'crianca', 'criancas', 'mae', 'maes', 'pai', 'pais', 'namorado', 'namorada',
   'namorados', 'namoradas', 'adulto', 'adultos', 'bebe', 'bebes', 'casal',
+  // "O que está incluso no pacote?" matched "Janeiro … com Jantar Incluso"
+  // (audit 17/11/2026): words of the description, not of a holiday.
+  'incluso', 'inclusa', 'inclusos', 'inclusas', 'incluido', 'incluida', 'inclui',
+  'noites', 'beira', 'mar',
 ]);
 
 const normalize = (value: string) => value
@@ -156,11 +162,13 @@ const scorePackage = (message: string, pkg: PackageRecord) => {
   }
 
   const asksNatal = messageTokens.has('natal');
-  const asksNewYear = messageTokens.has('reveillon') || messageTokens.has('virada');
+  // "Quanto tá a diária para o ano novo" (audit 17/11/2026) names the Réveillon.
+  const asksNewYear = messageTokens.has('reveillon') || messageTokens.has('virada') || /\bano novo\b/.test(normalizedMessage);
   const packageHasNatal = nameTokens.includes('natal');
   const packageHasNewYear = nameTokens.includes('reveillon') || nameTokens.includes('virada');
   if (asksNatal && asksNewYear && packageHasNatal && packageHasNewYear) score += 35;
   if (asksNewYear && !asksNatal && packageHasNatal && packageHasNewYear) score -= 12;
+  if (asksNewYear && packageHasNewYear && !messageTokens.has('reveillon') && !messageTokens.has('virada')) score += 20;
   if (asksNatal && !asksNewYear && packageHasNatal && packageHasNewYear) score -= 12;
 
   MONTHS.forEach((month, monthIndex) => {
@@ -497,8 +505,11 @@ function occupancyAnswer(guests: number, family: {key?: string; eligible: number
 // Asking the same group question twice in a row (audit 05/10/2026: "Seria o
 // casal" got "Quantas pessoas vão se hospedar?" three times): the team takes over.
 const groupQuestionKind = (text: string) =>
-  /Quantas pessoas vão se hospedar|Para quantas pessoas será a (?:estadia|hospedagem|reserva)|preciso saber para quantas pessoas/i.test(text) ? 'people'
-  : /Quais são as idades/.test(text) ? 'ages' : undefined;
+  /Quantas pessoas vão se hospedar|Para quantas pessoas será a (?:estadia|hospedagem|reserva)|preciso saber para quantas pessoas|informe quantas pessoas vão|Para conferir a ocupação, quantos adultos e quantas crianças/i.test(text) ? 'people'
+  : /Quais são as idades/.test(text) ? 'ages'
+  // Audit 17/11/2026: "Quais são as datas de entrada e saída?" three times in
+  // a row ("15/11 as 12h", then a question about a dish).
+  : /Quais são as datas de entrada e saída\?/.test(text) ? 'dates' : undefined;
 const stayDateMention = (text: string) => /\b\d{1,2}\s*\/\s*\d{1,2}\b|\b(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b|\bdias?\s+\d{1,2}\b|\b(?:amanha|hoje|fim de semana|final de semana|feriado|fim d[oe] ano|final d[oe] ano|reveillon|ano novo|natal|carnaval|ferias)\b|\b(?:segunda|terca|quarta|quinta|sexta|sabado|domingo)(?:-feira)?\s+(?:ate|a|ao)\b/.test(normalize(text));
 const repeatedQuestionAnswer ='Para não te fazer repetir, vou chamar nossa equipe para calcular o valor para vocês nesta conversa.';
 
@@ -530,6 +541,19 @@ async function regularPriceTable(): Promise<string | undefined> {
   ].join('\n');
 }
 
+// Three Instagram story replies in a row got "Pode detalhar como podemos
+// ajudar…?" three times (audit 17/11/2026): the same generic reply is not sent
+// again right after itself.
+function repeatedGenericReply(payload: any, sourceState: any, message: string) {
+  if (!payload || payload.quote_request !== 'ROOM_LIST' || !/^(?:general_information|document_information)$/.test(String(payload.match_type || ''))) return payload;
+  let state: any;
+  try { state = typeof sourceState === 'string' ? JSON.parse(sourceState) : sourceState; } catch { return payload; }
+  const text = String(payload.conversation_text || '').trim();
+  const before = assistantBefore(state, message).trim();
+  if (!text || !before || !text.endsWith(before.slice(-120))) return payload;
+  return {...payload, quote_request: 'ROOM_DONE', quote_text: '', conversation_text: '', match_type: 'repeated_generic_reply'};
+}
+
 function repeatedQuestionHandoff(payload: any, sourceState: any, message: string, priceTable?: string) {
   if (!payload || payload.quote_request !== 'ROOM_LIST' && !/^PACKAGE_ID\|/.test(String(payload.quote_request || ''))) return payload;
   const kind = groupQuestionKind(String(payload.conversation_text || ''));
@@ -539,6 +563,13 @@ function repeatedQuestionHandoff(payload: any, sourceState: any, message: string
   if (groupQuestionKind(assistantBefore(state, message)) !== kind) return payload;
   // The earlier question was on another day: asking again is not a loop.
   try { if (JSON.parse(payload.state)?.daily_greeting?.first === true) return payload; } catch { /* Keep checking. */ }
+  // The same question already asked twice before (audit 17/11/2026: "5",
+  // "5", "Cinco" got "quantos adultos e quantas crianças?" five times): the team.
+  const earlier = (Array.isArray(state?.turns) ? state.turns : []).filter((turn: any) => turn?.role === 'assistant').slice(-2)
+    .map((turn: any) => groupQuestionKind(String(turn.text || '')));
+  const askedTwice = earlier.length === 2 && earlier.every((item: string | undefined) => item === kind)
+    && !stayDateMention(message) && !/\b\d{1,2}\s*\/\s*\d{1,2}\b/.test(message);
+  if (!askedTwice) {
   // A partial answer ("uma tem 2 anos", "4 pessoas") is progress, not a loop.
   // Ages count only when one more was understood (audit 07/10/2026: "0",
   // "42, 33 e 52 e 0" and "Crianças de 11 anos" got the same question).
@@ -552,6 +583,17 @@ function repeatedQuestionHandoff(payload: any, sourceState: any, message: string
     const noted = br(facts?.check_in) && br(facts?.check_out) && /^Para quantas pessoas será a estadia\?(?: Se houver crianças, me diga as idades\.)?$/.test(String(payload.conversation_text || '').trim())
       ? `Anotei as datas: ${br(facts.check_in)} a ${br(facts.check_out)}. Para quantas pessoas será a estadia? Se houver crianças, me diga as idades.` : '';
     return noted ? {...payload, quote_text: noted, conversation_text: noted} : payload;
+  }
+  if (kind === 'dates') {
+    let facts: any;
+    try { facts = JSON.parse(payload.state)?.facts; } catch { /* Keep checking. */ }
+    if (facts?.check_in && facts?.check_out) return payload;
+    // One date only ("15/11 as 12h"): say what is missing instead of repeating.
+    if (stayDateMention(message) || /\b\d{1,2}\s*\/\s*\d{1,2}\b/.test(message)) {
+      const clarify = 'Para a hospedagem, preciso da data de entrada e da data de saída, por exemplo: 15/11 a 16/11. Se a sua dúvida for sobre o restaurante ou outro assunto, me conte que eu te ajudo.';
+      return {...payload, quote_text: clarify, conversation_text: clarify};
+    }
+  }
   }
   // A repeated "quantas pessoas?" about a price gets the table once; after it, the team.
   const table = kind === 'people' && priceTable && !priceTableSent(state) ? priceTable : undefined;
@@ -609,7 +651,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!req.query?.operation || req.query?.transport === MANYCHAT_TEXT_TRANSPORT) {
     const sendJson = res.json.bind(res);
     res.json = ((payload: any) => {
-      let result = !req.query?.operation ? withDailyGreeting(repeatedQuestionHandoff(payload, req.body?.state, safeTypedMessage(String(req.body?.user_message || req.body?.message || '').trim()), priceTable), req.body?.state) : payload;
+      const typed = safeTypedMessage(String(req.body?.user_message || req.body?.message || '').trim());
+      let result = !req.query?.operation ? withDailyGreeting(repeatedGenericReply(repeatedQuestionHandoff(payload, req.body?.state, typed, priceTable), req.body?.state, typed), req.body?.state) : payload;
       if (result?.quote_request === 'HUMANO' && typeof result.state === 'string') result = {...result, state: markHumanHandoff(result.state)};
       return sendJson(req.query?.transport === MANYCHAT_TEXT_TRANSPORT ? withManyChatTextEnvelope(result) : result);
     }) as typeof res.json;
@@ -652,6 +695,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ?closingTurn(serviceMessage,assistantBefore(earlyState,serviceMessage),earlyState?.daily_greeting?.first===true):undefined;
   const closing=closingCandidate?.kind==='closing'&&closingCandidate.answer!==thanksAnswer&&earlyState?.package_context&&earlyState?.topic==='package_info'
     &&packageAcknowledgment(serviceMessage)?undefined:closingCandidate;
+  // Instagram story replies arrive as a bare link; the model answered "Vi que
+  // enviou um link de imagem…" to each of three in a row (audit 17/11/2026).
+  const bareLink=/^\s*https?:\/\/\S+\s*$/i.test(serviceMessage);
+  if(!req.query?.operation&&bareLink&&/\blinks?\b|\bimage(?:m|ns)\b/i.test(assistantBefore(earlyState,serviceMessage)))
+    return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',
+      can_collect:'NAO',confirmation_text:'',matched:false,match_type:'repeated_link',availability_checked:false,state:JSON.stringify(earlyState)});
+  if(!req.query?.operation&&massSpam(serviceMessage))return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',
+    can_collect:'NAO',confirmation_text:'',matched:false,match_type:'spam',availability_checked:false,state:JSON.stringify(earlyState)});
   if(closing){
     if(closing.kind!=='closing')return res.status(200).json({quote_request:'ROOM_DONE',quote_text:'',conversation_text:'',
       can_collect:'NAO',confirmation_text:'',matched:false,match_type:closing.kind,availability_checked:false,state:JSON.stringify(earlyState)});
@@ -676,6 +727,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({...routed,quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
         matched:false,match_type:'outsourced_massage',availability_checked:false});
     }
+  }
+  // Lista VIP do Solar Sem Limites 2027 reaching the AI (audit 17/11/2026):
+  // the signup link, never "escreva Quero entrar na Lista VIP" again.
+  const vipAnswer=!req.query?.operation&&vipSignupRequest(serviceMessage,assistantBefore(earlyState,serviceMessage))?vipSignupAnswer(Date.now()):undefined;
+  const fixedAnswer=req.query?.operation?undefined
+    :ostrabeachVisitorQuestion(serviceMessage,earlyState?.package_context?.name||earlyState?.recent_package?.name||'')?{text:ostrabeachVisitorAnswer,kind:'ostrabeach_visitor',team:false}
+    :jobApplication(serviceMessage)?{text:jobApplicationAnswer,kind:'job_application',team:true}:undefined;
+  if(fixedAnswer){
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    return res.status(200).json({...routed,quote_request:fixedAnswer.team?'HUMANO':'ROOM_LIST',quote_text:fixedAnswer.text,conversation_text:fixedAnswer.text,
+      can_collect:'NAO',confirmation_text:'',matched:false,match_type:fixedAnswer.kind,availability_checked:false,
+      ...control({operation:'remember_response',state:'state' in routed?routed.state:req.body?.state,response_text:fixedAnswer.text})});
+  }
+  if(vipAnswer){
+    const routed=control({operation:'route',user_message:incomingMessage,state:req.body?.state});
+    return res.status(200).json({...routed,quote_request:'ROOM_LIST',quote_text:vipAnswer,conversation_text:vipAnswer,
+      can_collect:'NAO',confirmation_text:'',matched:false,match_type:'vip_signup',availability_checked:false,
+      ...control({operation:'remember_response',state:'state' in routed?routed.state:req.body?.state,response_text:vipAnswer})});
   }
   if (!req.query?.operation && hotelPhoneInquiry(serviceMessage)
     && !hotelCallDifficulty(serviceMessage)
@@ -1252,6 +1321,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (packageError) return res.status(500).json({ error: packageError.message });
   if (!isPackageIntent(userMessage, bestPackageScore)) {
     return res.status(200).json(informationResult('Pode detalhar como podemos ajudar com sua dúvida sobre o hotel?','general_information'));
+  }
+  // "Dezembro de 2027", "Para o natal de 2027" (audit 17/11/2026) got the
+  // 2026 Réveillon and Natal: a year with no package on sale is said so.
+  const yearAsk=/\b(natal|carnaval|pascoa|dezembro|janeiro|fevereiro|marco|abril|julho|ferias)\s+(?:de\s+)?(20\d{2})\b/.exec(normalize(userMessage));
+  if(yearAsk){
+    const [,what,year]=yearAsk,monthIndex=MONTHS.indexOf(what);
+    const onSale=(packages||[]).filter((pkg:PackageRecord)=>currentPackage(pkg)&&validPackagePeriod(pkg));
+    const matches=onSale.some((pkg:PackageRecord)=>monthIndex>=0
+      ?[pkg.start_iso_date!,pkg.end_iso_date!].some(iso=>iso.slice(0,4)===year&&Number(iso.slice(5,7))===monthIndex+1)
+      :normalize(pkg.name||'').includes(what)&&pkg.start_iso_date!.slice(0,4)===year);
+    if(!matches&&onSale.length){
+      const label=monthIndex>=0?`${what} de ${year}`:`o ${what==='pascoa'?'Páscoa':what.charAt(0).toUpperCase()+what.slice(1)} de ${year}`.replace(/^o Páscoa/,'a Páscoa');
+      const last=onSale.map((pkg:PackageRecord)=>pkg.end_iso_date!).sort().at(-1)!;
+      const answer=`Ainda não abrimos as vendas para ${label}. Os pacotes à venda agora vão até ${formatDate(last)}. Quer conhecer algum deles? Se preferir outras datas, me diga quando e quantas pessoas que eu calculo para você.`;
+      return res.status(200).json({quote_request:'ROOM_LIST',quote_text:answer,conversation_text:answer,
+        can_collect:'NAO',confirmation_text:'',matched:false,match_type:'package_year_unavailable',availability_checked:false,
+        ...control({operation:'remember_response',state:req.body?.state,response_text:answer,clear_package:true})});
+    }
   }
   const today=belemClock(Date.now()).day;
   const asksNext=discovery&&/\bproxim[oa]s?\b/.test(normalize(userMessage));

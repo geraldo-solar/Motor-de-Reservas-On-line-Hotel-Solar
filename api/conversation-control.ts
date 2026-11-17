@@ -18,11 +18,11 @@ import { isAttachmentInput, isStickerInput, STICKER_REACTION, analyzeAttachment,
 import { attachmentAnswer, attachmentContextMessage, attachmentDecision, attachmentForMessage, attachmentSourceHash, readAttachmentTurn, type AttachmentTurn } from '../utils/attachmentInput.js';
 import { packageCardChoice } from '../utils/packageReply.js';
 import { closingTurn, assistantBefore, thanksAnswer, holdReceptionButton } from '../utils/conversationClosers.js';
-import { menuDetailAnswer, bookingDenial, bookingHereAnswer } from '../utils/menuDetails.js';
+import { menuDetailAnswer, bookingDenial, bookingHereAnswer, menuLinksWhenAsked } from '../utils/menuDetails.js';
 import { neutralizeNegatedHolidays, packageInquiry, packageDiscoveryRequest, packageFollowup, packageAcknowledgment, packageBookingRequest, newTripRequest, readPackageContext, packageWeekdayClarification, packageWeekdayReply, packageInclusionFollowup, packageOccupancyFollowup, packageRoomDetailFollowup, packageResumeRequest, type PackageContext } from '../utils/packageContext.js';
 import {packageConsultationReply} from '../utils/packageDateException.js';
 import {solarSemLimites2027Policy} from '../utils/solarSemLimites2027.js';
-import {newYearSalesTurn,newYearCampaignSeed,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,newYearPolicyContext,newYearSiteLink,newYearCampaignFocus,type NewYearStayRequest} from '../utils/newYearSales.js';
+import {newYearSalesTurn,newYearCampaignSeed,quotableNewYearRange,newYearCampaignPackage,newYearStayRange,newYearFullPeriod,readNewYearStayRequest,newYearPolicyContext,newYearSiteLink,newYearCampaignFocus,type NewYearStayRequest} from '../utils/newYearSales.js';
 import {possibleCompanionInquiry} from '../utils/possibleCompanion.js';
 import {packageToday,packageEnded,retiredIndependence,endedPackageAnswer,endedPackageMarker} from '../utils/packageAvailability.js';
 import {packageStayDates,readPackageStayQuery,packageStayPriceRequest,type PackageStayQuery} from '../utils/packageStayQuery.js';
@@ -39,7 +39,7 @@ import { guestServiceRequest, guestServiceContext, guestServiceAnswer } from '..
 import { hotelPhoneInquiry, hotelContactAnswer, hotelCallDifficulty, hotelCallDifficultyAnswer } from '../utils/hotelContact.js';
 import {bookingDeferral,bookingDeferralAnswer} from '../utils/conversationContinuation.js';
 import { confirmedGuestFacilitiesPolicy, guestFacilityInquiry, guestFacilityAnswer } from '../utils/guestFacilities.js';
-import { confirmedHotelPolicy, confirmedHotelAnswer, locmilAnswer, correctBorrowedAmenities } from '../utils/hotelPolicy.js';
+import { confirmedHotelPolicy, confirmedHotelAnswer, locmilAnswer, correctBorrowedAmenities, publicAdmissionWording } from '../utils/hotelPolicy.js';
 import { massagePolicy, massageServiceAnswer, readMassageContext } from '../utils/massageService.js';
 import {photoSessionInquiry} from '../utils/photoSession.js';
 import { paymentStatusInquiry, paymentStatusContext, paymentStatusAnswer } from '../utils/paymentStatus.js';
@@ -477,6 +477,10 @@ function resolveFollowup(state: State, raw: string, now: number, quotedRoom = ''
   }
   if (state.topic === 'extra_photos' && state.extra_photo_subjects?.length && shortChoice && /\btod[oa]s\b/.test(s) && !roomWords.test(s)) resolved = `Fotos de ${state.extra_photo_subjects.map(code => photoSubjectLabels[code]).join(' e ')}`;
   const recommended = quotedRoom || recommendedRoomName(state.turns);
+  // "Do quarto" answering "De qual espaço do hotel você gostaria de ver
+  // fotos?" (audit 17/11/2026) got the ages question: the rooms are the answer.
+  if (clarifying && /^(?:(?:e|d[oa]s?|o|a|os|as|n[oa]s?)\s+)?(?:quartos?|apartamentos?|aptos?|suites?|acomodac(?:ao|oes))[.!?]*$/.test(s))
+    resolved = recommended ? `Fotos de ${recommended}` : 'Fotos dos quartos';
   // "Me manda foto do quarto" after a quote: one generic room, no category.
   if (recommended && extraPhotoRequest(s) && !directExtras.length && s.split(' ').length <= 9
     && /\b(?:quarto|apartamento|apto|acomodacao|suite)\b/.test(s)
@@ -524,7 +528,23 @@ function parseDates(s: string, now: number): { dates: string[]; unclear?: boolea
   // "31/ 12/26 ao dia 01/01 de 2027" (audit 26/10/2026): spaces inside a date
   // and a year written after "de".
   s = s.replace(/\b(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{2,4})\b/g, '$1/$2/$3')
-    .replace(/\b(\d{1,2}\/\d{1,2})\s+de\s+(20\d{2})\b/g, '$1/$2');
+    .replace(/\b(\d{1,2}\/\d{1,2})\s+de\s+(20\d{2})\b/g, '$1/$2')
+    // "ao dia3 de Janeiro" (audit 17/11/2026): a day glued to "dia".
+    .replace(/\bdia(\d{1,2})\b/g, 'dia $1')
+    // "Qual valor do dia 26 /12 ha 02/01" (audit 17/11/2026): a space before
+    // the slash, and "ha" typed for "a" between two dates.
+    .replace(/\b(\d{1,2})\s+\/\s*(\d{1,2})\b/g, '$1/$2')
+    .replace(/\b(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\s+(?:ha|à|á)\s+(?=(?:o\s+)?(?:dia\s+)?\d{1,2}\/\d{1,2}\b)/g, '$1 a ');
+  // "30 a dia 01 de janeiro" (audit 17/11/2026): the first day is in the month
+  // before; "27-28-29 de dezembro" is from the first day to the last.
+  const monthNames = ['janeiro','fevereiro','marco','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  s = s.replace(new RegExp(`\\b(\\d{1,2})\\s*(?:a|ate|ao|-)\\s*(?:o\\s+)?(?:dia\\s+)?(\\d{1,2})\\s+de\\s+(${monthNames.join('|')})\\b`),
+    (all, first: string, last: string, month: string) => {
+      const m = monthNames.indexOf(month) + 1;
+      return +first > +last && +first <= 31 && +last >= 1 ? `${first}/${m === 1 ? 12 : m - 1} a ${last}/${m}` : all;
+    })
+    .replace(new RegExp(`\\b(\\d{1,2})(?:\\s*-\\s*\\d{1,2}){1,5}\\s*-\\s*(\\d{1,2})\\s+de\\s+(${monthNames.join('|')})\\b`),
+      (all, first: string, last: string, month: string) => +first < +last ? `${first}/${monthNames.indexOf(month) + 1} a ${last}/${monthNames.indexOf(month) + 1}` : all);
   // "Entrada 31-10 / Saída 2-11" (Fernando, 28/10/2026): a labelled day-month
   // with a hyphen is a date, not a range of days.
   s = s.replace(/\b(entrada|saida|chegada|check ?-?in|check ?-?out|chego|chegamos|saio|saimos|ida|volta)(\s*:?\s*(?:no\s+|na\s+|dia\s+|em\s+)?)(\d{1,2})-(\d{1,2})(?![\d-])/g,
@@ -793,7 +813,10 @@ function updateStayDates(state: State, s: string, now: number) {
 }
 
 function updateFacts(state: State, message: string, now: number) {
+  // "Idades: 80/51/26/26" (audit 17/11/2026) is a list of ages, not dates.
+  if (/^\s*idades?\b/i.test(message)) message = message.replace(/(\d)\s*\/\s*(?=\d)/g, '$1, ');
   const before = JSON.stringify(state.facts);
+  const datesBefore = [state.facts.check_in, state.facts.check_out];
   const guestsBefore = state.facts.guests;
   const arrivalBefore=JSON.stringify(state.arrival_time);
   const familyBefore = familyAccommodation(state, state.facts.guests || 0, now).key;
@@ -853,8 +876,13 @@ function updateFacts(state: State, message: string, now: number) {
   // package so these dates are quoted.
   const focus = state.package_context || state.recent_package;
   const typed = parseDates(norm(message), now).dates;
-  if (focus && typed.length === 2 && state.facts.check_in === typed[0] && state.facts.check_out === typed[1]
-    && (typed[1] <= focus.start_date || typed[0] >= focus.end_date)) {
+  const f = state.facts, datesChanged = !!f.check_in && !!f.check_out && JSON.stringify([f.check_in, f.check_out]) !== JSON.stringify(datesBefore);
+  if (focus && (typed.length === 2 && f.check_in === typed[0] && f.check_out === typed[1] || datesChanged)
+    && (f.check_out! <= focus.start_date || f.check_in! >= focus.end_date
+      // "Data 29/12 a 03/01" and "de 30 a 2 virada de ano" after the Réveillon
+      // card (audit 17/11/2026): a stay that starts before or ends after the
+      // package is quoted as the package plus the extra nights.
+      || f.check_in! < focus.start_date || f.check_out! > focus.end_date)) {
     delete state.package_context; delete state.recent_package; delete state.multi_room;
     if (state.topic === 'package_info') { delete state.topic; delete state.topic_at; }
   }
@@ -897,13 +925,20 @@ function modelOffer(text: string): 'quote' | 'team' | undefined {
   if (!asked || !/\b(?:deseja|desejam|quer|querem|gostaria|gostariam|posso|prefere)\b/.test(asked)) return;
   // The controller's own multi-apartment offer has its own validity window.
   if (/\bprecisamos dividir o grupo\b|\bposso chamar a equipe para continuar nesta conversa\b/.test(norm(text))) return;
-  if (/\b(?:encaminh|repass|chamar|contato|falar com)\w*\b[^?]{0,100}\b(?:equipe|recepcao|responsavel|setor|atendente|programacao)\b/.test(asked)) return 'team';
+  if (/\b(?:encaminh|repass|chamar|contato|falar com|consult|acionar|avisar)\w*\b[^?]{0,100}\b(?:equipe|recepcao|responsavel|setor|atendente|programacao)\b/.test(asked)) return 'team';
   if (/\b(?:calcul|simul|cotac|cotar|orcament|resumo|valor total|valores)\w*/.test(asked)) return 'quote';
+  // Audit 17/11/2026: "A equipe pode confirmar… Deseja que eu encaminhe essa
+  // consulta?" and "Posso verificar as opções… Deseja que eu continue?" got
+  // "Sim" and the same question again.
+  const whole = norm(text);
+  if (/\b(?:encaminh|repass|acion)\w*\b/.test(asked) && /\b(?:equipe|recepcao|atendente|setor)\b/.test(whole)) return 'team';
+  if (/\b(?:continue|continuar|prossiga|prosseguir|siga|seguir|verifique|verificar)\b/.test(asked)
+    && /\b(?:opcoes|opcao|valores?|disponibilidade|periodo|acomodac\w*|suites?|apartamentos?)\b/.test(whole)) return 'quote';
 }
 // Only a bare yes ("Sim", "Pode sim", "Quero", "Isso") answers the offer;
 // "Pode ser um apto de casal e um triplo?" is a new question.
 const offerAccepted = (s: string) => !s.includes('?')
-  && /^(?:ok[,!. ]+)?(?:sim|s|pode|pode sim|podevsim|pode ser|quero|quero sim|queremos|isso|isso mesmo|claro|com certeza|por favor|gostaria|desejo|faca|faz|manda|bora|ok|okay|perfeito|beleza|certo|uhum|pode fazer|pode calcular|pode encaminhar|pode preparar)(?:[\s,!.]+(?:sim|por favor|pode|obrigad[oa]|agora|gostaria|quero))*[\s.!]*$/.test(s);
+  && /^(?:ok[,!. ]+)?(?:sim|s|pode|pode sim|podevsim|pode ser|quero|quero sim|queremos|isso|isso mesmo|claro|com certeza|por favor|gostaria|desejo|faca|faz|manda|bora|ok|okay|perfeito|beleza|certo|uhum|pode fazer|pode calcular|pode encaminhar|pode preparar|pode consultar|aguardando|aguardo|fico no aguardo|no aguardo)(?:[\s,!.]+(?:sim|por favor|pode|obrigad[oa]|agora|gostaria|quero))*[\s.!]*$/.test(s);
 const offeredRoom = (text: string) => {
   const m = /\b(Su[ií]te (?:Casal|Triplo|Qu[aá]druplo|Sacada Vista Mar|Varanda T[eé]rreo)|LOFT|Loft)\b/.exec(text);
   if (!m) return;
@@ -941,7 +976,10 @@ function validQuote(value: unknown, state: State, now: number): Quote | null {
   return q;
 }
 
+// "Suíte tripla" (audit 17/11/2026) is the Suíte Triplo of the quote.
+const roomGender = (s: string) => s.replace(/\btripla\b/g, 'triplo').replace(/\bquadrupla\b/g, 'quadruplo');
 function selection(s: string, quote: Quote): Quote['options'][number] | undefined {
+  s = roomGender(s);
   const matches = quote.options.filter(option => {
     const name = norm(option.name);
     if (s.includes(name)) return true;
@@ -971,7 +1009,7 @@ function quotedChoice(s: string, quote: Quote): Quote['options'][number] | undef
 // It opens only the existing confirmation card, never data collection. Media
 // and informational questions are intercepted before this selection branch.
 function shortRoomChoice(message:string,name:string):boolean {
-  const s=norm(message).replace(/[.!]+$/,'').trim();
+  const s=roomGender(norm(message)).replace(/[.!]+$/,'').trim();
   const label=norm(name),alias=label.replace(/^suite\s+/,'');
   const choice=s.replace(/^(?:(?:no|na|o|a|do|da|em|suite)\s+)+/,'');
   return [label,alias].includes(choice)&&!question(s);
@@ -1108,7 +1146,10 @@ function controlTurn(body: any, now = Date.now()) {
     remember(state,'assistant',massageAnswer!);
     return {state:JSON.stringify(state),resolved_message:raw,answer:massageAnswer!,quote_request:'NOQUOTE',can_collect:'NAO',confirmation_text:'',service_info:'outsourced_massage'};
   }
-  const packageDiscovery=packageDiscoveryRequest(raw,state.package_context,now);
+  // "2 adultos e 1 criança de 11 anos, de 30 a 2 virada de ano" (audit
+  // 17/11/2026) is a stay to price, not a search of the package list.
+  const packageDiscovery=packageDiscoveryRequest(raw,state.package_context,now)&&!quotableNewYearRange(raw)
+    &&!(newYearStayRange(raw)&&!!state.facts.guests);
   const roomGuidanceRequest=multiRoomGuidanceRequest(raw);
   if(['prepare','route','confirm'].includes(body.operation)&&(packageDiscovery||roomGuidanceRequest)){
     // An informational question consumes an old yes/no offer. A later "Sim"
@@ -1455,7 +1496,13 @@ function controlTurn(body: any, now = Date.now()) {
       delete state.audio;state.first_turn=!state.greeted;state.greeted=true;
       state.history=[...state.history,raw.slice(0,500)].slice(-12);remember(state,'user',raw);
     }
-    if(wantsPrice){state.facts.check_in=query.check_in;state.facts.check_out=query.check_out;state.changed=true;}
+    // "Três pessoas, 31 dezembro a dia 2 janeiro" with the Réveillon in focus
+    // (audit 17/11/2026): price the full package at once, as without focus,
+    // instead of only explaining the rule and asking to calculate.
+    const widened=wantsPrice&&state.package_context?.id===newYearCampaignPackage.id?newYearFullPeriod(query.check_in,query.check_out,now):undefined;
+    if(widened)state.full_period_extended={requested_check_in:query.check_in,requested_check_out:query.check_out};
+    const stay=widened||query;
+    if(wantsPrice){state.facts.check_in=stay.check_in;state.facts.check_out=stay.check_out;state.changed=true;}
     const family=familyAccommodation(state,state.facts.guests||0,now);
     const multiKey=wantsPrice?multiRoomKey(state,now):undefined;
     if(multiKey)state.multi_room={at:now,key:multiKey,status:'offered'};
@@ -1467,7 +1514,7 @@ function controlTurn(body: any, now = Date.now()) {
       context:JSON.stringify({ultima_mensagem:raw,pacote_em_foco:state.package_context,periodo_em_consulta:state.package_stay_query,
         fatos_informados_pelo_cliente:state.facts,regra:'Consulta de datas/preço, sem disponibilidade, exceção, ocupante hipotético ou reserva confirmados. Não oferecer early check-in sem pergunta sobre horário. O motor vai validar e calcular; responda somente: '+answer})};
     const decision=wantsPrice&&!multiKey&&state.facts.guests&&!family.pending&&!state.facts.children_pending
-      ?`QUOTE|${query.check_in}|${query.check_out}|${state.facts.guests}|${state.facts.extras.join(',')||'NONE'}`:'NOQUOTE';
+      ?`QUOTE|${stay.check_in}|${stay.check_out}|${state.facts.guests}|${state.facts.extras.join(',')||'NONE'}`:'NOQUOTE';
     remember(state,'assistant',answer);
     return {state:JSON.stringify(state),resolved_message:raw,can_collect:'NAO',confirmation_text:'',answer,quote_request:decision};
   }
@@ -1717,7 +1764,7 @@ function controlTurn(body: any, now = Date.now()) {
       regra_valores_da_equipe: 'Nossa equipe também responde nesta conversa e você não vê essas mensagens. Se o cliente citar um valor, condição ou acomodação que você não informou, nunca diga que é inválido, que não corresponde ou que está errado: diga que vai confirmar com a equipe ou ofereça calcular aqui. Se ele aceitar algo combinado com a equipe, a equipe finaliza.',
       regra_ensaios_e_hidromassagem:'Ensaio ou sessão de fotos não é pedido para receber imagens do hotel: exige consulta prévia à recepção, sem autorização automática. As duas piscinas de hidromassagem são compartilhadas pelos hóspedes, não privativas; aquecimento e temperatura não estão confirmados.',
       regra_instalacoes: 'A copa baby e seu micro-ondas são de uso dos hóspedes para aquecer alimentos, sem horário específico. Isso não confirma equipamento dentro de quartos, acesso de visitantes, outros eletrodomésticos ou serviço prestado por funcionários. Não transformar uma dúvida sobre comida de bebê em nova criança na ocupação. Pedido efetivo para a equipe aquecer ou entregar deve seguir ao humano, sem afirmar execução.',
-      regra_politica_gastronomia: 'A política de gastronomia confirmada mais recentemente pelo responsável prevalece sobre respostas antigas do histórico ou instruções sazonais anteriores. Não aplicar cobrança de entrada automaticamente em feriados, férias ou datas de grande movimento: somente datas previamente autorizadas e informadas pelo responsável podem ter cobrança. Não inventar tarifa nem converter preço de entrada em preço de café, refeições ou couvert. Os horários gerais não comprovam funcionamento em tempo real.',
+      regra_politica_gastronomia: 'A política de gastronomia confirmada mais recentemente pelo responsável prevalece sobre respostas antigas do histórico ou instruções sazonais anteriores. Não aplicar cobrança de entrada automaticamente em feriados, férias ou datas de grande movimento: somente datas previamente autorizadas e informadas pelo responsável podem ter cobrança. Ao cliente, diga só que a entrada é gratuita e que em alguns eventos especiais pode haver cobrança, sempre divulgada com antecedência; não fale em autorização, direção, responsável nem \"datas de grande movimento\". Não inventar tarifa nem converter preço de entrada em preço de café, refeições ou couvert. Os horários gerais não comprovam funcionamento em tempo real.',
       lazer_em_foco: state.extra_photo_subjects || [],
       fotos_lazer_solicitadas: state.topic === 'extra_photos' ? state.extra_photo_subjects || [] : [],
       pacote_em_foco: state.topic === 'package_info' && (!packageQuery||occupancyFollowup) ? state.package_context || null : null,
@@ -1840,7 +1887,10 @@ function controlTurn(body: any, now = Date.now()) {
   // a short closing, or nothing after a goodbye (see conversationClosers).
   // "Entendi"/"Ótimo" about the package in focus keeps its own short reply.
   const lastAssistantText=assistantBefore(state,raw);
-  const acceptedOffer=!choiceAccepted&&!cardChoice&&!state.multi_room&&offerAccepted(s)?modelOffer(lastAssistantText):undefined;
+  // A pending multi-apartment offer answers its own "Sim"; the model's later
+  // offer ("Deseja que eu encaminhe essa consulta?", 17/11/2026) answers it otherwise.
+  const ownMultiRoomOffer=!!state.multi_room&&/\bprecisamos dividir o grupo\b|\bposso chamar a equipe para continuar nesta conversa\b/.test(norm(lastAssistantText));
+  const acceptedOffer=!choiceAccepted&&!cardChoice&&!ownMultiRoomOffer&&offerAccepted(s)?modelOffer(lastAssistantText):undefined;
   const closingCandidate=!choiceAccepted&&!cardChoice&&!acceptedOffer?closingTurn(raw,assistantBefore(state,raw),state.daily_greeting?.first===true):undefined;
   const closing=closingCandidate?.kind==='closing'&&closingCandidate.answer!==thanksAnswer&&state.package_context&&state.topic==='package_info'&&packageAcknowledgment(raw)
     ?undefined:closingCandidate;
@@ -1958,6 +2008,18 @@ function controlTurn(body: any, now = Date.now()) {
     // "31/12 a 01/01 para 5 pessoas" while the Réveillon is in focus: the
     // facts were already widened to the full package (widenNewYearStay).
     if(focus&&!quote&&readyParty&&state.full_period_extended&&newYearStayRange(publicMessage)){
+      const full=newYearFullPeriod(f.check_in,f.check_out,now);if(full)Object.assign(f,full);
+      decision=`QUOTE|${f.check_in}|${f.check_out}|${f.guests}|${f.extras.join(',')||'NONE'}`;
+    }
+    // "2 adultos e 1 criança de 11 anos, de 30 a 2 virada de ano" (audit
+    // 17/11/2026): the stay goes beyond the package, so updateFacts left it;
+    // quote the package plus the extra nights instead of the package card.
+    // "São 4 casais" then "do dia 30 de dezembro ao dia3 de Janeiro" got the
+    // generic card: dates and group are known, so they are quoted.
+    else if(!quote&&readyParty&&!!f.check_in&&!!f.check_out&&newYearStayRange(publicMessage)
+      &&(f.check_in<newYearCampaignPackage.start_date||f.check_out>newYearCampaignPackage.end_date)
+      &&f.check_in<newYearCampaignPackage.end_date&&f.check_out>newYearCampaignPackage.start_date){
+      const full=newYearFullPeriod(f.check_in,f.check_out,now);if(full)Object.assign(f,full);
       decision=`QUOTE|${f.check_in}|${f.check_out}|${f.guests}|${f.extras.join(',')||'NONE'}`;
     }
     else if(focus&&!quote&&packageBookingRequest(publicMessage)&&!childPolicyQuestion(publicMessage)&&state.party_confirmed_at
@@ -1975,7 +2037,7 @@ function controlTurn(body: any, now = Date.now()) {
   }
   else if (publicEventInquiry(publicMessage)) {answer=publicEventAnswer(publicMessage,now);delete state.pending;}
   else if (state.event) {answer=state.event.answer;delete state.pending;}
-  else if (eventInquiry(s) && !mediaRequest(s)) {
+  else if (eventInquiry(s) && (!mediaRequest(s) || !/\b(?:fotos?|fotografias?|imagens?|videos?)\b/.test(s))) {
     delete state.pending;
     answer = eventContactText;
   }
@@ -2065,7 +2127,7 @@ function controlTurn(body: any, now = Date.now()) {
   if (question(s)) delete state.pending;
   // Audit 26/10/2026: "No momento, não realizamos reservas por aqui".
   // 27/10/2026: hair dryer and iron are borrowed from the reception.
-  if (decision==='NOQUOTE' && answer===String(body.ai_response||'').slice(0,1800)) answer = correctBorrowedAmenities(answer);
+  if (decision==='NOQUOTE' && answer===String(body.ai_response||'').slice(0,1800)) answer = menuLinksWhenAsked(publicMessage, publicAdmissionWording(correctBorrowedAmenities(answer)));
   if (decision==='NOQUOTE' && answer===String(body.ai_response||'').slice(0,1800) && bookingDenial(answer))
     answer = restaurantBookingFollowup('reservas', state) || bookingHereAnswer;
   if(decision==='NOQUOTE' && !inquiry && !restaurantInquiry(s) && !mediaRequest(norm(publicMessage))
