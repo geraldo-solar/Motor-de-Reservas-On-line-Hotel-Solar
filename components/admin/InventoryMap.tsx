@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Grid, ChevronLeft, ChevronRight, Eye, EyeOff, Layers, Calendar as CalendarIcon, LogIn as LoginIcon, LogOut as LogoutIcon, RefreshCw } from 'lucide-react';
 import { Room, RoomDateOverride } from '../../types';
 import { DateRangePickerModal } from './DateRangePickerModal';
 import { toLocalISO, parseISODate, formatDisplayDate } from '../../utils/dateUtils';
 import { getPublicImageUrl } from '../../utils/imageUtils';
 import { sortRoomsByPriority } from '../../utils/roomUtils';
+import { valorParaGravar } from '../../utils/celulaDoMapa';
 
 interface InventoryMapProps {
     rooms: Room[];
-    onUpdateRoomOverride: (roomId: string, override: RoomDateOverride) => void;
+    onUpdateRoomOverride: (roomId: string, dateIso: string, campos: Partial<RoomDateOverride>) => Promise<boolean>;
     onBulkUpdate: (startIso: string, endIso: string, roomId: string, selectedDays: number[], updates: Partial<RoomDateOverride> | null, priceOp?: any) => void;
     isSaving?: boolean;
     onRefreshData?: () => Promise<boolean>;
@@ -17,11 +18,38 @@ interface InventoryMapProps {
 const MapCell: React.FC<{
     type: 'price' | 'qty' | 'restr';
     value: any;
-    onChange: (val: any) => void;
+    onChange: (val: any) => unknown;
     isClosed?: boolean;
     noCheckIn?: boolean;
     noCheckOut?: boolean;
 }> = ({ type, value, onChange, isClosed, noCheckIn, noCheckOut }) => {
+    // Preço e vagas: o que se digita fica num rascunho e só vai para o banco
+    // quando a edição termina (Enter ou sair do campo). Gravar a cada tecla
+    // punha no site o número pela metade e disparava dezenas de gravações.
+    const [rascunho, setRascunho] = useState<string | null>(null);
+    const desistiu = useRef(false);
+
+    const terminar = async () => {
+        const digitado = rascunho;
+        if (desistiu.current) {
+            desistiu.current = false;
+            setRascunho(null);
+            return;
+        }
+        const numero = valorParaGravar(digitado, value);
+        if (numero === null) {
+            setRascunho(null);
+            return;
+        }
+        try {
+            // O número digitado continua na célula enquanto grava; depois ela
+            // volta a mostrar o que ficou no banco (o novo, ou o antigo se falhou).
+            await onChange(numero);
+        } finally {
+            setRascunho(atual => (atual === digitado ? null : atual));
+        }
+    };
+
     if (type === 'restr') {
         return (
             <div className={`flex items-center justify-center gap-1.5 h-full ${isClosed ? 'opacity-40' : ''}`}>
@@ -55,8 +83,16 @@ const MapCell: React.FC<{
             type="number"
             inputMode="numeric"
             pattern="[0-9]*"
-            value={value}
-            onChange={e => onChange(Number(e.target.value))}
+            value={rascunho ?? value}
+            onChange={e => setRascunho(e.target.value)}
+            onBlur={terminar}
+            onKeyDown={e => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Escape') { desistiu.current = true; e.currentTarget.blur(); }
+            }}
+            // A rodinha do mouse muda o número de um campo numérico em foco:
+            // rolar a página com o cursor em cima alterava o preço sem querer.
+            onWheel={e => e.currentTarget.blur()}
             disabled={isClosed}
             className={`w-full h-full text-center text-[11px] font-bold bg-transparent outline-none border-none focus:bg-[#D4AF37]/20 transition ${isClosed ? 'text-gray-400' : 'text-[#0F2820] cursor-text'}`}
             placeholder="-"
@@ -142,12 +178,10 @@ export const InventoryMap: React.FC<InventoryMapProps> = ({ rooms, onUpdateRoomO
         setBulkNoCheckOut(null);
     };
 
-    const updateOverrideField = (roomId: string, dateIso: string, field: keyof RoomDateOverride, val: any) => {
-        const room = rooms.find(r => r.id === roomId);
-        if (!room) return;
-        const existing = room.overrides?.find(o => o.dateIso === dateIso) || { dateIso, price: room.price, availableQuantity: room.totalQuantity, isClosed: false };
-        onUpdateRoomOverride(roomId, { ...existing, [field]: val });
-    };
+    // Manda só o campo alterado daquele dia; quem grava parte do que está no
+    // banco na hora, não do que esta tela tinha carregado.
+    const updateOverrideField = (roomId: string, dateIso: string, field: keyof RoomDateOverride, val: any) =>
+        onUpdateRoomOverride(roomId, dateIso, { [field]: val });
 
     const dayLabels = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
@@ -355,7 +389,7 @@ export const InventoryMap: React.FC<InventoryMapProps> = ({ rooms, onUpdateRoomO
                                         const p = ov?.price ?? room.price;
                                         const isClosed = ov?.isClosed || (ov?.availableQuantity === 0);
                                         return (
-                                            <div key={d} className={`w-[80px] md:w-[90px] shrink-0 border-r border-gray-200 h-10 md:h-12 transition-colors ${isClosed ? 'bg-red-50/50' : 'hover:bg-amber-50'}`}>
+                                            <div key={iso} className={`w-[80px] md:w-[90px] shrink-0 border-r border-gray-200 h-10 md:h-12 transition-colors ${isClosed ? 'bg-red-50/50' : 'hover:bg-amber-50'}`}>
                                                 <MapCell type="price" value={p} isClosed={ov?.isClosed} onChange={(val) => updateOverrideField(room.id, iso, 'price', val)} />
                                             </div>
                                         );
@@ -373,7 +407,7 @@ export const InventoryMap: React.FC<InventoryMapProps> = ({ rooms, onUpdateRoomO
                                         const q = ov?.availableQuantity ?? room.totalQuantity;
                                         const isClosed = ov?.isClosed;
                                         return (
-                                            <div key={d} className={`w-[80px] md:w-[90px] shrink-0 border-r border-gray-200 h-10 md:h-12 transition-colors ${isClosed ? 'bg-red-50/50' : 'hover:bg-green-50/30'}`}>
+                                            <div key={iso} className={`w-[80px] md:w-[90px] shrink-0 border-r border-gray-200 h-10 md:h-12 transition-colors ${isClosed ? 'bg-red-50/50' : 'hover:bg-green-50/30'}`}>
                                                 <MapCell type="qty" value={q} isClosed={isClosed} onChange={(val) => updateOverrideField(room.id, iso, 'availableQuantity', val)} />
                                             </div>
                                         );

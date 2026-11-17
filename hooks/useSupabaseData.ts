@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { Room, HolidayPackage, DiscountCode, ExtraService, Reservation, DEFAULT_MAX_INSTALLMENTS } from '../types';
+import { Room, RoomDateOverride, HolidayPackage, DiscountCode, ExtraService, Reservation, DEFAULT_MAX_INSTALLMENTS } from '../types';
 import { supabase } from '../lib/supabase';
 import { offlineQueue } from '../lib/offlineQueue';
 import { getPublicImageUrl } from '../utils/imageUtils';
@@ -8,6 +8,8 @@ import { toLocalISO, parseISODate } from '../utils/dateUtils';
 import { safeArray, safeObject } from '../utils/dataSafety';
 import { mapReservations } from '../utils/mapReservation';
 import { gravarReservaDoSite } from '../services/reservaNoServidor';
+import { criarRecargaAgrupada } from '../utils/recargaAgrupada';
+import { gravarDiaNoBanco } from '../services/mapaDeTarifas';
 
 // Chaves para localStorage (cache)
 const STORAGE_KEYS = {
@@ -269,7 +271,8 @@ export const useSupabaseData = () => {
       }
       await loadFromSupabase(cachedRooms.length > 0);
     };
-    init();
+    // Uma vez só: eram duas chamadas seguidas, e cada visita ao site (e cada
+    // abertura do painel) buscava tudo em dobro.
     init();
   }, [loadFromSupabase]);
 
@@ -301,32 +304,30 @@ export const useSupabaseData = () => {
     }
   }, [user, loadFromSupabase]);
 
-  // Realtime subscription para manter o Painel Admin sincronizado com o ERP e outras mudanças
+  // Realtime subscription para manter o Painel Admin sincronizado com o ERP e outras mudanças.
+  // Uma rajada de mudanças vira uma recarga só (ver utils/recargaAgrupada.ts):
+  // recarregar tudo a cada mudança derrubou o banco em 17/11/2026.
   useEffect(() => {
     if (!user) return;
+    const recarga = criarRecargaAgrupada(() => loadFromSupabase(true));
     const channel = supabase
       .channel('db-changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'reservations' },
-        (payload) => {
-          console.log('[Realtime] Reserva atualizada/alterada. Sincronizando...', payload);
-          loadFromSupabase(true);
-        }
+        () => recarga.pedir()
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'room_types' },
-        (payload) => {
-          console.log('[Realtime] Acomodações/Estoque alterados. Sincronizando...', payload);
-          loadFromSupabase(true);
-        }
+        () => recarga.pedir()
       )
       .subscribe((status) => {
         setIsConnected(status === 'SUBSCRIBED');
       });
 
     return () => {
+      recarga.cancelar();
       supabase.removeChannel(channel);
     };
   }, [loadFromSupabase, user]);
@@ -405,6 +406,33 @@ export const useSupabaseData = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // Mapa de tarifas: grava a mudança de um dia de uma acomodação (ver
+  // services/mapaDeTarifas.ts). Uma gravação de cada vez: duas células
+  // alteradas em seguida não se atropelam.
+  const filaDoMapa = useRef<Promise<unknown>>(Promise.resolve());
+
+  const gravarDiaDoMapa = (roomId: string, dateIso: string, campos: Partial<RoomDateOverride>): Promise<boolean> => {
+    const vez = filaDoMapa.current.then(async () => {
+      setIsSaving(true);
+      try {
+        const overrides = await gravarDiaNoBanco(supabase, roomId, dateIso, campos);
+        setRoomsState(prev => {
+          const updated = prev.map(r => (r.id === roomId ? { ...r, overrides } : r));
+          saveToStorage(STORAGE_KEYS.rooms, updated);
+          return updated;
+        });
+        return true;
+      } catch (err) {
+        console.error('Erro ao salvar o dia no mapa de tarifas:', err);
+        return false;
+      } finally {
+        setIsSaving(false);
+      }
+    });
+    filaDoMapa.current = vez;
+    return vez;
   };
 
   const deleteRoom = async (roomId: string) => {
@@ -763,6 +791,7 @@ export const useSupabaseData = () => {
     updateReservation,
     upsertRoom,
     upsertRooms,
+    gravarDiaDoMapa,
     deleteRoom,
     upsertPackage,
     deletePackage,

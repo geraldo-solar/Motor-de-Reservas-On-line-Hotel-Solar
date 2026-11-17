@@ -41,6 +41,7 @@ interface AdminPanelProps {
   onUpdateReservation: (id: string, updates: Partial<Reservation>) => Promise<boolean>;
   onUpsertRoom: (room: Room) => Promise<boolean>;
   onUpsertRooms: (rooms: Room[]) => Promise<boolean>;
+  onGravarDiaDoMapa: (roomId: string, dateIso: string, campos: Partial<RoomDateOverride>) => Promise<boolean>;
   onDeleteRoom: (roomId: string) => Promise<boolean>;
   onUpsertPackage: (pkg: HolidayPackage) => Promise<boolean>;
   onDeletePackage: (id: string) => Promise<boolean>;
@@ -61,7 +62,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
   const {
     rooms, packages, discounts, extras, config, reservations,
     onUpdateRooms, onUpdatePackages, onUpdateDiscounts, onUpdateExtras, onUpdateConfig,
-    onUpdateReservationStatus, onUpdateReservation, onUpsertRoom, onUpsertRooms, onDeleteRoom,
+    onUpdateReservationStatus, onUpdateReservation, onUpsertRoom, onUpsertRooms, onGravarDiaDoMapa, onDeleteRoom,
     onUpsertPackage, onDeletePackage, onUpsertExtra, onDeleteExtra,
     onUpsertDiscount, onDeleteDiscount, isSaving, onLogout, onRefreshData
   } = props;
@@ -95,15 +96,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
   }, [activeTab]);
 
   // Handlers para lógica de persistência que envolve múltiplos itens ou cálculos
-  const handleUpdateRoomOverride = async (roomId: string, override: RoomDateOverride) => {
-    const room = rooms.find(r => r.id === roomId);
-    if (!room) return;
-    const existing = room.overrides || [];
-    const index = existing.findIndex(o => o.dateIso === override.dateIso);
-    const newOverrides = index >= 0 ? existing.map((o, i) => i === index ? override : o) : [...existing, override];
-    await onUpsertRoom({ ...room, overrides: newOverrides });
-  };
-
   const handleBulkUpdate = async (startIso: string, endIso: string, roomId: string, selectedDays: number[], updates: Partial<RoomDateOverride> | null, priceOp?: any) => {
     const targetRooms = roomId === 'all' ? rooms.filter(r => r.active) : rooms.filter(r => r.id === roomId);
     const updatedRooms: Room[] = [];
@@ -247,7 +239,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = (props) => {
       {/* Main Content Area */}
       <main ref={mainScrollRef} className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-12">
         <div className="max-w-[1600px] mx-auto min-h-full">
-          {activeTab === 'MAP' && <InventoryMap rooms={rooms} onUpdateRoomOverride={handleUpdateRoomOverride} onBulkUpdate={handleBulkUpdate} isSaving={isSaving} onRefreshData={onRefreshData} />}
+          {activeTab === 'MAP' && <InventoryMap rooms={rooms} onUpdateRoomOverride={onGravarDiaDoMapa} onBulkUpdate={handleBulkUpdate} isSaving={isSaving} onRefreshData={onRefreshData} />}
           {activeTab === 'ROOMS' && <RoomsManagement rooms={rooms} onEditRoom={(r) => { setSelectedRoom(r); setIsRoomModalOpen(true); }} onNewRoom={() => { setSelectedRoom(null); setIsRoomModalOpen(true); }} onDeleteRoom={onDeleteRoom} onUpdateRooms={onUpdateRooms} />}
           {activeTab === 'PACKAGES' && <PackagesManagement packages={packages} onEditPackage={(pkg) => { setSelectedPackage(pkg); setIsPackageModalOpen(true); }} onNewPackage={() => { setSelectedPackage(null); setIsPackageModalOpen(true); }} />}
           {activeTab === 'EXTRAS' && <ExtrasManagement extras={extras} onEditExtra={(e) => { setSelectedExtra(e); setIsExtraModalOpen(true); }} onNewExtra={() => { setSelectedExtra(null); setIsExtraModalOpen(true); }} onDeleteExtra={onDeleteExtra} onUpdateExtras={onUpdateExtras} />}

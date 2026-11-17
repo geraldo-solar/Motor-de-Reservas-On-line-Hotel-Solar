@@ -44,7 +44,7 @@ export default function App() {
     user, authLoading, login, logout, // Auth from hook
     setRooms, setPackages, setDiscounts, setExtras, setReservations,
     saveReservationToSupabase, updateReservationStatus, updateReservation,
-    upsertRoom, upsertRooms, deleteRoom,
+    upsertRoom, upsertRooms, gravarDiaDoMapa, deleteRoom,
     upsertPackage, deletePackage,
     upsertExtra, deleteExtra,
     upsertDiscount, deleteDiscount,
@@ -1027,6 +1027,7 @@ export default function App() {
                   onUpdateReservation={updateReservation}
                   onUpsertRoom={upsertRoom}
                   onUpsertRooms={upsertRooms}
+                  onGravarDiaDoMapa={gravarDiaDoMapa}
                   onDeleteRoom={deleteRoom}
                   onUpsertPackage={upsertPackage}
                   onDeletePackage={deletePackage}
