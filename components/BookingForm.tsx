@@ -167,6 +167,24 @@ const BookingForm: React.FC<BookingFormProps> = ({
   };
 
   const isSubmittingRef = useRef(false);
+  // Do clique até a página mudar. Sem isto o botão voltava ao normal assim
+  // que a reserva era gravada, e ficava vários segundos parecendo parado
+  // enquanto a página da Cielo era criada e o e-mail saía: quem clicava de
+  // novo achava que só o segundo clique funcionava (17/11/2026).
+  const [enviando, setEnviando] = useState(false);
+
+  // Voltar da Cielo pelo botão do navegador pode trazer esta tela de volta
+  // como ficou, com o botão travado em "abrindo". Libera para tentar de novo:
+  // a reserva é a mesma (mesmo número) e o ERP devolve a mesma página.
+  useEffect(() => {
+    const aoVoltar = (evento: PageTransitionEvent) => {
+      if (!evento.persisted) return;
+      isSubmittingRef.current = false;
+      setEnviando(false);
+    };
+    window.addEventListener('pageshow', aoVoltar);
+    return () => window.removeEventListener('pageshow', aoVoltar);
+  }, []);
 
   const handleFinalSubmit = async () => {
     if (isSubmittingRef.current) return;
@@ -277,11 +295,16 @@ const BookingForm: React.FC<BookingFormProps> = ({
         isSupabaseDraft: draftPayload?.isSupabaseDraft
       };
 
+      setEnviando(true);
       const success = await onAddReservation(reservation);
-      if (!success) isSubmittingRef.current = false;
+      if (!success) {
+        isSubmittingRef.current = false;
+        setEnviando(false);
+      }
     } catch (err: any) {
       console.error('Erro na submissão da reserva:', err);
       isSubmittingRef.current = false;
+      setEnviando(false);
     }
   };
 
@@ -695,15 +718,17 @@ const BookingForm: React.FC<BookingFormProps> = ({
 
         <button
           onClick={handleFinalSubmit}
-          disabled={!agreedToPolicies || isSaving}
-          className={`w-full py-5 rounded-xl font-bold uppercase text-sm tracking-[0.3em] transition-all shadow-2xl flex items-center justify-center gap-3 ${agreedToPolicies && !isSaving
+          disabled={!agreedToPolicies || isSaving || enviando}
+          className={`w-full py-5 rounded-xl font-bold uppercase text-sm tracking-[0.3em] transition-all shadow-2xl flex items-center justify-center gap-3 ${agreedToPolicies && !isSaving && !enviando
             ? 'bg-solar-green text-white hover:bg-solar-gold hover:text-solar-green'
             : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60'
             }`}
         >
-          {isSaving ? (
+          {isSaving || enviando ? (
             <>
-              <Loader2 className="animate-spin" size={24} /> Processando...
+              <Loader2 className="animate-spin" size={24} />
+              {/* Reserva gravada, falta a página de pagamento: diz o que está acontecendo. */}
+              {enviando && !isSaving && paymentMethod === 'CREDIT_CARD' ? 'Abrindo a Cielo...' : 'Processando...'}
             </>
           ) : (
             <>

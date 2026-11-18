@@ -642,7 +642,12 @@ export const useSupabaseData = () => {
       // banco confirmou; se a conexão cair, reenviar não duplica (mesmo número).
       const r = await gravarReservaDoSite(reservation);
       if ('erro' in r) return { success: false, error: r.erro };
-      await loadFromSupabase(true);
+      // A recarga dos dados do site não segura mais o hóspede: ela baixa tudo
+      // de novo (2,6 MB em 17/11/2026, quase tudo fotos de pacote) e eram
+      // vários segundos parado antes de pedir a página da Cielo. No cartão
+      // ele sai desta página, então nem recarrega; no Pix a tela de
+      // confirmação não depende dela, e a recarga segue em segundo plano.
+      if (reservation.paymentMethod !== 'CREDIT_CARD') void loadFromSupabase(true);
       return { success: true };
     } finally {
       setIsSaving(false);
