@@ -240,6 +240,42 @@ export function fichaQuePodeSerCompletada(porCpf: any | null, porNome: any | nul
   return null;
 }
 
+/** CPF (11) ou CNPJ (14) só com dígitos; qualquer outra coisa vira vazio. */
+export const documentoValido = (valor: unknown): string => {
+  const d = soDigitos(valor);
+  return d.length === 11 || d.length === 14 ? d : '';
+};
+
+const nomeComparavel = (valor: unknown) => String(valor ?? '')
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toLowerCase().replace(/\s+/g, ' ').trim();
+
+/** Ficha que o pré-check-in acabou de gravar ou completar no cadastro. */
+export type FichaGravada = { id: string; cpf: string; nome: string };
+
+/**
+ * Ficha do cadastro que passa a ser o titular do quarto no ERP.
+ *
+ * O ERP só reconhece o cadastro pelo vínculo da reserva com a ficha
+ * (main_guest_id); sem ele, mesmo com a ficha preenchida pelo hóspede, a
+ * recepção via "Selecionar hóspede para check-in". O vínculo só sai quando
+ * o titular do quarto tem um documento só, é o de uma ficha gravada neste
+ * pré-check-in, e o nome bate: no grupo, o quarto principal pode levar o CPF
+ * de quem preencheu e o nome de outra pessoa.
+ */
+export function fichaDoQuarto(mainGuest: any, fichas: FichaGravada[]): string | null {
+  const documentos = new Set(
+    [mainGuest?.cpf, mainGuest?.cpf_cnpj, mainGuest?.document].map(soDigitos).filter(Boolean),
+  );
+  if (documentos.size !== 1) return null;
+  const cpf = documentoValido([...documentos][0]);
+  const nome = nomeComparavel(mainGuest?.full_name || mainGuest?.name);
+  if (!cpf || !nome) return null;
+  const achadas = fichas.filter(f => f.cpf === cpf);
+  if (achadas.length !== 1 || nomeComparavel(achadas[0].nome) !== nome) return null;
+  return achadas[0].id;
+}
+
 /** Cupom como o formulário usa (utils/pricing.validateDiscount). */
 export function cupomParaOSite(linha: any) {
   return {

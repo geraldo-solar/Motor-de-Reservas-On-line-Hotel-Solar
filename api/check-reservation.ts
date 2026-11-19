@@ -2,8 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { bancoDoServidor, chaveDoBanco } from '../utils/bancoDoServidor.js';
 import {
   COLUNAS_DO_SITE, cancelamentoDoSite, codigoCurto, conferirReservaDoSite, cupomParaOSite, ehCodigoCurto,
-  ehRascunhoDoChatbot, ehUuid, fichaDoHospede, fichaQuePodeSerCompletada, linhasPorQuarto,
-  reservaLimpa, soDigitos,
+  documentoValido, ehRascunhoDoChatbot, ehUuid, type FichaGravada, fichaDoHospede, fichaDoQuarto,
+  fichaQuePodeSerCompletada, linhasPorQuarto, reservaLimpa, soDigitos,
 } from '../utils/reservaDoSite.js';
 import { type ContextoDaCompra, enviarCompraParaMeta } from '../utils/metaConversoesServidor.js';
 
@@ -120,15 +120,20 @@ async function cancelar(db: Banco, corpo: any) {
   };
 }
 
+/** Filtro do cadastro pelo documento, sem e com pontuação. */
+function filtroPorDocumento(digitos: string): string {
+  const formatado = digitos.length === 11
+    ? digitos.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+    : digitos.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  return `document.eq.${digitos},cpf_cnpj.eq.${digitos},document.eq.${formatado},cpf_cnpj.eq.${formatado}`;
+}
+
 async function fichaExistente(db: Banco, cpf: string, nome: string): Promise<string | null> {
-  const digitos = soDigitos(cpf);
+  const digitos = documentoValido(cpf);
   let porCpf: any = null;
-  if (digitos.length === 11 || digitos.length === 14) {
-    const formatado = digitos.length === 11
-      ? digitos.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
-      : digitos.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  if (digitos) {
     const { data } = await db.from('guests').select('id')
-      .or(`document.eq.${digitos},cpf_cnpj.eq.${digitos},document.eq.${formatado},cpf_cnpj.eq.${formatado}`)
+      .or(filtroPorDocumento(digitos))
       .limit(1).maybeSingle();
     porCpf = data;
   }
@@ -150,6 +155,24 @@ async function gravarFicha(db: Banco, ficha: Record<string, string>): Promise<st
   const { data, error } = await db.from('guests').insert([ficha]).select('id').single();
   if (error) throw error;
   return (data as any)?.id || null;
+}
+
+/** Grava a ficha e devolve o que serve para ligar a reserva a ela. */
+async function gravarEGuardar(db: Banco, ficha: Record<string, string>, fichas: FichaGravada[]) {
+  const id = await gravarFicha(db, ficha);
+  const cpf = documentoValido(ficha.cpf_cnpj || ficha.document);
+  if (id && cpf) fichas.push({ id, cpf, nome: ficha.full_name || ficha.name || '' });
+}
+
+/**
+ * O documento aponta para uma ficha só no cadastro. Com duas fichas do
+ * mesmo CPF, a recepção escolhe qual vale; o site não adivinha.
+ */
+async function fichaUnica(db: Banco, cpf: string, id: string): Promise<boolean> {
+  const { data, error } = await db.from('guests').select('id, is_deleted').or(filtroPorDocumento(cpf)).limit(3);
+  if (error) throw error;
+  const vivas = (data || []).filter((g: any) => !g.is_deleted);
+  return vivas.length === 1 && String((vivas[0] as any).id) === id;
 }
 
 const jsonPequeno = (valor: unknown, max: number) => {
@@ -176,14 +199,15 @@ async function preCheckin(db: Banco, corpo: any) {
 
   // Titular: completa a ficha de mesmo CPF (ou a ficha sem documento que o
   // ERP criou com o nome), ou cria uma nova.
+  const fichas: FichaGravada[] = [];
   const titular = fichaDoHospede(corpo.hospede);
-  if (titular.full_name || titular.name) await gravarFicha(db, titular);
+  if (titular.full_name || titular.name) await gravarEGuardar(db, titular, fichas);
 
   // Acompanhantes com CPF viram ficha no cadastro de hóspedes.
   const acompanhantes = Array.isArray(corpo.acompanhantes) ? corpo.acompanhantes.slice(0, 20) : [];
   for (const dados of acompanhantes) {
     const ficha = fichaDoHospede(dados);
-    if ((ficha.full_name || ficha.name) && soDigitos(ficha.cpf_cnpj || ficha.document)) await gravarFicha(db, ficha);
+    if ((ficha.full_name || ficha.name) && soDigitos(ficha.cpf_cnpj || ficha.document)) await gravarEGuardar(db, ficha, fichas);
   }
 
   const quartos = Array.isArray(corpo.quartos) ? corpo.quartos.slice(0, 10) : [];
@@ -197,6 +221,23 @@ async function preCheckin(db: Banco, corpo: any) {
       additional_guests: Array.isArray(q.additional_guests) ? q.additional_guests : [],
     }).eq('id', qid);
     if (r.error) throw r.error;
+
+    // Liga o quarto à ficha que o hóspede acabou de preencher, para o ERP
+    // reconhecer o cadastro. Só quarto ainda sem titular escolhido: o que a
+    // recepção já ligou fica como está. Falhar aqui não desfaz o pré-check-in;
+    // a recepção ainda pode escolher a ficha no ERP.
+    const guestId = fichaDoQuarto(q.main_guest, fichas);
+    if (guestId) {
+      try {
+        const cpf = fichas.find(f => f.id === guestId)!.cpf;
+        if (await fichaUnica(db, cpf, guestId)) {
+          const v = await db.from('reservations').update({ main_guest_id: guestId }).eq('id', qid).is('main_guest_id', null);
+          if (v.error) throw v.error;
+        }
+      } catch (erro) {
+        console.error('[reserva-site] pre-checkin: vínculo com o cadastro não gravado', qid, (erro as any)?.message || erro);
+      }
+    }
   }
   return { status: 200, json: { ok: true } };
 }
